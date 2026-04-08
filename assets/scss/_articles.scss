@@ -1,0 +1,154 @@
+/*
+    Article List and Card Styles
+*/
+
+// ===== Article Card =====
+.article-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 16px;
+    overflow: hidden;
+    
+    &:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+    }
+}
+
+// ===== Article List =====
+.article-list {
+    article {
+        padding: 24px 32px;
+        border-radius: 12px;
+        background: var(--card-background);
+        border: 1px solid var(--border-color);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        font-family: inherit;
+        
+        &:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+            border-color: var(--accent-color-lighter, var(--accent-color));
+        }
+        
+        * {
+            font-family: inherit;
+        }
+    }
+    
+    .article-title {
+        font-size: 1.6rem;
+        font-weight: 700;
+        line-height: 1.2;
+        margin-bottom: 0.3em;
+        margin-top: 0.1em;
+        
+        a {
+            color: var(--card-text-color-main);
+            transition: color 0.2s ease;
+            
+            &:hover {
+                color: var(--accent-color);
+                text-decoration: none;
+            }
+        }
+    }
+    
+    .article-subtitle {
+        color: var(--card-text-color-secondary);
+        line-height: 1.5;
+        font-size: 1.05rem;
+    }
+    
+    .article-time,
+    .article-category {
+        font-size: 1.5rem;
+        color: var(--card-text-color-tertiary);
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5em;
+        
+        svg {
+            width: 16px;
+            height: 16px;
+            opacity: 0.7;
+        }
+    }
+    
+    .article-footer {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid var(--border-color);
+    }
+    
+    .article-meta {
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+    
+    // Category badge
+    .article-category {
+        margin-bottom: 6px;
+        
+        a {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            
+            &[href*="LLM"] {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+            }
+            
+            &[href*="Infra"] {
+                background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+                color: white;
+            }
+            
+            &[href*="MLLM"] {
+                background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+                color: white;
+            }
+            
+            &:hover {
+                transform: scale(1.05);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            }
+        }
+    }
+}
+
+// ===== Article Images =====
+.article-image img {
+    object-fit: cover;
+    max-height: 250px;
+    width: 100%;
+    border-radius: 8px;
+}
+
+// ===== Mobile Responsiveness =====
+@media (max-width: 768px) {
+    .article-list article {
+        padding: 18px 20px;
+        
+        .article-title {
+            font-size: 1.6rem;
+        }
+        
+        .article-subtitle {
+            font-size: 1.0rem;
+        }
+    }
+}
+

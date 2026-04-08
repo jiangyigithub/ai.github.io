@@ -1,0 +1,16 @@
+# Related contents configuration
+includeNewer = true
+threshold = 50
+toLower = false
+
+[[indices]]
+name = "tags"
+weight = 100
+
+[[indices]]
+name = "categories"
+weight = 200
+
+[[indices]]
+name = "title"
+weight = 80

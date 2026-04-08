@@ -1,0 +1,122 @@
+{{- /* SEO Meta Tags */ -}}
+{{- $description := .Description | default .Summary | default .Site.Params.description -}}
+{{- $title := .Title | default .Site.Title -}}
+{{- $url := .Permalink | default .Site.BaseURL -}}
+{{- $image := "" -}}
+
+{{- /* Get featured image */ -}}
+{{- with .Resources.GetMatch "*.{jpg,jpeg,png,gif,webp}" -}}
+    {{- $image = .Permalink -}}
+{{- else -}}
+    {{- with .Site.Params.defaultImage.opengraph -}}
+        {{- if .enabled -}}
+            {{- $image = (printf "%s%s" $.Site.BaseURL .src) -}}
+        {{- end -}}
+    {{- end -}}
+{{- end -}}
+
+{{- /* Basic Meta Tags */ -}}
+{{- if not (.Scratch.Get "meta_description_rendered") -}}
+<meta name="description" content="{{ $description }}">
+{{- .Scratch.Set "meta_description_rendered" true -}}
+{{- end -}}
+<meta name="keywords" content="{{ delimit .Keywords ", " }}">
+{{- with .Site.Params.author -}}
+<meta name="author" content="{{ .name | default . }}">
+{{- end -}}
+
+{{- /* Canonical URL */ -}}
+<link rel="canonical" href="{{ $url }}">
+
+{{- /* Open Graph Meta Tags */ -}}
+<meta property="og:title" content="{{ $title }}">
+<meta property="og:description" content="{{ $description }}">
+<meta property="og:type" content="{{ if .IsPage }}article{{ else }}website{{ end }}">
+<meta property="og:url" content="{{ $url }}">
+<meta property="og:site_name" content="{{ .Site.Title }}">
+<meta property="og:locale" content="{{ .Site.LanguageCode }}">
+
+{{- if $image -}}
+<meta property="og:image" content="{{ $image }}">
+<meta property="og:image:alt" content="{{ $title }}">
+{{- end -}}
+
+{{- if .IsPage -}}
+<meta property="article:published_time" content="{{ .Date.Format "2006-01-02T15:04:05Z07:00" }}">
+<meta property="article:modified_time" content="{{ .Lastmod.Format "2006-01-02T15:04:05Z07:00" }}">
+{{- with .Site.Params.author -}}
+<meta property="article:author" content="{{ .name | default . }}">
+{{- end -}}
+{{- range .Params.tags -}}
+<meta property="article:tag" content="{{ . }}">
+{{- end -}}
+{{- end -}}
+
+{{- /* Additional SEO Meta Tags */ -}}
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="googlebot" content="index, follow">
+
+{{- /* Language Alternates */ -}}
+{{- if .IsTranslated -}}
+{{- range .Translations -}}
+<link rel="alternate" hreflang="{{ .Language.Lang }}" href="{{ .Permalink }}">
+{{- end -}}
+{{- end -}}
+
+{{- /* JSON-LD Structured Data */ -}}
+{{- if .IsPage -}}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "{{ $title }}",
+  "description": "{{ $description }}",
+  {{- with .Site.Params.author -}}
+  "author": {
+    "@type": "Person",
+    "name": "{{ .name | default . }}"
+  },
+  {{- end -}}
+  "datePublished": "{{ .Date.Format "2006-01-02T15:04:05Z07:00" }}",
+  "dateModified": "{{ .Lastmod.Format "2006-01-02T15:04:05Z07:00" }}",
+  {{- if $image -}}
+  "image": "{{ $image }}",
+  {{- end -}}
+  "publisher": {
+    "@type": "Organization",
+    "name": "{{ .Site.Title }}",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "{{ .Site.BaseURL }}{{ .Site.Params.favicon }}"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "{{ $url }}"
+  },
+  {{- if .Params.tags -}}
+  "keywords": "{{ delimit .Params.tags ", " }}",
+  {{- end -}}
+  "articleSection": "{{ with .Section }}{{ . }}{{ end }}",
+  "inLanguage": "{{ .Site.LanguageCode }}"
+}
+</script>
+{{- else if .IsHome -}}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "{{ .Site.Title }}",
+  "url": "{{ .Site.BaseURL }}",
+  "description": "{{ .Site.Params.description }}",
+  "inLanguage": "{{ .Site.LanguageCode }}"
+  {{- with .Site.Params.author -}},
+  "author": {
+    "@type": "Person",
+    "name": "{{ .name | default . }}"
+  }
+  {{- end -}}
+}
+</script>
+{{- end -}}
+

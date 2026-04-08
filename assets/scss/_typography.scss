@@ -1,0 +1,115 @@
+/*
+    Typography Enhancements
+*/
+
+// ===== Base Typography =====
+body {
+    font-feature-settings: "kern" 1, "liga" 1;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+// ===== Section Titles =====
+.section-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin-bottom: 24px;
+    color: var(--card-text-color-main);
+    position: relative;
+    padding-bottom: 12px;
+    
+    &::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 60px;
+        height: 4px;
+        background: linear-gradient(90deg, var(--accent-color) 0%, transparent 100%);
+        border-radius: 2px;
+    }
+}
+
+// ===== Article Typography =====
+article {
+    line-height: 1.8;
+    
+    p {
+        margin-bottom: 1.5em;
+        line-height: 1.8;
+    }
+    
+    h1, h2, h3, h4, h5, h6 {
+        line-height: 1.4;
+        margin-top: 1.5em;
+        margin-bottom: 0.75em;
+        font-weight: 600;
+    }
+    
+    // Better spacing for lists
+    ul, ol {
+        margin-bottom: 1.5em;
+        padding-left: 2em;
+        
+        li {
+            margin-bottom: 0.5em;
+            line-height: 1.7;
+        }
+    }
+}
+
+// ===== Article Title Sizing =====
+.article-title {
+    font-size: 2.5rem !important;
+    line-height: 1.3;
+    margin-bottom: 0.75rem;
+    font-weight: 700;
+
+    a {
+        text-decoration: none;
+    }
+}
+
+// ===== Article Subtitle =====
+.article-subtitle, 
+.article-details p {
+    font-size: 1.5rem !important;
+    color: var(--card-text-color-secondary, #555);
+}
+
+// ===== Meta Information =====
+.article-meta {
+    font-size: 0.95rem;
+}
+
+// ===== Mobile Typography =====
+@media (max-width: 768px) {
+    .article-title {
+        font-size: 1.5rem !important;
+    }
+    
+    .article-subtitle {
+        font-size: 1.05rem !important;
+    }
+    
+    article {
+        p {
+            font-size: 1.05rem;
+            line-height: 1.7;
+        }
+        
+        h1 {
+            font-size: 1.8rem;
+        }
+        
+        h2 {
+            font-size: 1.5rem;
+        }
+        
+        h3 {
+            font-size: 1.3rem;
+        }
+    }
+}
+

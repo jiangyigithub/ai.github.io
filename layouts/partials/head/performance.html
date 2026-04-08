@@ -1,0 +1,31 @@
+{{- /* Performance Optimization Meta Tags and Preconnects */ -}}
+
+{{- /* DNS Prefetch and Preconnect for External Resources */ -}}
+<link rel="dns-prefetch" href="https://fonts.googleapis.com">
+<link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+<link rel="dns-prefetch" href="https://scripts.simpleanalyticscdn.com">
+
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://scripts.simpleanalyticscdn.com" crossorigin>
+
+{{- /* Resource Hints */ -}}
+<meta http-equiv="x-dns-prefetch-control" content="on">
+
+{{- /* Viewport and Mobile Optimization */ -}}
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, minimum-scale=1.0">
+<meta name="format-detection" content="telephone=no">
+
+{{- /* Theme Color for Mobile Browsers */ -}}
+<meta name="theme-color" content="#4e54c8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1a1a2e" media="(prefers-color-scheme: dark)">
+
+{{- /* Apple Touch Icon */ -}}
+<link rel="apple-touch-icon" href="{{ .Site.Params.favicon }}">
+
+{{- /* Prefetch Important Pages */ -}}
+{{- if .IsHome -}}
+<link rel="prefetch" href="{{ "page/archives/" | absURL }}">
+<link rel="prefetch" href="{{ "page/search/" | absURL }}">
+{{- end -}}
+

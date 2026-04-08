@@ -1,0 +1,24 @@
+<section class="widget categories">
+    <div class="widget-icon">
+        {{ partial "helper/icon" "folder" }}
+    </div>
+    <h2 class="widget-title">{{ .Context.title | default "Categories" }}</h2>
+    <div class="widget-content">
+        {{ $categories := .Site.Taxonomies.categories }}
+        {{ if $categories }}
+            <ul class="widget-list">
+                {{ range $name, $taxonomy := $categories }}
+                    {{ $count := len $taxonomy.Pages }}
+                    <li class="widget-list-item">
+                        <a href="{{ "/categories/" | relLangURL }}{{ $name | urlize }}" class="widget-list-item-link">
+                            <span class="widget-list-item-label">{{ $name }}</span>
+                            <span class="widget-list-item-count">{{ $count }}</span>
+                        </a>
+                    </li>
+                {{ end }}
+            </ul>
+        {{ else }}
+            <p class="widget-empty">No categories yet.</p>
+        {{ end }}
+    </div>
+</section>

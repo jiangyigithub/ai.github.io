@@ -1,0 +1,24 @@
+# Configure main menu and social menu
+[[social]]
+identifier = "github"
+name = "GitHub"
+url = "https://github.com/MaoSong2022"
+
+[social.params]
+icon = "brand-github"
+
+[[social]]
+identifier = "scholar"
+name = "Google Scholar"
+url = "https://scholar.google.com/citations?user=BaqGkQQAAAAJ"
+
+[social.params]
+icon = "googlescholar"
+
+[[social]]
+identifier = "bilibili"
+name = "bilibili"
+url = "https://b23.tv/a0Bb9Z1"
+
+[social.params]
+icon = "bilibili"

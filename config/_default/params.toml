@@ -1,0 +1,93 @@
+# Author information
+[author]
+  name = "Mao Song"
+
+mainSections = ["post"]
+rssFullContent = true
+favicon = "/favicon.png"
+smoothScroll = true
+google_verify = "b98b42ee66064915aab3225026b2e9ca"
+
+[footer]
+  since = 2020
+  customText = ""
+
+[dateFormat]
+  published = "January 2, 2006"
+  lastUpdated = "January 2, 2006 at 3:04 PM"
+
+[sidebar]
+  subtitle = "Delving into the Latent Unknown."
+
+[sidebar.avatar]
+  enabled = true
+  local = true
+  src = "img/avatar.jpg"
+
+[article]
+  headingAnchor = true
+  math = true
+  readingTime = true
+  showTags = true 
+
+[article.license]
+  enabled = true
+  default = "Licensed under CC BY-NC-SA 4.0"
+
+[article.footer]
+  enabled = true
+
+## Widgets
+[[widgets.homepage]]
+type = "search"
+
+[[widgets.homepage]]
+type = "categories"
+[widgets.homepage.params]
+limit = 20
+
+[[widgets.homepage]]
+type = "tag-cloud"
+[widgets.homepage.params]
+limit = 20
+
+[[widgets.homepage]]
+type = "archives"
+[widgets.homepage.params]
+    limit = 5
+
+
+[[widgets.page]]
+type = "toc"
+
+[opengraph.twitter]
+site = ""
+card = "summary_large_image"
+
+[defaultImage.opengraph]
+enabled = true
+local = true
+src = "img/avatar.jpg"
+
+[colorScheme]
+toggle = true
+default = "auto"
+
+[imageProcessing.cover]
+enabled = false
+
+[imageProcessing.content]
+enabled = false
+
+## Comments
+[comments]
+enabled = true
+provider = "utterances"
+
+[comments.utterances]
+repo = "MaoSong2022/MaoSong2022.github.io"
+issueTerm = "pathname"
+label = ""
+
+[analytics]
+simpleAnalytics = true

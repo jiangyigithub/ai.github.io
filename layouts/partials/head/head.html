@@ -1,0 +1,26 @@
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+
+{{- partial "head/performance.html" . -}}
+
+{{- if .Site.Params.google_verify -}}
+<meta name="google-site-verification" content="{{ .Site.Params.google_verify }}" />
+{{- end -}}
+
+{{- partial "head/seo.html" . -}}
+
+{{- $title := partial "data/title" . -}}
+<title>{{ $title }}</title>
+
+{{- partial "head/style.html" . -}}
+{{- partial "head/script.html" . -}}
+
+{{- range .AlternativeOutputFormats -}}
+    <link rel="{{ .Rel }}" type="{{ .MediaType.Type }}" href="{{ .Permalink | safeURL }}">
+{{- end -}}
+
+{{- with .Site.Params.favicon -}}
+    <link rel="shortcut icon" href="{{ . | relURL }}" />
+{{- end -}}
+
+{{- partial "head/custom.html" . -}}

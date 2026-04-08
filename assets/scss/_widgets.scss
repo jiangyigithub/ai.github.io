@@ -1,0 +1,254 @@
+/*
+    Sidebar Widgets Styles
+*/
+
+// ===== Widget Base Styles =====
+.sidebar {
+    .widget {
+        margin-bottom: 24px;
+        
+        .widget-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: var(--card-text-color-main);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            
+            &::before {
+                content: '';
+                width: 4px;
+                height: 20px;
+                background: linear-gradient(180deg, var(--accent-color) 0%, var(--accent-color-darker, var(--accent-color)) 100%);
+                border-radius: 2px;
+            }
+        }
+    }
+}
+
+// ===== Widget Icon Animation =====
+.widget-icon {
+    transition: transform 0.3s ease;
+}
+
+.widget:hover .widget-icon {
+    transform: scale(1.1) rotate(5deg);
+}
+
+// ===== Featured Widget =====
+.widget.featured {
+    .article-title {
+        font-size: 1.5rem;
+        line-height: 1.5;
+        margin: 0;
+        color: var(--card-text-color-main);
+        font-weight: 600;
+        transition: color 0.3s ease;
+    }
+    
+    article {
+        padding: 12px;
+        border-radius: 12px;
+        transition: all 0.3s ease;
+        margin-bottom: 12px;
+        
+        &:not(:last-child) {
+            margin-bottom: 15px;
+        }
+        
+        &:hover {
+            background-color: var(--card-background-hover, rgba(0, 0, 0, 0.02));
+            transform: translateX(4px);
+        }
+    }
+
+    a:hover .article-title {
+        color: var(--accent-color);
+    }
+}
+
+// ===== Categories Widget =====
+.widget.categories {
+    .widget-content {
+        margin-top: 12px;
+    }
+    
+    .widget-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    
+    .widget-list-item {
+        margin-bottom: 8px;
+    }
+    
+    .widget-list-item-link {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 14px;
+        border-radius: 10px;
+        background-color: var(--card-background);
+        border: 1px solid var(--border-color);
+        text-decoration: none;
+        color: var(--body-text-color);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        
+        &:hover {
+            transform: translateX(6px);
+            background-color: var(--card-background-hover, rgba(0, 0, 0, 0.02));
+            border-color: var(--accent-color);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+    }
+    
+    .widget-list-item-label {
+        font-weight: 500;
+        font-size: 1.4rem;
+        color: var(--card-text-color-main);
+    }
+    
+    .widget-list-item-count {
+        background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-color-darker, var(--accent-color)) 100%);
+        color: #fff;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 1.2rem;
+        font-weight: 600;
+        min-width: 28px;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    
+    .widget-empty {
+        color: var(--body-text-color);
+        font-style: italic;
+        padding: 20px;
+        text-align: center;
+        opacity: 0.7;
+    }
+}
+
+// ===== Archives Widget =====
+.widget.archives {
+    .widget-list-item-link {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 14px;
+        border-radius: 10px;
+        background-color: var(--card-background);
+        border: 1px solid var(--border-color);
+        text-decoration: none;
+        color: var(--body-text-color);
+        transition: all 0.3s ease;
+        
+        &:hover {
+            transform: translateX(6px);
+            border-color: var(--accent-color);
+            background-color: var(--card-background-hover, rgba(0, 0, 0, 0.02));
+        }
+    }
+    
+    .widget-archive-item {
+        margin-bottom: 8px;
+        
+        &-link {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-radius: 10px;
+            background: var(--card-background);
+            border: 1px solid var(--border-color);
+            font-weight: 500;
+            transition: all 0.3s ease;
+            
+            &:hover {
+                transform: translateX(4px);
+                border-color: var(--accent-color);
+                background: var(--card-background-hover, rgba(0, 0, 0, 0.02));
+            }
+        }
+        
+        &-count {
+            background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-color-darker, var(--accent-color)) 100%);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            min-width: 32px;
+            text-align: center;
+        }
+    }
+}
+
+// ===== Tag Cloud Widget =====
+.widget.tag-cloud {
+    .tag-cloud-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+    }
+    
+    .tag-cloud-link {
+        display: inline-flex;
+        align-items: center;
+        padding: 8px 16px;
+        border-radius: 20px;
+        background: var(--card-background);
+        border: 1.5px solid var(--border-color);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        text-decoration: none;
+        color: var(--body-text-color);
+        font-weight: 500;
+        font-size: 0.9rem;
+        position: relative;
+        overflow: hidden;
+        
+        &::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-color-darker, var(--accent-color)) 100%);
+            transition: left 0.3s ease;
+            z-index: -1;
+        }
+        
+        &:hover {
+            transform: translateY(-2px) scale(1.05);
+            border-color: var(--accent-color);
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            
+            &::before {
+                left: 0;
+            }
+        }
+        
+        .tag-cloud-count {
+            margin-left: 6px;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+    }
+}
+
+// ===== Mobile Widgets =====
+@media (max-width: 768px) {
+    .widget-list-item-link {
+        padding: 8px 12px;
+    }
+}
+

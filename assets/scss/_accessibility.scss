@@ -1,0 +1,96 @@
+/*
+    Accessibility and Print Styles
+*/
+
+// ===== Focus Indicators =====
+a:focus,
+button:focus,
+input:focus,
+textarea:focus,
+select:focus {
+    outline: 3px solid var(--accent-color);
+    outline-offset: 2px;
+}
+
+// ===== Skip to Main Content =====
+.skip-to-main {
+    position: absolute;
+    left: -9999px;
+    z-index: 999;
+    padding: 1em;
+    background-color: var(--accent-color);
+    color: white;
+    text-decoration: none;
+    
+    &:focus {
+        left: 50%;
+        transform: translateX(-50%);
+        top: 1em;
+    }
+}
+
+// ===== Reduced Motion =====
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+// ===== Print Styles =====
+@media print {
+    // Hide non-essential elements
+    .sidebar,
+    .widget,
+    .post-tags,
+    nav,
+    footer,
+    button,
+    .comments {
+        display: none !important;
+    }
+    
+    // Optimize for printing
+    body {
+        font-size: 12pt;
+        line-height: 1.5;
+        color: #000;
+        background: #fff;
+    }
+    
+    article {
+        max-width: 100%;
+        margin: 0;
+        padding: 0;
+    }
+    
+    // Ensure links are visible
+    a[href]::after {
+        content: " (" attr(href) ")";
+        font-size: 0.8em;
+        color: #666;
+    }
+    
+    // Better image handling
+    img {
+        max-width: 100%;
+        page-break-inside: avoid;
+    }
+    
+    // Better heading handling
+    h1, h2, h3, h4, h5, h6 {
+        page-break-after: avoid;
+        page-break-inside: avoid;
+    }
+    
+    // Better code block handling
+    pre, code {
+        border: 1px solid #ccc;
+        page-break-inside: avoid;
+    }
+}
+

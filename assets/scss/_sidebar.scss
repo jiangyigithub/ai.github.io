@@ -1,0 +1,71 @@
+/*
+    Sidebar Profile and Avatar Styles
+*/
+
+.sidebar {
+    .site-avatar {
+        .site-logo {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 50%;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            
+            &:hover {
+                transform: scale(1.05) rotate(5deg);
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+            }
+        }
+    }
+    
+    .site-name {
+        font-weight: 700;
+        font-size: 1.5rem;
+        margin-top: 16px;
+        color: var(--card-text-color-main);
+    }
+    
+    .site-description {
+        color: var(--card-text-color-secondary);
+        font-size: 0.95rem;
+        line-height: 1.6;
+        margin-top: 8px;
+        font-style: italic;
+    }
+    
+    // Social links
+    .social-menu {
+        display: flex;
+        gap: 12px;
+        margin-top: 16px;
+        justify-content: center;
+        
+        a {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--card-background);
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+            
+            &:hover {
+                transform: translateY(-3px);
+                background: var(--accent-color);
+                border-color: var(--accent-color);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                
+                svg {
+                    color: white;
+                }
+            }
+            
+            svg {
+                width: 20px;
+                height: 20px;
+                transition: color 0.3s ease;
+            }
+        }
+    }
+}
+
