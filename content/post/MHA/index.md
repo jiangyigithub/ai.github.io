@@ -1,3 +1,17 @@
+---
+title: MultiHeadSelfAttention
+description: 本文介绍了MultiHeadSelfAttention
+date: 2026-04-08 17:44:26+08:00
+math: true
+tags: 
+    - scaling
+categories:
+    - Infra
+---
+
+
+我们在本文中介绍 MultiHeadSelfAttention, MHA的实现
+
 ## MultiHeadSelfAttention
 ```python
 import torch
