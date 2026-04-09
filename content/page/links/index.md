@@ -57,7 +57,7 @@ I'm always excited to discuss research collaborations, innovative ideas, or pote
 
 **Email:** [jxyevil@163.com](jxyevil@163.com)
 
-**Resume/CV:** [Download PDF](https://github.com/jiangyigithub/MaoSong2022.github.io/blob/master/assets/%E6%AF%9B%E6%9D%BE_%E7%AE%80%E5%8E%86.pdf)
+**Resume/CV:** [Download PDF](https://github.com/jiangyigithub/ai.github.io/blob/main/assets/jiangyi_cv.pdf)
 
 </div>
 
