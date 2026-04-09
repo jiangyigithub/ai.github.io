@@ -1,6 +1,6 @@
 # Author information
 [author]
-  name = "Mao Song"
+  name = "Jiang Yi"
 
 mainSections = ["post"]
 rssFullContent = true
@@ -85,7 +85,7 @@ enabled = true
 provider = "utterances"
 
 [comments.utterances]
-repo = "MaoSong2022/MaoSong2022.github.io"
+repo = "jiangyigithub/ai.github.io/"
 issueTerm = "pathname"
 label = ""
 

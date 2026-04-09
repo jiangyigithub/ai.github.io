@@ -1,8 +1,8 @@
 # Change baseurl before deploy
 baseurl = "https://github.com/jiangyigithub/ai.github.io"
 languageCode = "en"
-title = "Mao Song(毛松)'s Homepage"
-description = "Mao Song's technical blog covering machine learning, large language models (LLMs), deep learning research, and AI innovations."
+title = "Jiang Yi(姜祎)'s Homepage"
+description = "Jiang Yi's technical blog covering machine learning, large language models (LLMs), deep learning research, and AI innovations."
 
 # Enable emoji support
 enableEmoji = true
