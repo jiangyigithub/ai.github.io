@@ -15,7 +15,7 @@ comments: false
 
 <div class="intro-section">
 
-**Jiang Yi (姜祎)** is an ai software engineer, where he focuses on pushing the boundaries of artificial intelligence through cutting-edge research in **Large Language Models (LLMs)** and **Multimodal Large Language Models (MLLMs)**. He also goes by the name **"温故知新"** on platforms such as Zhihu, Bilibili, and WeChat Official Account.
+**Jiang Yi (姜祎)** is an AI software engineer, where he focuses on pushing the boundaries of artificial intelligence through cutting-edge research in **Multimodal Large Language Models (MLLMs)** and **Vision Language Action (VLA)**. He also goes by the name **"温故知新"** on platforms such as Zhihu, Bilibili, and WeChat Official Account.
 
 </div>
 
