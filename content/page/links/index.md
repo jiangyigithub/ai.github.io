@@ -15,7 +15,7 @@ comments: false
 
 <div class="intro-section">
 
-**Mao Song (毛松)** is a researcher at [**Shanghai Artificial Intelligence Laboratory (Shanghai AI Lab, 上海人工智能实验室)**](https://www.shlab.org.cn/), where he focuses on pushing the boundaries of artificial intelligence through cutting-edge research in **Large Language Models (LLMs)** and **Multimodal Large Language Models (MLLMs)**. He also goes by the name **"以往的月"** on platforms such as Zhihu, Bilibili, and WeChat Official Account.
+**Jiang Yi (姜祎)** is an ai software engineer, where he focuses on pushing the boundaries of artificial intelligence through cutting-edge research in **Large Language Models (LLMs)** and **Multimodal Large Language Models (MLLMs)**. He also goes by the name **"温故知新"** on platforms such as Zhihu, Bilibili, and WeChat Official Account.
 
 </div>
 
@@ -55,7 +55,7 @@ My research focuses on the intersection of language and vision, with particular 
 
 I'm always excited to discuss research collaborations, innovative ideas, or potential opportunities. Feel free to reach out!
 
-**Email:** [maosong@pjlab.org.cn](mailto:maosong@pjlab.org.cn)
+**Email:** [jxyevil@163.com](jxyevil@163.com)
 
 **Resume/CV:** [Download PDF](https://github.com/jiangyigithub/MaoSong2022.github.io/blob/master/assets/%E6%AF%9B%E6%9D%BE_%E7%AE%80%E5%8E%86.pdf)
 
