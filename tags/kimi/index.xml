@@ -1,0 +1,1661 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Kimi on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/kimi/</link><description>Recent content in Kimi on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/kimi/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on Kimi-k2.5</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-kimi-k2.5/</link><pubDate>Thu, 12 Feb 2026 11:13:13 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-kimi-k2.5/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>Kimi-K2.5 的核心有亮点：&lt;/p>
+&lt;ol>
+&lt;li>native multi-modal: 通过在预训练，SFT, RL 阶段使用多模态数据来提高模型的多模态能力&lt;/li>
+&lt;li>agent: 通过并行 multi-agent 的方式来提高模型解决复杂问题的效率和能力&lt;/li>
+&lt;/ol>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;h3 id="architecture">&lt;a href="#architecture" class="header-anchor">&lt;/a>Architecture
+&lt;/h3>&lt;p>Kimi K2.5 是一个标准的 ViT-MLP-LLM 架构，其中&lt;/p>
+&lt;ol>
+&lt;li>ViT, 基于 &lt;a class="link" href="Kimi-VL.md" >Kimi-VL&lt;/a> 提出的 MoonViT, 并进行了改进, 参数量为 400M&lt;/li>
+&lt;li>MLP, 基于 patch merger,&lt;/li>
+&lt;li>LLM, 基于 &lt;a class="link" href="https://maosong.website/p/notes-on-kimi-k2/" target="_blank" rel="noopener"
+>Kimi-k2&lt;/a>, 参数量为 1.02T-A32B&lt;/li>
+&lt;/ol>
+&lt;p>&lt;strong>ViT&lt;/strong>
+作者使用了 &lt;a class="link" href="Kimi-VL.md" >Kimi-VL&lt;/a> 提出的 MoonViT, MoonViT 基于 &lt;a class="link" href="SigLIP.md" >SigLIP&lt;/a> 提出的 SigLIP-SO-400M 开发得到，MoonViT 使用了 &lt;a class="link" href="NaViT.md" >NaViT&lt;/a> 来避免切分图片和使用不同精度图片进行训练。&lt;/p>
+&lt;p>在 MoonViT 的基础上，Kimi-K2.5 还进一步提出了 MoonViT-3D, 将 &lt;a class="link" href="NaViT.md" >NaViT&lt;/a> 的思想扩展到了 3D 用于提高模型的视频理解能力，具体做法为将连续 4 帧的视频展开为 1D sequence, 这样在图像上的注意力机制就可以无缝衔接到视频上了。并且，通过这种方式，我们可以让模型关注跨帧的信息（注意力在 4 帧的 token 之间进行），简化代码如下所示&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># config.json temporal_merge_kernel_size&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># kimi_k25_vision_processing.py split_video_chunks&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">video_chunk&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">frames&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="mi">4&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">patches&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">for&lt;/span> &lt;span class="n">frame&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="n">video_chunk&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">patches&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">extend&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">split_into_patches&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">frame&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">tokens&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">patches&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># modeling_kimi_k25.py Learnable2DInterpPosEmbDivided_fixed&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">positions&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">spatial_embedding&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">temporal_embedding&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># modeling_kimi_k25.py MoonViT3dEncoder&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">output&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">transformer&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">tokens&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">positions&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>最后，在进入 MLP 之前，作者还对每个 temporal chunk 内的特征进行 pooling 操作，将时序长度压缩到了原来的 1/4, 进而提高模型可处理的视频长度。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># modeling_kimi_k25.py tpool_patch_merger&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">tpool_patch_merger&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">x&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">grid_thws&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">merge_kernel_size&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">tuple&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nb">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="nb">list&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">]:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">d_model&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">size&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">outputs&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">pre_sum&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">for&lt;/span> &lt;span class="n">t&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">h&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">w&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="n">grid_thws&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">tolist&lt;/span>&lt;span class="p">():&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># Get the current sequence&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">seq&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">pre_sum&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="n">pre_sum&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">t&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">h&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">w&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># Reshape along self.merge_kernel_size and concat to the last dimension&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">kernel_height&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">kernel_width&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">merge_kernel_size&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">new_height&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">new_width&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">h&lt;/span> &lt;span class="o">//&lt;/span> &lt;span class="n">kernel_height&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">w&lt;/span> &lt;span class="o">//&lt;/span> &lt;span class="n">kernel_width&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">reshaped_seq&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">seq&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">view&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">t&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">new_height&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">kernel_height&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">new_width&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">kernel_width&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">d_model&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">reshaped_seq&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">reshaped_seq&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">permute&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="mi">3&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">4&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">5&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">contiguous&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">mean&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dim&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="c1"># temporal pooling&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">padded_seq&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">reshaped_seq&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">view&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">new_height&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">new_width&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">kernel_height&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">kernel_width&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">outputs&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">padded_seq&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">pre_sum&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">t&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">h&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">w&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">outputs&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>&lt;strong>MLP&lt;/strong>
+MLP 使用了 PatchMerger, 用于减少视觉 token 个数，这个方案在之前的 Qwen-VL 系列里已经得到了应用。&lt;/p>
+&lt;p>&lt;strong>LLM&lt;/strong>
+LLM 基于 &lt;a class="link" href="https://maosong.website/p/notes-on-kimi-k2/" target="_blank" rel="noopener"
+>Kimi-k2&lt;/a> 的 MoE 模型，总参数为 1T, 激活参数为 32B&lt;/p>
+&lt;h3 id="data">&lt;a href="#data" class="header-anchor">&lt;/a>Data
+&lt;/h3>&lt;h3 id="pre-training">&lt;a href="#pre-training" class="header-anchor">&lt;/a>Pre-training
+&lt;/h3>&lt;p>预训练阶段一共使用了 15T token, 分为了三个阶段：&lt;/p>
+&lt;ol>
+&lt;li>ViT-training: 单独训练 ViT, 实际用了 image caption, grounding, ocr, video 等数据进行训练，训练方式采用了类似 InternVL 的方式，即通过 cross entropy loss 来与一个清凉话的 LLM 进行对齐，这个阶段训练使用了 1T token, 然后作者使用了一个非常短的 stage 来更新 MLP 用于对齐 ViT 和 Kimi-K2&lt;/li>
+&lt;li>Joint pre-training: 训练所有参数，长下文长度为 4K, 使用了 15T token. 这里主要强调了提升代码数据的比例&lt;/li>
+&lt;li>Long context mid-training: 使用 &lt;a class="link" href="https://maosong.website/p/notes-on-yarn/" target="_blank" rel="noopener"
+>YARN&lt;/a> 来提高模型的上下文长度&lt;/li>
+&lt;/ol>
+&lt;p>最终预训练阶段 recipe 如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2.5/Kimi-k2.5-pre-training.png"
+width="1430"
+height="415"
+loading="lazy"
+alt="Pre-training recipe of Kimi-K2.5"
+class="gallery-image"
+data-flex-grow="344"
+data-flex-basis="826px"
+>&lt;/p>
+&lt;p>&lt;strong>Native Multimodal pre-training&lt;/strong>
+在 Joint pre-training stage, Kimi-K2.5 还采用了一个与 &lt;a class="link" href="InternVL3.md" >InternVL3&lt;/a> 类似的策略，即在预训练一开始直接使用多模态数据进行预训练。&lt;/p>
+&lt;p>传统的多模态大模型往往基于一个比较成熟的 LLM backbone 来完成多模态大模型的训练，但是其问题在于成熟的 LLM 其表示空间会收敛到语言模态上，多模态信息的迁移能力比较差。&lt;a class="link" href="InternVL3.md" >InternVL3&lt;/a> 虽然也是 native multimodal pre-training, 但是其仍然依赖于成熟的 LLM. Kimi K2.5 则是使用预训练阶段的 Kimi K2 作为 backbone 来避免表示空间的塌缩，在训练一开始即直接加入少量多模态数据来保持模型的多模态能力。&lt;/p>
+&lt;p>作者探究了预训练阶段不同的数据对比，试验结果如下图所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>&lt;/th>
+&lt;th>Vision Injection Timing&lt;/th>
+&lt;th>Vision-Text Ratio&lt;/th>
+&lt;th>Vision Knowledge&lt;/th>
+&lt;th>Vision Reasoning&lt;/th>
+&lt;th>OCR&lt;/th>
+&lt;th>Text Knowledge&lt;/th>
+&lt;th>Text Reasoning&lt;/th>
+&lt;th>Code&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Early&lt;/td>
+&lt;td>0%&lt;/td>
+&lt;td>10%:90%&lt;/td>
+&lt;td>25.8&lt;/td>
+&lt;td>43.8&lt;/td>
+&lt;td>65.7&lt;/td>
+&lt;td>45.5&lt;/td>
+&lt;td>58.5&lt;/td>
+&lt;td>24.8&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Mid&lt;/td>
+&lt;td>50%&lt;/td>
+&lt;td>20%:80%&lt;/td>
+&lt;td>25.0&lt;/td>
+&lt;td>40.7&lt;/td>
+&lt;td>64.1&lt;/td>
+&lt;td>43.9&lt;/td>
+&lt;td>58.6&lt;/td>
+&lt;td>24.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Late&lt;/td>
+&lt;td>80%&lt;/td>
+&lt;td>50%:50%&lt;/td>
+&lt;td>24.2&lt;/td>
+&lt;td>39.0&lt;/td>
+&lt;td>61.5&lt;/td>
+&lt;td>43.1&lt;/td>
+&lt;td>57.8&lt;/td>
+&lt;td>24.0&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>结果显示，在训练早期加入少部分的多模态数据可以有效提高模型的表现。&lt;/p>
+&lt;h3 id="post-training">&lt;a href="#post-training" class="header-anchor">&lt;/a>Post-training
+&lt;/h3>&lt;p>Post-training 分为了 SFT 和 RL, SFT 阶段作者使用了合成的高质量数据，主要提升模型的交互式推理能力以及工具调用能力。为了解决传统 VLM 工具调用能力比较差且扩展性差的问题，Kimi-k2.5 提出了 Zero-Vision SFT, 其核心思想模型在预训练阶段已经完成了多模态对齐，因此我们可以仅使用纯文本 SFT 数据来激活 VLM 的视觉 agent 能力，具体做法就是将所有图像操作通过 IPython 的代码进行代理操作，这样视觉工具的调用就编程了程序化的图像处理指令。&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2.5/Kimi-k2.5-zero-vision-sft.png"
+width="1340"
+height="796"
+loading="lazy"
+alt="Performance of Vision RL on zero-vision SFT"
+class="gallery-image"
+data-flex-grow="168"
+data-flex-basis="404px"
+>&lt;/p>
+&lt;p>在 RL 阶段，作者基于 &lt;a class="link" href="https://maosong.website/p/notes-on-kimi-k1.5/" target="_blank" rel="noopener"
+>Kimi-k1.5&lt;/a> 提出的策略优化算法加入了一个 token-level clipping 机制来减少 off-policy divergence, 目标函数如下所示&lt;/p>
+$$
+\mathcal{L}(\theta)=\mathbb{E}_{x\sim\mathcal{D}}\left[\frac{1}{N}\sum_{j=1}^k\sum_{i=1}^{|y_i|}\mathrm{clip}\left(\log\frac{\pi_{\theta}(y_j^i\mid x, y_{j}^{0:i})}{\pi_{\mathrm{old}}(y_j^i\mid x, y_{j}^{0:i})},\alpha,\beta\right)(r(x, y_j) - \bar{r}(x)) - \tau\left(\log\frac{\pi_{\theta}(y_j^i\mid x, y_{j}^{0:i})}{\pi_{\mathrm{old}}(y_j^i\mid x, y_{j}^{0:i})}\right)^2\right]
+$$&lt;p>其中 $k$ 是针对每个回答 $x$ 的采样次数，$N=\sum_{j=1}^k|y_j|$ 是一个 batch 里总的 token 个数， $\alpha,\beta,\tau$ 为超参数，$\bar{r}(x)$ 是对 normalization 的估计，这里采用了 Kimi-K1.5 的 mean reward, 即 $\bar{r}(x)=1/k\sum_{j=1}^Kr(x,y_j)$. 这里的 clipping 机制与 PPO 不同的地方在于针对 log-ratio 进行 clipping, 而不依赖于 advantage 的计算。最终训练时使用了 &lt;a class="link" href="https://maosong.website/p/notes-on-moonlight/" target="_blank" rel="noopener"
+>Moonlight&lt;/a> 的 MuonClip 算法&lt;/p>
+&lt;p>对于 reward 的设计，Kimi-k2.5 也使用了基于规则和基于 reward model 的方式，前者针对答案可验证的任务，后者针对开放式的任务。&lt;/p>
+&lt;p>作者还构建了 length penalty 来提高模型的推理效率，作者发现 &lt;a class="link" href="https://maosong.website/p/notes-on-kimi-k1.5/" target="_blank" rel="noopener"
+>Kimi-k1.5&lt;/a> 和 &lt;a class="link" href="https://maosong.website/p/notes-on-kimi-k2/" target="_blank" rel="noopener"
+>Kimi-k2&lt;/a> 中的 length penalty 虽然可以生成更准确的 reasoning chain, 但是其很难泛化到更高的算力. 为了解决这个问题，作者提出了 &lt;strong>Toggle&lt;/strong> 策略，即在 inference-time scaling 和 budget-constrained optimization 两种模式之间进行切换优化，对应的 reward 定义为&lt;/p>
+$$
+\tilde{r}(x,y) = \begin{cases}
+r(x,y)*\mathbb{I}\{1/k\sum_{j=1}^kr(x,y_i&lt;\lambda \text{ or }|y_j|\leq \text{budget}(x)\},&amp;\text{if }\lfloor t/m\rfloor\mod 2 == 0\ (\text{Phase }0)\\
+r(x,y),&amp;\text{otherwise } (\text{Phase }1)
+\end{cases}
+$$&lt;p>其中 $\lambda, m$ 都是超参数。budget 基于正确回答的长度的 p 分位得到：&lt;/p>
+$$
+\text{budget}(x) = \text{Percentile}(\{|y_j| \mid r(x,y_j)=1, j\in[k]\},\rho)
+$$&lt;p>两种模式每隔 $m$ 个 iteration 切换一次：&lt;/p>
+&lt;ul>
+&lt;li>phase 0: budget limited phase, 训练模型在给定 token budget 下解决问题，减少 reasoning chain 长度&lt;/li>
+&lt;li>phase 1: scaling phase, 训练模型使用更多的算力来解决更复杂的问题，提高模型的智能程度&lt;/li>
+&lt;/ul>
+&lt;p>作者评估 Toogle 策略得到的结果如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2.5/Kimi-k2.5-toggle.png"
+width="1200"
+height="689"
+loading="lazy"
+alt="Performance of toggle strategy"
+class="gallery-image"
+data-flex-grow="174"
+data-flex-basis="417px"
+>&lt;/p>
+&lt;p>结果现实，使用 toggle 策略之后，模型的输出长度减少了 30% 左右，且模型的表现并没有明显下降。作者还发现，一些重复的 pattern 也随之降低，且 toggle 策略的泛化程度更高。&lt;/p>
+&lt;p>在 Zero-Vision SFT 的基础上，Kimi-k2.5 使用了 Joint multimodal RL 训练策略。现有的多模态 RL 存在的问题为：模型很容易忽略视觉输入而过度依赖于纯文本进行推理。为了解决这个问题，作者构建了需要视觉理解才能得到答案的任务来提高模型对于视觉信息的利用程度，这些任务覆盖三个 domain:&lt;/p>
+&lt;ol>
+&lt;li>visual grounding and counting: 定位和计数&lt;/li>
+&lt;li>chart and document understanding: 图表文档理解&lt;/li>
+&lt;li>vision-critical STEM problems: 需要图片来完成求解的数学物理问题&lt;/li>
+&lt;/ol>
+&lt;p>作者在 visual RL 之后评估了模型的表现，发现模型在 MMLU-Pro, GPQA-Diamond 等任务上的表现都有了提升，作者认为 visual RL 可以在不损害模型纯文本能力的情况下提高模型跨模态的泛化性&lt;/p>
+&lt;h3 id="agent-swarm">&lt;a href="#agent-swarm" class="header-anchor">&lt;/a>Agent Swarm
+&lt;/h3>&lt;p>Kimi-k2.5 的另一个重大改进为使用并行机制来提高模型的 agent 能力。传统的 agent 往往序列执行 reasoning, tool-use, 这限制了模型处理复杂任务的能力，Kimi-k2.5 通过 Agent Swarm 和 Parallel Agent Reinforcement Learning (PARL) 来解决这个问题，其核心思想就是并行，框架图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2.5/Kimi-k2.5-agent-swarm.png"
+width="1354"
+height="729"
+loading="lazy"
+alt="Framework of Agent Swarm"
+class="gallery-image"
+data-flex-grow="185"
+data-flex-basis="445px"
+>&lt;/p>
+&lt;p>agent swarm 架构包含了一个 orchestrator 和若干个 subagent, 为了解决 agent swarm 的 reward 比较难以设置的问题，PARL 构建了三个不同 level 的 reward&lt;/p>
+$$
+r_{PARL}(x,y) = \lambda_1 r_{parallel} + \lambda_2r_{finish} + \lambda_3r_{perf}(x,y)
+$$&lt;p>其中 $r_{perf}$ 评估了 solution $y$ 的质量， $r_{parallel}$ 则是避免并行模式崩塌，从 multi-agent 崩塌为 single agent, $r_{finish}$ 则是评估模型的完成性。超参数 $\lambda_1,\lambda_2$ 随训练逐渐降为 0 来提高模型整体的表现。&lt;/p>
+&lt;p>作者还提出了使用 critical steps 来评估 parallel agent 的计算时间消耗，其计算公式如下&lt;/p>
+$$
+CriticalSteps = \sum_{i=1}^T\left(S_{main}^{(t)}+\max_iS_{sub,i}^{(t)}\right)
+$$&lt;p>其中 $T$ 为一个 episode 的时间，$S_{main}^{(t)}$ 为 orchestrator 在第 $t$ 步的运行时间， $S_{sub,i}^{(t)}$ 为第 i 个 subagent 的运行时间。&lt;/p>
+&lt;p>为了提高模型的并行能力，作者构建了一批广度优先搜索和深度优先搜索的数据，通过这些数据的构建，我们可以提高 orchestrator 的并行调用能力。&lt;/p>
+&lt;p>最终，PARL 的表现如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2.5/Kimi-k2.5-PARL.png"
+width="1501"
+height="441"
+loading="lazy"
+alt="Performance of PARL"
+class="gallery-image"
+data-flex-grow="340"
+data-flex-basis="816px"
+>&lt;/p>
+&lt;h3 id="infra">&lt;a href="#infra" class="header-anchor">&lt;/a>Infra
+&lt;/h3>&lt;p>Kimi-k2.5 的 infra 基于 &lt;a class="link" href="https://maosong.website/p/notes-on-kimi-k2/" target="_blank" rel="noopener"
+>Kimi-k2&lt;/a>, 作者主要强调了 decouple encoder process (DEP) 这一改进。之前的工作将 vision encoder 和 text embedding 都做为 PP 的第一个 stage, 但是由于 vision encoder 对不同输入的处理时间不同，这个 stage 的算历和内存分配随输入变化比较大。为了解决这个问题，作者提出了 DEP, 包含三个 stage 来提高训练效率:&lt;/p>
+&lt;ol>
+&lt;li>balanced vision forward: 由于 vision encoder 比较小 (400M), 因此作者将 vision encoder 复制到所有 GPU 上，然后根据负载来将 visual data 分配到不同的 GPU 上进行处理，这个阶段不保存中间激活值，处理完毕之后所有的结果作为 PP Stage0 的输入&lt;/li>
+&lt;li>backbone training: 正常进行训练，与 LLM 的训练优化一致&lt;/li>
+&lt;li>vision recomputation &amp;amp; backward: 这个阶段，我们重新计算 vision encoder 的 forward pass, 然后再对 vision encoder 进行反向传播&lt;/li>
+&lt;/ol>
+&lt;p>通过 DEP, Kimi-k2.5 的训练效率达到了 Kimi-k2 的 90%.&lt;/p>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>首先是 Kimi-k2.5 在 general &amp;amp; reasoning 类任务上的表现，可以看到，Kimi-k2.5 超过了 DeeoSeek-V3.2 的表现，&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Benchmark&lt;/th>
+&lt;th>Kimi K2.5&lt;/th>
+&lt;th>Claude Opus 4.5&lt;/th>
+&lt;th>GPT-5.2 (xhigh)&lt;/th>
+&lt;th>Gemini 3 Pro&lt;/th>
+&lt;th>DeepSeek-V3.2&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>HLE-Full&lt;/td>
+&lt;td>30.1&lt;/td>
+&lt;td>30.8&lt;/td>
+&lt;td>34.5&lt;/td>
+&lt;td>37.5&lt;/td>
+&lt;td>25.1†&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>HLE-Full w/ tools&lt;/td>
+&lt;td>50.2&lt;/td>
+&lt;td>43.2&lt;/td>
+&lt;td>45.5&lt;/td>
+&lt;td>45.8&lt;/td>
+&lt;td>40.8†&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>AIME 2025&lt;/td>
+&lt;td>96.1&lt;/td>
+&lt;td>92.8&lt;/td>
+&lt;td>100&lt;/td>
+&lt;td>95.0&lt;/td>
+&lt;td>93.1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>HMMT 2025 (Feb)&lt;/td>
+&lt;td>95.4&lt;/td>
+&lt;td>92.9*&lt;/td>
+&lt;td>99.4&lt;/td>
+&lt;td>97.3*&lt;/td>
+&lt;td>92.5&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>IMO-AnswerBench&lt;/td>
+&lt;td>81.8&lt;/td>
+&lt;td>78.5*&lt;/td>
+&lt;td>86.3&lt;/td>
+&lt;td>83.1*&lt;/td>
+&lt;td>78.3&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GPQA-Diamond&lt;/td>
+&lt;td>87.6&lt;/td>
+&lt;td>87.0&lt;/td>
+&lt;td>92.4&lt;/td>
+&lt;td>91.9&lt;/td>
+&lt;td>82.4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MMLU-Pro&lt;/td>
+&lt;td>87.1&lt;/td>
+&lt;td>89.3*&lt;/td>
+&lt;td>86.7*&lt;/td>
+&lt;td>90.1&lt;/td>
+&lt;td>85.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>SimpleQA Verified&lt;/td>
+&lt;td>36.9&lt;/td>
+&lt;td>44.1&lt;/td>
+&lt;td>38.9&lt;/td>
+&lt;td>72.1&lt;/td>
+&lt;td>27.5&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>AdvancedIF&lt;/td>
+&lt;td>75.6&lt;/td>
+&lt;td>63.1&lt;/td>
+&lt;td>81.1&lt;/td>
+&lt;td>74.7&lt;/td>
+&lt;td>58.8&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LongBench v2&lt;/td>
+&lt;td>61.0&lt;/td>
+&lt;td>64.4*&lt;/td>
+&lt;td>54.5*&lt;/td>
+&lt;td>68.2*&lt;/td>
+&lt;td>59.8*&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>接下来是模型在 coding 任务上的表现&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Benchmark&lt;/th>
+&lt;th>Kimi K2.5&lt;/th>
+&lt;th>Claude Opus 4.5&lt;/th>
+&lt;th>GPT-5.2 (xhigh)&lt;/th>
+&lt;th>Gemini 3 Pro&lt;/th>
+&lt;th>DeepSeek-V3.2&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>SWE-Bench Verified&lt;/td>
+&lt;td>76.8&lt;/td>
+&lt;td>80.9&lt;/td>
+&lt;td>80.0&lt;/td>
+&lt;td>76.2&lt;/td>
+&lt;td>73.1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>SWE-Bench Pro (public)&lt;/td>
+&lt;td>50.7&lt;/td>
+&lt;td>55.4*&lt;/td>
+&lt;td>55.6&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>SWE-Bench Multilingual&lt;/td>
+&lt;td>73.0&lt;/td>
+&lt;td>77.5&lt;/td>
+&lt;td>72.0&lt;/td>
+&lt;td>65.0&lt;/td>
+&lt;td>70.2&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Terminal Bench 2.0&lt;/td>
+&lt;td>50.8&lt;/td>
+&lt;td>59.3&lt;/td>
+&lt;td>54.0&lt;/td>
+&lt;td>54.2&lt;/td>
+&lt;td>46.4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>PaperBench (CodeDev)&lt;/td>
+&lt;td>63.5&lt;/td>
+&lt;td>72.9*&lt;/td>
+&lt;td>63.7*&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>47.1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>CyberGym&lt;/td>
+&lt;td>41.3&lt;/td>
+&lt;td>50.6&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>39.9*&lt;/td>
+&lt;td>17.3*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>SciCode&lt;/td>
+&lt;td>48.7&lt;/td>
+&lt;td>49.5&lt;/td>
+&lt;td>52.1&lt;/td>
+&lt;td>56.1&lt;/td>
+&lt;td>38.9&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>OIBench (cpp)&lt;/td>
+&lt;td>57.4&lt;/td>
+&lt;td>54.6*&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>68.5*&lt;/td>
+&lt;td>54.7*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LiveCodeBench (v6)&lt;/td>
+&lt;td>85.0&lt;/td>
+&lt;td>82.2*&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>87.4*&lt;/td>
+&lt;td>83.3&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>在 agent 任务上的表现&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Benchmark&lt;/th>
+&lt;th>Kimi K2.5&lt;/th>
+&lt;th>Claude Opus 4.5&lt;/th>
+&lt;th>GPT-5.2 (xhigh)&lt;/th>
+&lt;th>Gemini 3 Pro&lt;/th>
+&lt;th>DeepSeek-V3.2&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>BrowseComp&lt;/td>
+&lt;td>60.6&lt;/td>
+&lt;td>37.0&lt;/td>
+&lt;td>65.8&lt;/td>
+&lt;td>37.8&lt;/td>
+&lt;td>51.4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>BrowseComp (w/ ctx manage)&lt;/td>
+&lt;td>74.9&lt;/td>
+&lt;td>57.8&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>59.2&lt;/td>
+&lt;td>67.6&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>BrowseComp (Agent Swarm)&lt;/td>
+&lt;td>78.4&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>WideSearch&lt;/td>
+&lt;td>72.7&lt;/td>
+&lt;td>76.2*&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>57.0&lt;/td>
+&lt;td>32.5*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>WideSearch (Agent Swarm)&lt;/td>
+&lt;td>79.0&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>DeepSearchQA&lt;/td>
+&lt;td>77.1&lt;/td>
+&lt;td>76.1*&lt;/td>
+&lt;td>71.3*&lt;/td>
+&lt;td>63.2*&lt;/td>
+&lt;td>60.9*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FinSearchCompT2&amp;amp;T3&lt;/td>
+&lt;td>67.8&lt;/td>
+&lt;td>66.2*&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>49.9&lt;/td>
+&lt;td>59.1*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Seal-0&lt;/td>
+&lt;td>57.4&lt;/td>
+&lt;td>47.7*&lt;/td>
+&lt;td>45.0&lt;/td>
+&lt;td>45.5*&lt;/td>
+&lt;td>49.5*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GDPVal-AA&lt;/td>
+&lt;td>41.0&lt;/td>
+&lt;td>45.0&lt;/td>
+&lt;td>48.0&lt;/td>
+&lt;td>35.0&lt;/td>
+&lt;td>34.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>OSWorld-Verified&lt;/td>
+&lt;td>63.3&lt;/td>
+&lt;td>66.3&lt;/td>
+&lt;td>8.6&lt;/td>
+&lt;td>20.7&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>WebArena&lt;/td>
+&lt;td>58.9&lt;/td>
+&lt;td>63.4&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>多模态表现&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Benchmark&lt;/th>
+&lt;th>Kimi K2.5&lt;/th>
+&lt;th>Claude Opus 4.5&lt;/th>
+&lt;th>GPT-5.2 (xhigh)&lt;/th>
+&lt;th>Gemini 3 Pro&lt;/th>
+&lt;th>Qwen3-VL-235B-A22B&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;strong>Image&lt;/strong>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MMMU-Pro&lt;/td>
+&lt;td>78.5&lt;/td>
+&lt;td>74.0&lt;/td>
+&lt;td>79.5*&lt;/td>
+&lt;td>81.0&lt;/td>
+&lt;td>69.3&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MMMU (val)&lt;/td>
+&lt;td>84.3&lt;/td>
+&lt;td>80.7&lt;/td>
+&lt;td>86.7*&lt;/td>
+&lt;td>87.5*&lt;/td>
+&lt;td>80.6&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>CharXiv (RQ)&lt;/td>
+&lt;td>77.5&lt;/td>
+&lt;td>67.2*&lt;/td>
+&lt;td>82.1&lt;/td>
+&lt;td>81.4&lt;/td>
+&lt;td>66.1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MathVision&lt;/td>
+&lt;td>84.2&lt;/td>
+&lt;td>77.1*&lt;/td>
+&lt;td>83.0&lt;/td>
+&lt;td>86.1*&lt;/td>
+&lt;td>74.6&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MathVista (mini)&lt;/td>
+&lt;td>90.1&lt;/td>
+&lt;td>80.2*&lt;/td>
+&lt;td>82.8*&lt;/td>
+&lt;td>89.8*&lt;/td>
+&lt;td>85.8&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>SimpleVQA&lt;/td>
+&lt;td>71.2&lt;/td>
+&lt;td>69.7*&lt;/td>
+&lt;td>55.8*&lt;/td>
+&lt;td>69.7*&lt;/td>
+&lt;td>56.8*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>WorldVQA&lt;/td>
+&lt;td>46.3&lt;/td>
+&lt;td>36.8&lt;/td>
+&lt;td>28.0&lt;/td>
+&lt;td>47.4&lt;/td>
+&lt;td>23.5&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>ZeroBench&lt;/td>
+&lt;td>9&lt;/td>
+&lt;td>3*&lt;/td>
+&lt;td>9*&lt;/td>
+&lt;td>8*&lt;/td>
+&lt;td>4*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>ZeroBench w/ tools&lt;/td>
+&lt;td>11&lt;/td>
+&lt;td>9*&lt;/td>
+&lt;td>7*&lt;/td>
+&lt;td>12*&lt;/td>
+&lt;td>3*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>BabyVision&lt;/td>
+&lt;td>36.5&lt;/td>
+&lt;td>14.2&lt;/td>
+&lt;td>34.4&lt;/td>
+&lt;td>49.7&lt;/td>
+&lt;td>22.2&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>BLINK&lt;/td>
+&lt;td>78.9&lt;/td>
+&lt;td>68.8*&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>78.7*&lt;/td>
+&lt;td>68.9&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MMVP&lt;/td>
+&lt;td>87.0&lt;/td>
+&lt;td>80.0*&lt;/td>
+&lt;td>83.0*&lt;/td>
+&lt;td>90.0*&lt;/td>
+&lt;td>84.3&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>OmniDocBench 1.5&lt;/td>
+&lt;td>88.8&lt;/td>
+&lt;td>87.7*&lt;/td>
+&lt;td>85.7&lt;/td>
+&lt;td>88.5&lt;/td>
+&lt;td>82.0*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>OCRBench&lt;/td>
+&lt;td>92.3&lt;/td>
+&lt;td>86.5*&lt;/td>
+&lt;td>80.7*&lt;/td>
+&lt;td>90.3*&lt;/td>
+&lt;td>87.5&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>InfoVQA (test)&lt;/td>
+&lt;td>92.6&lt;/td>
+&lt;td>76.9*&lt;/td>
+&lt;td>84*&lt;/td>
+&lt;td>57.2*&lt;/td>
+&lt;td>89.5&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;strong>Video&lt;/strong>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>VideoMMMU&lt;/td>
+&lt;td>86.6&lt;/td>
+&lt;td>84.4*&lt;/td>
+&lt;td>85.9&lt;/td>
+&lt;td>87.6&lt;/td>
+&lt;td>80.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MMVU&lt;/td>
+&lt;td>80.4&lt;/td>
+&lt;td>77.3*&lt;/td>
+&lt;td>80.8*&lt;/td>
+&lt;td>77.5*&lt;/td>
+&lt;td>71.1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MotionBench&lt;/td>
+&lt;td>70.4&lt;/td>
+&lt;td>60.3&lt;/td>
+&lt;td>64.8&lt;/td>
+&lt;td>70.3&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Video-MME&lt;/td>
+&lt;td>87.4&lt;/td>
+&lt;td>66.0*&lt;/td>
+&lt;td>86.0*&lt;/td>
+&lt;td>88.4*&lt;/td>
+&lt;td>79.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LongVideoBench&lt;/td>
+&lt;td>79.8&lt;/td>
+&lt;td>67.2*&lt;/td>
+&lt;td>76.5*&lt;/td>
+&lt;td>77.7*&lt;/td>
+&lt;td>65.6*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LVBench&lt;/td>
+&lt;td>75.9&lt;/td>
+&lt;td>57.3&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>73.5*&lt;/td>
+&lt;td>63.6&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>我们这里基于模型在不同类别任务上的排名来进行可视化，结果如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2.5/Kimi-k2.5-rank-frequency.png"
+width="1590"
+height="790"
+loading="lazy"
+alt="Rank performance of difference models"
+class="gallery-image"
+data-flex-grow="201"
+data-flex-basis="483px"
+>&lt;/p>
+&lt;p>从结果可以看出，Kimi-K2.5 的 agent 能力达到了 SOTA 级别，其多模态能力也比较强。&lt;/p>
+&lt;p>与 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v3.2/" target="_blank" rel="noopener"
+>DeepSeek-V3.2&lt;/a> 一样，作者也对比了不同模型的推理效率，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2.5/Kimi-k2.5-reasoning-efficiency.png"
+width="783"
+height="262"
+loading="lazy"
+alt="Reasoning efficiency of Kimi K2.5"
+class="gallery-image"
+data-flex-grow="298"
+data-flex-basis="717px"
+>&lt;/p>
+&lt;p>可以看到，相比与 Kimi-K2, Kimi-K2.5 通过在 RL 层面进行优化，降低了输出长度，但是相比与 DeepSeel-V3.2 和 Gemini3.0 Pro 之间还存在一定差距。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>在本文中，作者提出了 Kimi-k2.5， 一个多模态的 agent model, Kimi-k2.5 集成了 Kimi-k2 和 Kimi-VL 的能力，扩展了模型的 agent 能力。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://huggingface.co/moonshotai/Kimi-K2.5" target="_blank" rel="noopener"
+>huggingface&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://arxiv.org/abs/2602.02276" target="_blank" rel="noopener"
+>arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on Moonlight</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-moonlight/</link><pubDate>Thu, 07 Aug 2025 10:49:32 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-moonlight/</guid><description>&lt;p>Kimi 提出了 Moonlight, 一个基于 Muon optimizer 训练得到的 16B-A3B MoE LLM. 作者详细介绍了如何 scale up muon optimizer.&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>&lt;a class="link" href="https://maosong.website/p/notes-on-muon-blog/" target="_blank" rel="noopener"
+>Muon&lt;/a> 验证了 Muon optimizer 在小语言模型 nanoGPT 上的表现，但是对于更大规模 LLM 的表现，尚未有人探究。因此 Kimi 就希望在大规模 LLM 上验证 Muon optimizer 的表现。作者主要进行了两点改进：&lt;/p>
+&lt;ol>
+&lt;li>加入 weight decay&lt;/li>
+&lt;li>调整了不同参数更新的 scale&lt;/li>
+&lt;/ol>
+&lt;p>基于改进后的 Muon optimizer, 其训练效率相比于 AdamW 提升了 2 倍。作者基于 Muon Optimizer 训练得到了 Moonlight, 一个 16B-A3B 的 MoE LLM.&lt;/p>
+&lt;p>作者主要作出了三点贡献：&lt;/p>
+&lt;ol>
+&lt;li>探究了 weight decay 在 scaling Muon 时的作用&lt;/li>
+&lt;li>分布式 Muon optimizer 的实现&lt;/li>
+&lt;li>验证了 Muon optimizer 的 scaling law&lt;/li>
+&lt;/ol>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;h3 id="background">&lt;a href="#background" class="header-anchor">&lt;/a>Background
+&lt;/h3>&lt;p>作者首先介绍了一下 Muon optimizer, 给定步数 $t$, 参数矩阵 $W_{t-1}$, momentum $\mu$, 学习率 $\eta_t$ 以及目标函数 $\mathcal{L}_t$, Muon optimizer 的更新方式如下：&lt;/p>
+$$
+\begin{aligned}
+M_t &amp;= \mu M_{t-1} + \nabla\mathcal{L}_t(W_{t-1})\\
+O_t &amp;= \mathrm{Newton-Schulz}(M_t)\\
+W_t &amp;= W_{t-1} - \eta_t O_t
+\end{aligned}
+$$&lt;p>这里 $M_t$ 是 gradient 的 momentum, 初始化为 $M_0=0$. 在上面的更新公式中，Newton-Schulz 的作用是求解 $(M_tM_t^T)^{-1/2}M_t$. 令 $M_t=U\Sigma V^T$ 为 SVD 分解， 我们有&lt;/p>
+$$
+(M_tM_t^T)^{-1/2}M_t = UV^T
+$$&lt;p>这是一个半正交矩阵，即 $(UV^T)^T(UV^T)=I$.&lt;/p>
+&lt;p>Newton-Schulz 迭代的具体公式如下：&lt;/p>
+$$
+X_0 = \frac{M_t}{\|M_t\|_F},\quad X_k = aX_{k-1} + b(X_{k-1}X_{k-1}^T)X_{k-1} + c(X_{k-1}X_{k-1}^T)^2X_{k-1}
+$$&lt;p>其中，normalization 是为了保证 Newton-Schulz 的收敛性。 $a,b,c$ 是三个超参数，在 Muon 中设置为 $(a,b,c)=(3.4445, 4.7750, 2.0315)$.&lt;/p>
+&lt;h3 id="scaling-up-muon">&lt;a href="#scaling-up-muon" class="header-anchor">&lt;/a>Scaling up Muon
+&lt;/h3>&lt;p>作者发现，尽管 Muon 在小规模场景下 work 的很好，但是大规模性场景下的收益就非常有限了。作者发现，这是因为模型的参数以及每一层输出的 RMS 变得很大，这可能会影响模型的性能。因此，作者就和 AdamW 一样使用 weight dacay 来避免这个问题，即&lt;/p>
+$$
+W_t =W_{t-1} - \eta_t(O_t + \lambda W_{t-1})
+$$&lt;p>作者通过实验对比了 AdamW, vanilla Muon 和 Muon w/ weigth decay 三者的表现，实验结果如下图所示&lt;/p>
+&lt;p>实验结果显示，尽管 vanilla Muon 手链最快，但是由于其权重增长很快，因此最后模型的表现不如 AdamW 和 Muon w/ weigth decay.&lt;/p>
+&lt;p>接下来，作者分析了以下更新矩阵的 Root Mean Square (RMS), 结论是 Muon optimizer 的 RMS 与参数矩阵的形状相关：&lt;/p>
+&lt;blockquote>
+&lt;p>Lemma
+For a full-rank matrix parameter of shape $[A, B]$, its theoretical Muon update RMS is $\sqrt{1/\max(A, B)}$.&lt;/p>
+&lt;/blockquote>
+&lt;p>证明如下：通过 Newton-Schulz 迭代，我们得到 $O_t=UV^T$, 其中 $M_t=U\Sigma V^T$ 是 SVD 分解，我们有&lt;/p>
+$$
+\mathrm{RMS}(O_t) = \sqrt{\frac{\sum_{i=1}^A\sum_{j=1}^BO_{t,i,j}^2}{AB}}=\sqrt{\frac{r}{AB}}
+$$&lt;p>其中, $r=\mathrm{rank}(M_t)$ , 这样就完成了证明。&lt;/p>
+&lt;p>而 Adam 和 AdamW 的 RMS 都在 $1$ 附近。作者认为 RMS 也会影响模型表现：&lt;/p>
+&lt;ol>
+&lt;li>当 $\max(A,B)$ 过大时，如 dense MLP matrix, 其更新就会变得很小，限制了模型的表现&lt;/li>
+&lt;li>当 $\max(A,B)$ 过小时，如 &lt;a class="link" href="https://maosong.website/p/notes-on-gqa/" target="_blank" rel="noopener"
+>GQA&lt;/a> 中的 KV head 或者 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v3/" target="_blank" rel="noopener"
+>DeepSeek-V3&lt;/a> 中的 MLA, 更新又会变得很大，导致训练不稳定。&lt;/li>
+&lt;/ol>
+&lt;p>因此，作者就提出了一个 rescaling 的技巧，来消除 Muon optimizer 的影响。&lt;/p>
+&lt;p>作者通过实验发现，AdamW 的 RMS 通常在 $0.2\sim0.4$ 左右，因此，作者将 Muon optimizer 的更新设置如下&lt;/p>
+$$
+W_t = W_{t-1} - \eta_t(0.2\cdot O_t\cdot \sqrt{\max(A,B)} + \lambda W_{t-1})
+$$&lt;p>基于这个改变， Muon 和 AdamW 可以共享学习率以及 weight decay 参数。&lt;/p>
+&lt;h3 id="distributed-muon">&lt;a href="#distributed-muon" class="header-anchor">&lt;/a>Distributed Muon
+&lt;/h3>&lt;p>ZeRO-1 天然适合 AdamW, 因为 AdamW 都是 element-wise 进行计算的。但是 Muon 则需要梯度矩阵的全部信息。因此，作者就针对 ZeRO-1 进行适配， 提出了 &lt;strong>Distributed Muon&lt;/strong>, 分布式版本将优化器的状态进行切分，然后加入了两个额外的操作：&lt;/p>
+&lt;ol>
+&lt;li>DP gather: 将 ZeRO-1 切分的梯度矩阵 gather 为一个完整的矩阵&lt;/li>
+&lt;li>Calculate Full Update: 对完整的梯度矩阵执行 Newton-Schulz 迭代&lt;/li>
+&lt;/ol>
+&lt;p>最终，Distributed Muon 的算法如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-moonlight/Moonlight-Distributed-muon.png"
+width="1365"
+height="553"
+loading="lazy"
+alt="Distributed Muon"
+class="gallery-image"
+data-flex-grow="246"
+data-flex-basis="592px"
+>&lt;/p>
+&lt;p>最后，作者分析了一下 distributed Muon 和 distributed AdamW 的内存和算力占用：&lt;/p>
+&lt;ol>
+&lt;li>内存开销：Muon 只有一阶矩，而 AdamW 有二阶矩，因此 Muon 的额外内存开销为 AdamW 的一半。&lt;/li>
+&lt;li>通信开销：对于 ZeRO-1，通信开销来源于三个过程：All-Gather 参数 $P$ 用于前向传播, Reduce-Scatter 梯度 $G$ 用于反向传播, All-Gather 更新后的参数 $P$ 用于下一轮的前向传播。AdamW 不引入额外通信，所以其每个参数的通信量为 $4+4=8$, 分别代表 $G$ 和 $P$ 的通信量。而 Muon 则需要额外的一次通信来得到 full matrix, 因此每个参数通信量为 $4+4+2=10$, 分别代表 $P, G$ 和 full matrix. 也就是说，分布式 Muon 的通信量最高为 AdamW 的 $1.25$ 倍。实际上由于我们使用 multiple DP, 这个比例会更接近于 $1.0$.&lt;/li>
+&lt;li>latency：Distributed Muon 相比于 AdamW latency 更高，这是因为 Muon 需要进行 DP gather 以及计算 Newton-Schulz 迭代。但实际上，latency 很小，因为 Newton-Schulz 迭代只需要迭代 5 次，并且 optimizer 的 end-to-end latency 相比于 forward-backward 过程是可以忽略的。一些额外的技巧也可以降低 latency.&lt;/li>
+&lt;/ol>
+&lt;p>实际在训练的过程中，作者发现 Distributed Muon 相比于 AdamW 并没有太明显的 latency.&lt;/p>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;h3 id="scaling-law-of-muon">&lt;a href="#scaling-law-of-muon" class="header-anchor">&lt;/a>Scaling Law of Muon
+&lt;/h3>&lt;p>作者分析了一下 Muon Optimizer 的 scaling law, 实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-moonlight/Moonlight-scaling-law.png"
+width="825"
+height="729"
+loading="lazy"
+alt="Scaling law for Muon and AdamW"
+class="gallery-image"
+data-flex-grow="113"
+data-flex-basis="271px"
+>&lt;/p>
+&lt;p>实验结果表明，在最优设置下，Muon Optimizer 只需要 $52\%$ 的 FLOPs 就可以达到 AdamW 的表现&lt;/p>
+&lt;h3 id="pretraining-with-muon">&lt;a href="#pretraining-with-muon" class="header-anchor">&lt;/a>Pretraining with Muon
+&lt;/h3>&lt;p>作者分贝使用 AdamW 和 Muon 训练模型，然后评测了以下模型在不同 benchmark 上的表现，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-moonlight/Moonlight-pre-training-performance.png"
+width="970"
+height="577"
+loading="lazy"
+alt="Pretraining performance of different optimizer"
+class="gallery-image"
+data-flex-grow="168"
+data-flex-basis="403px"
+>&lt;/p>
+&lt;p>可以看到，在相同的设置下，Muon optimizer 的表现更好。&lt;/p>
+&lt;h3 id="dynamics-of-singular-spectrum">&lt;a href="#dynamics-of-singular-spectrum" class="header-anchor">&lt;/a>Dynamics of Singular Spectrum
+&lt;/h3>&lt;p>Muon optimizer 的核心思想就是让比较难更新的方向也能被更新到，本节作者就探究了 Muon 是否满足这个性质，作者对参数矩阵进行 SVD 分解，然后定义 SVD entropy 如下&lt;/p>
+$$
+H(\sigma) = -\frac{1}{\log n}\sum_{i=1}^n\frac{\sigma_i^2}{\sum_{j=1}^n\sigma_j^2}\log\frac{\sigma_i^2}{\sum_{j=1}^n\sigma_j^2}
+$$&lt;p>作者对 SVD entropy 可视化如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/Muonlight-SVD-entropy.png"
+loading="lazy"
+alt="Visualization of SVD entropy"
+>&lt;/p>
+&lt;p>可以看到，Muon optimizer 的 SVD entropy 比 AdamW 更大，这说明 AdamW 的更新方向更多更广，验证了 Muon optimizer 的核心思想&lt;/p>
+&lt;h3 id="sft-with-muon">&lt;a href="#sft-with-muon" class="header-anchor">&lt;/a>SFT with Muon
+&lt;/h3>&lt;p>作者还在 SFT 阶段验证了 Muon optimizer 的有效性。实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-moonlight/Moonlight-SFT-performance.png"
+width="922"
+height="262"
+loading="lazy"
+alt="Performance of Muon on SFT stage"
+class="gallery-image"
+data-flex-grow="351"
+data-flex-basis="844px"
+>&lt;/p>
+&lt;p>结论主要有两个：&lt;/p>
+&lt;ol>
+&lt;li>预训练阶段与 SFT 阶段使用不同的优化器时，模型表现没有明显区别&lt;/li>
+&lt;li>SFT 阶段使用 Muon 可以达到与 AdamW 差不多的表现，但是最好还是在 pre-training 阶段使用 Muon&lt;/li>
+&lt;/ol>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者探究了如何 scale up Muon Optimizer. 通过改进，作者在 16B-A3B 的 MoE LLM 上验证了 Muon Optimizer 的性能。实验结果发现，Muon Optimizer 的训练效率比 AdamW 提升了 2 倍左右。&lt;/p>
+&lt;p>作者提出了三个未来可行的研究方向：&lt;/p>
+&lt;ol>
+&lt;li>目前 Muon 只能针对 2D 参数进行优化，其他参数仍然依赖于 AdamW 优化器，是否可以使用 Muon 优化所有参数？&lt;/li>
+&lt;li>Muon optimizer 可以理解是 spectral norm 下的 steepest descent 方法，如何将其扩展到 Schatten norm 是一个可以研究的方向&lt;/li>
+&lt;li>实验里提到，预训练和 SFT 阶段使用不同的 optimizer, 表现不是最优的，如何解决这个因为不同 optimizer 导致的性能差距是一个需要解决的问题。&lt;/li>
+&lt;/ol>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2502.16982" target="_blank" rel="noopener"
+>Muon is Scalable for LLM Training&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on Muon blog</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-muon-blog/</link><pubDate>Tue, 05 Aug 2025 11:10:51 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-muon-blog/</guid><description>&lt;p>Muon (MomentUm Orthogonalized by Newton-Schulz) 是一个针对二维神经网络的优化器，它基于 SGD-momentum 改进，增加了一个 Newton-Schulz 的后处理步骤&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;p>Newton-Schulz (NS) 的目的是用一个正交矩阵近似一个给定矩阵，即&lt;/p>
+$$
+\mathrm{Ortho}(G) = \arg\min_{O} \{\|O-G\|_F: \text{either } O^TO=I\text{ or } OO^T=I\}
+$$&lt;p>也就是说，NS iteration 将 SDG-moment 的更新矩阵替换为了“最近的” semi-orthogonal matrix. 这等价于将更新矩阵替换为 $UV^T$, 其中 $USV^T$ 是更新矩阵的 SVD 分解。&lt;/p>
+&lt;blockquote>
+&lt;p>[!tip]
+作者观察到，对于 SGD-momentum 和 Adam 来说，其在基于 transformer 的神经网络里有非常高的 condition number, 也就是 optimizer 仅在少数几个方向上进行优化。作者认为，通过正交化，可以有效提高模型在其他方向上的更新速度，进而提高模型表现&lt;/p>
+&lt;/blockquote>
+&lt;h3 id="newton-schulz">&lt;a href="#newton-schulz" class="header-anchor">&lt;/a>Newton-Schulz
+&lt;/h3>&lt;p>作者提到，正交化矩阵的方法有很多，比如 SVD 分解，但是其问题是非常慢，还有 Coupled Newton iteration, 但是其精度要求非常高，必须要在 &lt;code>float32&lt;/code> 以上。&lt;/p>
+&lt;p>作者因此使用了 Newton-Schulz iteration.&lt;/p>
+&lt;p>令 $G=USV^T$ 是 SGD-momentum 更新矩阵的 SVD 分解，则基于系数 $(a,b,c)$ 的 NS iteration 定义如下：&lt;/p>
+$$
+\begin{aligned}
+G' &amp;= aG + b(GG^T)G + c(GG^T)^2G\\
+&amp;= (aI+b(GG^T)+c(GG^T)^2)G\\
+&amp;= (aI+bUS^2U^T+cUS^4U^T)USV^T\\
+&amp;= U(aS+bS^3+cS^5)V^T
+\end{aligned}
+$$&lt;p>也就是说，如果我们定义五次多项式函数 $\phi(x)=ax+bx^3+cx^5$, 然后执行 $N$ 次 NS iteration, 则我们得到 $U\phi^N(S)V^T$, 其中 $\phi^N$ 代表 $\phi$ 复合 $N$ 次。&lt;/p>
+&lt;p>为了保证 NS iteration 收敛到 $\mathrm{Ortho}(G) = UV^T$, 我们必须保证两点：&lt;/p>
+&lt;ol>
+&lt;li>$S$ 的值，也就是 $G$ 的奇异值必须在区间 $[0,1]$ 上&lt;/li>
+&lt;li>$\phi$ 必须满足 $\phi^N\to 1$, $N\to\infty$, $\forall x\in[0,1]$.&lt;/li>
+&lt;/ol>
+&lt;p>为了满足第一个条件，我们可以对 $G$ 进行 rescale, 即 $G\gets G/\|G\|_F$, rescale 不影响最终的结果，即 $\mathrm{Ortho}(G) = \mathrm{Ortho}(cG)$.&lt;/p>
+&lt;p>对于 $\phi(x)$, 我们有很多选择，比如我们定义 $(a,b,c):=(2,-1.5,0.5)$ 就得到如下结果&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-muon-blog/Muon_naive_phi_x.png"
+width="1080"
+height="660"
+loading="lazy"
+alt="plot of "
+class="gallery-image"
+data-flex-grow="163"
+data-flex-basis="392px"
+>&lt;/p>
+&lt;h3 id="coefficient-optimization">&lt;a href="#coefficient-optimization" class="header-anchor">&lt;/a>Coefficient Optimization
+&lt;/h3>&lt;p>尽管 $(a,b,c):=(2,-1.5,0.5)$ 已经满足了第二个条件，但是我们还是想进一步优化，优化的方向主要有两个：&lt;/p>
+&lt;ol>
+&lt;li>让 $a$ 尽可能大，这是因为 $\phi'(0)=a$ 控制了较小奇异值的收敛速率。&lt;/li>
+&lt;li>对于所有的 $x\in[0,1]$, 我们希望 $\phi^N(x)\in[1-\epsilon, 1+\epsilon]$, $N\to\infty$. 这样 NS iteration 的结果与 $\mathrm{Ortho}(G)$ 不会相差太远。&lt;/li>
+&lt;/ol>
+&lt;p>作者发现， $\epsilon$ 可以设置为 $0.3$ 而不影响 Muon optimizer 的收敛性。因此，作者的目标现在是&lt;/p>
+$$
+\begin{aligned}
+\max\quad &amp;a\\
+\mathrm{s.t.}\quad &amp;\lim_{N\to\infty}\phi^N(x)\in[0.7, 1.3]
+\end{aligned}
+$$&lt;p>作者通过 ad-hoc gradient 方法求解得到一组数值解为 $(a,b,c)=(3.4445, 4.7750, 2.0315)$, 作者将这组数值应用于 Muon optimizer 中。迭代结果如下图，可以看到，当 $x\approx0$ 时，函数变得更加陡峭。&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-muon-blog/Muon-optimized-phi.png"
+width="1067"
+height="648"
+loading="lazy"
+alt="Plot of "
+class="gallery-image"
+data-flex-grow="164"
+data-flex-basis="395px"
+>&lt;/p>
+&lt;p>实验中，作者发现，仅需迭代五次，最终的结果就 work 的很好。作者还尝试了不同的多项式，结果发现并没有太大的提升。&lt;/p>
+&lt;h3 id="algorithm">&lt;a href="#algorithm" class="header-anchor">&lt;/a>Algorithm
+&lt;/h3>&lt;p>最终，Muon Optimizer 的算法如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-muon-blog/Muon-Algorithm.png"
+width="1242"
+height="840"
+loading="lazy"
+alt="Muon Algorithm"
+class="gallery-image"
+data-flex-grow="147"
+data-flex-basis="354px"
+>&lt;/p>
+&lt;p>其中, &lt;code>NewtonSchulz5&lt;/code> 算法伪代码定义如下&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">newtonschulz5&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">G&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">steps&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">5&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">eps&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mf">1e-7&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">assert&lt;/span> &lt;span class="n">G&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">ndim&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">2&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">a&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">b&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">c&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="mf">3.4445&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mf">4.7750&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mf">2.0315&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">X&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">G&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">bfloat16&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">X&lt;/span> &lt;span class="o">/=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">X&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">norm&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">eps&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">G&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">size&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">G&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">size&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">X&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">X&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">T&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">for&lt;/span> &lt;span class="n">_&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">steps&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">A&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">X&lt;/span> &lt;span class="o">@&lt;/span> &lt;span class="n">X&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">T&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">B&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">b&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">A&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">c&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">A&lt;/span> &lt;span class="o">@&lt;/span> &lt;span class="n">A&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">X&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">a&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">X&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">B&lt;/span> &lt;span class="o">@&lt;/span> &lt;span class="n">X&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">G&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">size&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">G&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">size&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">X&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">X&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">T&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">X&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h2 id="analysis">&lt;a href="#analysis" class="header-anchor">&lt;/a>Analysis
+&lt;/h2>&lt;p>本节作者分析了以下 Muon 的内存占用和算力开销。&lt;/p>
+&lt;p>在 NS iteration 之前，Muon optimizer 和 SGD-moment 是一样的。&lt;/p>
+&lt;p>对于 $n\times m$ 的矩阵（假设 $m\leq n$）， 首先 NS iteration 会进行转置，NS iteration 的每一步需要 $2(2nm^2+m^3)$ FLOPs, 其中括号前面的系数 $2$ 代表精度。因此，Muon 相比于 SGD momentum 需要的额外 FLOPs 为 $2T(2nm^2+m^3)$, 其中 $T$ 是迭代次数。&lt;/p>
+&lt;p>使用 baseline 进行一次训练（前向 + 后向），所需要的 FLOPS 为 $6nmB$, 其中 $B$ 是 batch size. 因此，Muon 的 FLOP 开销至多为 $Tm/B$, 其中 $m$ 是模型的 hidden size, $B$ 是 batch size, $T$ 是 NS iteration 的步数。&lt;/p>
+&lt;p>作者分别基于 nanoGPT 和 LLaMA-405B 进行验证，结果发现，Muon optimizer 带来的额外开销不足 $1\%$.&lt;/p>
+&lt;p>作者发信啊，使用 Nesterov-style momentum 可以比普通的 SGD-momentum 效果更好，因此作者在 muon 中使用了前者。&lt;/p>
+&lt;p>作者还发现，对于 QKV layer，分别进行优化效果会更好。&lt;/p>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-muon-blog/Muon-nanoGPT-loss-vs-training-tokens.png"
+width="1400"
+height="970"
+loading="lazy"
+alt="Optimizer comparison by tokens"
+class="gallery-image"
+data-flex-grow="144"
+data-flex-basis="346px"
+>&lt;/p>
+&lt;h2 id="limitation-and-future-work">&lt;a href="#limitation-and-future-work" class="header-anchor">&lt;/a>Limitation and Future Work
+&lt;/h2>&lt;p>Muon 仅被设计用于优化 2D 参数（因为涉及矩阵计算），其余的参数仍然需要 AdamW 等优化器参与。&lt;/p>
+&lt;p>作者认为未来的工作有：&lt;/p>
+&lt;ol>
+&lt;li>能否 scale up Muon Optimizer&lt;/li>
+&lt;li>分布式优化&lt;/li>
+&lt;li>在 fine-tuning 和 RL 阶段使用 Muon Optimizer&lt;/li>
+&lt;/ol>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者提出了 Muon optimizer，该优化器在 nanoGPT speedrun 上取得了 SOTA 的结果，作者详细介绍了优化器的工作原理。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://kellerjordan.github.io/posts/muon/" target="_blank" rel="noopener"
+>Muon: An optimizer for hidden layers in neural networks&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on Kimi-k2</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-kimi-k2/</link><pubDate>Thu, 24 Jul 2025 10:56:50 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-kimi-k2/</guid><description>&lt;p>Kimi-k2 是一个总参数为 1T, 激活参数为 32B 的 MoE 大语言模型，模型使用 15.5T token 进行训练，optimizer 使用了 MuonClip. 作者主要关注模型的 agent 能力&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>作者首先强调现在 LLM 发展主要是 Agentic Intelligence, 也就是让模型自主感知，规划，思考和与环境交互。&lt;/p>
+&lt;p>基于这个目标，作者就提出了 Kimi K2, 一个 1.04T 总参数，32B 激活参数的 MoE 模型，用于解决实现 agent Intelligence 中遇到的问题。作者主要进行了三点改进：&lt;/p>
+&lt;ol>
+&lt;li>MuonClip, 一个基于 &lt;a class="link" href="https://maosong.website/p/notes-on-moonlight/" target="_blank" rel="noopener"
+>Muon&lt;/a> 的优化算法，来提高 Kimi K2 对 token 的利用效率以及提高训练的稳定性&lt;/li>
+&lt;li>大规模的 agentic 数据合成 pipeline: 作者构建了一个用于合成工具调用，agent 数据的 pipeline&lt;/li>
+&lt;li>通用的 RL 框架，作者将 RLVR 和 self-critic rubric reward mechanism 结合起来，用于提升模型的表现&lt;/li>
+&lt;/ol>
+&lt;h2 id="pre-training">&lt;a href="#pre-training" class="header-anchor">&lt;/a>Pre-training
+&lt;/h2>&lt;h3 id="architecture">&lt;a href="#architecture" class="header-anchor">&lt;/a>Architecture
+&lt;/h3>&lt;p>Kimi-K2 的架构与 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v3/" target="_blank" rel="noopener"
+>DeepSeek-V3&lt;/a> 相似，配置如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>指标&lt;/th>
+&lt;th>DeepSeek-V3&lt;/th>
+&lt;th>Kimi K2&lt;/th>
+&lt;th>$\Delta$&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td># Layers&lt;/td>
+&lt;td>61&lt;/td>
+&lt;td>61&lt;/td>
+&lt;td>=&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Total Parameters&lt;/td>
+&lt;td>$671\text{B}$&lt;/td>
+&lt;td>$1.04\text{T}$&lt;/td>
+&lt;td>$\uparrow 54\%$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Activated Parameters&lt;/td>
+&lt;td>$37\text{B}$&lt;/td>
+&lt;td>$32.6\text{B}$&lt;/td>
+&lt;td>$\downarrow 13\%$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Experts (total)&lt;/td>
+&lt;td>256&lt;/td>
+&lt;td>384&lt;/td>
+&lt;td>$\uparrow 50\%$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Experts Active per Token&lt;/td>
+&lt;td>8&lt;/td>
+&lt;td>8&lt;/td>
+&lt;td>=&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Shared Experts&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>=&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Attention Heads&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>$\downarrow 50\%$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Number of Dense Layers&lt;/td>
+&lt;td>3&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>$\downarrow 67\%$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Expert Grouping&lt;/td>
+&lt;td>Yes&lt;/td>
+&lt;td>No&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>与 DeepSeek-V3 相比，模型主要进行了以下改动：&lt;/p>
+&lt;ol>
+&lt;li>作者认为提高专家的稀疏性，可以有效提高模型表现。因此作者将专家个数提升了 50%.&lt;/li>
+&lt;li>为了降低模型在 inference 阶段的算力开销，作者将 attention heads 的个数降低了 50%.&lt;/li>
+&lt;/ol>
+&lt;p>&lt;strong>Sparsity Scaling Law&lt;/strong>
+作者首先构建了基于 Muon 的 sparsity law, 这里 sparsity 定义为激活专家个数与总专家个数之比，即：&lt;/p>
+$$
+\mathrm{sparsity} = \frac{\# \mathrm{activated\ experts}}{\# \mathrm{total\ experts}}
+$$&lt;p>作者在小规模上的实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2/Kimi-K2-sparsity-scaling-law.png"
+width="673"
+height="678"
+loading="lazy"
+alt="Sparsity Scaling Law"
+class="gallery-image"
+data-flex-grow="99"
+data-flex-basis="238px"
+>&lt;/p>
+&lt;blockquote>
+&lt;p>&lt;strong>Observation&lt;/strong>
+实验结果表明，在相同算力（激活专家个数）下，模型的表现随 sparsity 提高而增加。&lt;/p>
+&lt;/blockquote>
+&lt;p>但是，进一步提高 sparsity, 会让 infra 变的难以优化，因此在 Kimi-K2 里，将 sparsity 定义为 $48$.&lt;/p>
+&lt;p>&lt;strong>Number of attention heads&lt;/strong>
+作者还分析了探究了 attention heads 的最优配置。DeepSeek-V3 将 attention heads 的个数设置为 layers 层数的 2 倍，来提高带宽利用率以及提高计算效率。但是，当上下文长度增加之后，attention head 变成了 computational bound. 作者对比了不同配置模型的表现，实验结果如下：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2/Kimi-K2-attention-heads.png"
+width="671"
+height="675"
+loading="lazy"
+alt="Scaling curves for attention heads"
+class="gallery-image"
+data-flex-grow="99"
+data-flex-basis="238px"
+>&lt;/p>
+&lt;blockquote>
+&lt;p>&lt;strong>Observation&lt;/strong>
+实验结果表明，使用双倍 attention head 带来的收益是比较小的，只有 $0.5\%$ 到 $1.2\%$ 左右&lt;/p>
+&lt;/blockquote>
+&lt;p>因此，作者在 Kimi-K2 中，奖 attention head 的个数设置为 $64$.&lt;/p>
+&lt;h3 id="data">&lt;a href="#data" class="header-anchor">&lt;/a>Data
+&lt;/h3>&lt;p>Kimi-K2 主要强调了 token efficiency, 即每个 token 对模型表现提升的贡献。token efficiency 越高，说明每个 token 对最终模型的贡献也就越高&lt;/p>
+&lt;p>相比于 &lt;a class="link" href="https://maosong.website/p/notes-on-kimi-k1.5/" target="_blank" rel="noopener"
+>Kimi-k1.5&lt;/a>, Kimi-K2 使用了一个 rephrasing pipeline, 来提高高质量 token 的利用率，作者在 knowledge 和 mathematics domain 上进行了实验。&lt;/p>
+&lt;p>最终，Kimi-K2 的预训练数据包括了 &lt;strong>15.5T&lt;/strong> token, 主要覆盖 Web text, code, mathmatics 以及 Knowledge 四个 domain. 大部分的数据处理与 Kimi-k1.5 相同。&lt;/p>
+&lt;p>&lt;strong>Knowledge Data Rephrasing&lt;/strong>
+作者构建了一个 synthetic rephrasing 框架来提高 knowledge token 的利用率，框架主要包含以下几个模块：&lt;/p>
+&lt;ol>
+&lt;li>Style and perspective-diverse prompting: 作者构建了一系列 prompt, 来让 LLM 从多个角度和风格来重新表述原始文本&lt;/li>
+&lt;li>Chunk-wise auto-regressive generation: 为了保持模型在长文档中的 coherence 以及避免信息损失，作者使用了一个 chunk-based rewriting 策略，也就是对每个 chunk 分别进行改写，然后将它门汇总在一起&lt;/li>
+&lt;li>Fidelity verification: 作者对原始文本和改写文本进行了 fidelity 检查来保证语义的一致性。&lt;/li>
+&lt;/ol>
+&lt;p>作者对比了以下三个设置对模型在 SimpleQA benchmark 上表现的影响，这三个设置分别是：&lt;/p>
+&lt;ol>
+&lt;li>原始数据集训练 10 epoch&lt;/li>
+&lt;li>改写数据一次，然后训练 10 epoch&lt;/li>
+&lt;li>改写数据一次，训练 1 epoch&lt;/li>
+&lt;/ol>
+&lt;p>实验结果如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th># Rephrasings&lt;/th>
+&lt;th># Epochs SimpleQA&lt;/th>
+&lt;th>Accuracy&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>0 (raw wiki-text)&lt;/td>
+&lt;td>10&lt;/td>
+&lt;td>23.76&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>1&lt;/td>
+&lt;td>10&lt;/td>
+&lt;td>27.39&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>10&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>28.94&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>可以看到，改写的策略可以有效提高模型在 SimpleQA benchmark 上的表现&lt;/p>
+&lt;p>&lt;strong>Math Data Rephrasing&lt;/strong>
+对于数学相关数据，作者基于 SwallowMath, 将数据改写成了学习笔记 (learning-note) 的风格。然后，作者还将其他语言的高质量文本翻译为英文。&lt;/p>
+&lt;blockquote>
+&lt;p>&lt;strong>Recall&lt;/strong>
+个人认为，数据改写在一定程度上也算是合成数据，对于合成数据这一块，微软提出的 phi 系列是一个比较好的参考&lt;/p>
+&lt;/blockquote>
+&lt;h3 id="muonclip-optimizer">&lt;a href="#muonclip-optimizer" class="header-anchor">&lt;/a>MuonClip Optimizer
+&lt;/h3>&lt;p>Kimi-K2 使用了 Muon optimizer, 之前的实验结果说明了在相同的 compute budget 下，Muon optimizer 的表现超过了 AdamW. 也就是说，Muon optimizer 更加高效。&lt;/p>
+&lt;p>但是，Muon optimizer 的问题是训练不稳定。为了解决这个问题，作者提出了 QK-clip, 一个 weight clipping 机制，来显示约束 attention logits. QK-clip 的机制是&lt;strong>当输出的 logits 超过某一个阈值之后，就对齐进行截断&lt;/strong>。&lt;/p>
+&lt;p>每个 head 的 attention 的计算公式如下&lt;/p>
+$$
+O = \mathrm{softmax}\left(\frac{QK^T}{\sqrt{d}}\right)V
+$$&lt;p>其中, $d$ 是 hidden size, $Q, K,V$ 分别是 query, key, value, 定义如下：&lt;/p>
+$$
+Q = XW_Q, K=XW_K, V=XW_V
+$$&lt;p>这里 $W_Q,W_K,W_V$ 是模型可学习的参数。&lt;/p>
+&lt;p>作者定义每个 head 的 max logit 如下：&lt;/p>
+$$
+S_{\max}^h = \frac{1}{\sqrt{d}} \max_{X\in\mathcal{B}}\max_{i,j} [QK^T]_{ij}
+$$&lt;p>最简单的做法就是直接进行截断，也就是&lt;/p>
+$$
+W_Q\gets \gamma^\alpha W_q, W_K\gets \gamma^{1-\alpha}W_K
+$$&lt;p>其中 $\gamma=\min(1, \tau S_{\max})$, 这里 $S_{\max}=\max_h S_{\max}^h$ 是所有 head 对应 $S_{\max}^h$ 的最大值。&lt;/p>
+&lt;p>但是，实际中，作者发现只有少部分 head 会出现 logits 爆炸现象。为了提高计算效率，作者针对每个 head 单独进行 scaling, 也就是 $\gamma_{h}=\min(1, \tau S_{\max}^h)$. 对于 MLA 架构，作者仅在 unshared 模块使用 clipping:&lt;/p>
+&lt;ul>
+&lt;li>$q^c$ 以及 $k^c$, scaling factor 为 $\sqrt{\gamma_h}$&lt;/li>
+&lt;li>$q^R$, scaling factor 为 $\gamma_h$&lt;/li>
+&lt;/ul>
+&lt;p>最后，作者将 Muon, weight decay, RMS matching 和 QK-clip 汇总在一起，得到 Kimi-k2 使用的 MuonClip optimizer, 算法如下所示：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2/Kimi-k2-muonclip.png"
+width="1385"
+height="668"
+loading="lazy"
+alt="MuonClip Optimizer"
+class="gallery-image"
+data-flex-grow="207"
+data-flex-basis="497px"
+>&lt;/p>
+&lt;p>接下来，作者对比了以下 Muon 和 MuonClip 两个优化器的表现，作者分别使用这两个优化器训练 53B-A9B 的 MoE 模型，实验结果如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2/Kimi-k2-muonclip-performance.png"
+width="1365"
+height="551"
+loading="lazy"
+alt="Comparison between Muon and MuonClip"
+class="gallery-image"
+data-flex-grow="247"
+data-flex-basis="594px"
+>&lt;/p>
+&lt;p>实验结果表明，Muon 优化器在 1000 步左右就出现了 logits 爆炸的现象，但是 MuonClip 通过优化可以避免这个问题。作者还发现，MuonClip 可以减少 loss spike 的产生，整体的 loss 变化情况如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2/Kimi-k2-model-training-dynamics.png"
+width="977"
+height="561"
+loading="lazy"
+alt="Training loss curve"
+class="gallery-image"
+data-flex-grow="174"
+data-flex-basis="417px"
+>&lt;/p>
+&lt;p>作者还在附录中说明 QK-clip 并不影响最终的收敛性，并且，为了尽可能减少对模型训练的干扰，作者发现，仅在训练初期 QK-clip 被激活:&lt;/p>
+&lt;ol>
+&lt;li>在初始的 70, 000 步里，有 12.7% 的 attention heads 至少触发了一次 QK-clip, 并且将它们的 $S_\max$ 降到了 100 以下&lt;/li>
+&lt;li>接下来的 70, 000 步里，QK-clip 就不再被激活&lt;/li>
+&lt;/ol>
+&lt;h3 id="infra">&lt;a href="#infra" class="header-anchor">&lt;/a>Infra
+&lt;/h3>&lt;p>Kimi-k2 使用了 16-way 的 PP, 16-way 的 EP 以及 ZeRO-1 Data Parallelism. 具体流程如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2/Kimi-k2-communication-computation.png"
+width="1362"
+height="318"
+loading="lazy"
+alt="Kimi-K2 parallelism"
+class="gallery-image"
+data-flex-grow="428"
+data-flex-basis="1027px"
+>&lt;/p>
+&lt;p>作者发现通过增加 warm-up mircro-batches, 我们可以有效重叠 EP 的 all-to-all communication 以及 computation. 但是，对于 [[DualPipe]], 其要求双倍的存储来保存参数和梯度，并且提高 PP 粒度会引入更多的 bubble, 因此 Kimi-K2 没有使用 DualPipe.&lt;/p>
+&lt;p>为了减少 [[1F1B]] 的 PP 通信开销，作者在反向传播的过程中同时进行 PP 通信，来进一步重合通信与计算。&lt;/p>
+&lt;p>作者还发现，使用更小的 EP group 可以提高整体的训练速度，因此作者将 EP 设置为 16.&lt;/p>
+&lt;p>作者发现，剩余的 GPU 内存不足以存放 MoE 的 activation, 因此作者采取了三个办法解决这个问题：&lt;/p>
+&lt;ol>
+&lt;li>Selective recomputation: 作者对 LayerNorm, SwiGLU, MLA 的 up-projection 和 MoE 的 down-projections 等进行重新计算。&lt;/li>
+&lt;li>FP8 storage for insentive activations: 作者使用了 FP8 精度来存储 MoE up-projections 以及 SwiGLU. 作者发现使用 FP8 进行计算可能会导致性能下降，因此作者并没有使用 FP8 进行计算。&lt;/li>
+&lt;li>Activation CPU offload: 作者将其余的 activation 放在 CPU RAM 上，在 1F1B 的过程中，作者再进行加载&lt;/li>
+&lt;/ol>
+&lt;h3 id="training-recipe">&lt;a href="#training-recipe" class="header-anchor">&lt;/a>Training Recipe
+&lt;/h3>&lt;p>模型上下文长度为 4096, 使用 MuonClip 进行优化，使用 WSD lr Scheduler.weight decay 为 0.1, global batch size 为 67M tokens.&lt;/p>
+&lt;p>预训练结束之后，作者加入了一个 long-context activation stage. 这个阶段，作者使用了 400B 的 4K 上下文的 token 和 60B 的 32K 上下文的 60B token. 最后作者使用 &lt;a class="link" href="https://maosong.website/p/notes-on-yarn/" target="_blank" rel="noopener"
+>YARN&lt;/a> 将模型上下文长度扩展到 128K.&lt;/p>
+&lt;h2 id="post-training">&lt;a href="#post-training" class="header-anchor">&lt;/a>Post-training
+&lt;/h2>&lt;h3 id="sft">&lt;a href="#sft" class="header-anchor">&lt;/a>SFT
+&lt;/h3>&lt;p>数据的构建主要是基于：&lt;/p>
+&lt;ol>
+&lt;li>prompt 的多样性&lt;/li>
+&lt;li>Response 的质量&lt;/li>
+&lt;/ol>
+&lt;p>作者构建了一系列的数据生成 pipeline, 然后使用 Kimi-k1.5 来生成多样化的回答，最后再进行质量评估和过滤。这里，作者主要介绍了一下 tool-use 数据的构建&lt;/p>
+&lt;p>受 ACEBench 启发，作者构建了一个模仿真实世界 tool-use 的数据合成 pipeline. pipeline 如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2/Kimi-k2-tool-use-synthetic-pipeline.png"
+width="1366"
+height="439"
+loading="lazy"
+alt="Data synthesis pipeline for tool use"
+class="gallery-image"
+data-flex-grow="311"
+data-flex-basis="746px"
+>&lt;/p>
+&lt;p>pipeline 主要包含三个阶段：&lt;/p>
+&lt;ul>
+&lt;li>tool spec generation: 作者基于 MCP tools 和 self-evolved 的数据合成策略来构建 tool repository. MCP tools 包括 3000+ 的 tools,合成了 20，000 个 tools&lt;/li>
+&lt;li>Agent and task generation: 作者还用不同的 system prompt 以及不同的 tools combination 来构建对应的 agent. 然后对不同的 agent, 作者构建了对应的成功标准均，工具调用模式以及评估方式&lt;/li>
+&lt;li>Trajectory generation: 作者首先构建不同风格的 LLM, 然后作者使用一个 simulator 来执行 tool call 并给予反馈。&lt;/li>
+&lt;/ul>
+&lt;p>最后，作者对数据进行了过滤。&lt;/p>
+&lt;p>作者还加入了 coding 以及软件工程等任务相关数据来进一步提高模型的 agent 能力&lt;/p>
+&lt;h3 id="rl">&lt;a href="#rl" class="header-anchor">&lt;/a>RL
+&lt;/h3>&lt;p>RL 与 Kimi-K1.5 差不多。作者进一步提高了 RL 阶段的算力并做出了亮点改进：&lt;/p>
+&lt;ol>
+&lt;li>作者构建了类似 Gym 的框架，用于扩展 RL 的能力&lt;/li>
+&lt;li>作者加入了更多 RLVR 的任务&lt;/li>
+&lt;/ol>
+&lt;p>&lt;strong>Data&lt;/strong>
+数据主要包括以下几类：&lt;/p>
+&lt;ol>
+&lt;li>Math, STEM and logical tasks: 数据构建的原则为多样化和中等难度&lt;/li>
+&lt;li>Instruction following: 作者基于 hybrid rule verification 和 multi-source instruction generation 来合成复杂的指令跟随数据&lt;/li>
+&lt;li>Faithfulness: 作者训练了一个 judge model 来提供 reward&lt;/li>
+&lt;li>Coding &amp;amp; Software Engineering: 作者从开源数据收集并合成了代码相关数据&lt;/li>
+&lt;li>Safety. 提高模型的安全性，防止 jailbreak&lt;/li>
+&lt;/ol>
+&lt;p>&lt;strong>Reward&lt;/strong>
+作者使用了 self-critique rubric reward 的奖励机制。&lt;/p>
+&lt;p>首先，对于 Kimi-k2 的回答，作者会使用另一个 kimi-k2 作为 critic，基于三个方面进行排序：&lt;/p>
+&lt;ul>
+&lt;li>core rubric: AI 的核心价值观&lt;/li>
+&lt;li>prescriptive rubric: 避免 reward hacking&lt;/li>
+&lt;li>human-annotated rubric: 特定的上下文&lt;/li>
+&lt;/ul>
+&lt;p>在训练的过程中，critic 也会基于 verifiable signals 进行 refine&lt;/p>
+&lt;p>&lt;strong>RL training&lt;/strong>
+RL 的训练目标与 Kimi-k1.5 相同&lt;/p>
+$$
+\mathcal{L}(\pi_\theta) = \mathbb{E}_{x\sim \mathcal{D}}\left[\frac1K\sum_{i=1}^K \left(r(x,y_i)-\bar{r}(x) -\tau\log\frac{\pi_{\mathrm{\theta}}(y_i\mid x)}{\pi_{\mathrm{old}}(y_i\mid x)}\right)^2\right]
+$$&lt;p>其中 $\bar{r}(x)=1/K\sum_{i=1}^Kr(x,y_i)$ 是 sample response 的平均奖励。&lt;/p>
+&lt;p>作者做了以下几点改进来提高模型在不同 domain 上的表现：&lt;/p>
+&lt;ol>
+&lt;li>Budget control: 作者针对不同任务分别设置了最大 token 限制，模型超过这个限制会受到惩罚。猜测应该是 length penalty 或者类似 Qwen3 一样，直接中断思考过程输出最终答案&lt;/li>
+&lt;li>PTX loss: 作者使用了 PTX loss 来提高模型对于高质量数据的利用率以及降低模型的过拟合&lt;/li>
+&lt;li>Temperature Decay: 作者发现，训练后期保持较高的采样温度会影响模型的表现，因此作者设置了一个 schedule, 来逐步降低采样温度。&lt;/li>
+&lt;/ol>
+&lt;h3 id="rl-infra">&lt;a href="#rl-infra" class="header-anchor">&lt;/a>RL Infra
+&lt;/h3>&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2/Kimi-k2-RL-infra.png"
+width="734"
+height="477"
+loading="lazy"
+alt="Kimi-K2 RL infra"
+class="gallery-image"
+data-flex-grow="153"
+data-flex-basis="369px"
+>&lt;/p>
+&lt;p>RL infra 与 Kimi-k1.5 类似。主要包含三个模块。其中 train engine 和 inference engine 两者互相切换，一个 engine 进行 training 的时候，另一个 engine 就进行 inference, 为了提高 engine 切换的效率，作者使用了 checkpoint engine 来传输更新后的参数。&lt;/p>
+&lt;h2 id="evaluation">&lt;a href="#evaluation" class="header-anchor">&lt;/a>Evaluation
+&lt;/h2>&lt;p>模型评估结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2/Kimi-k2-performance.png"
+width="696"
+height="979"
+loading="lazy"
+alt="Performance of Kimi-k2"
+class="gallery-image"
+data-flex-grow="71"
+data-flex-basis="170px"
+>&lt;/p>
+&lt;p>评估结果显示，模型在 coding 和通用任务上的表现仅次于 Claude 4, 大部分 benchmark 上都是第二名甚至是 sota.&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者在本文中提出了 Kimi-K2, 一个总参数为 1B 的 MoE 大语言模型。作者在架构，数据和优化器上进行了创新。并且通过 post-training 显著提高了模型的 agent 以及 tool-use 能力&lt;/p>
+&lt;p>作者发现模型主要存在的问题有：&lt;/p>
+&lt;ol>
+&lt;li>reasoning 任务过难或者 tool 的定义不清晰的时候，模型会使用很多 token&lt;/li>
+&lt;li>有时候工具调用可能会降低模型的表现&lt;/li>
+&lt;li>模型在 agentic coding 任务上的能力需要进一步提升&lt;/li>
+&lt;/ol>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://github.com/MoonshotAI/Kimi-K2" target="_blank" rel="noopener"
+>Github&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on Kimi k1.5</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-kimi-k1.5/</link><pubDate>Sat, 08 Feb 2025 10:09:52 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-kimi-k1.5/</guid><description>&lt;p>论文提出了Kimi k1.5， 一个基于强化学习训练的多模态推理模型。作者介绍了Kimi k1.5的训练方法，以及infra上的优化。作者的主要贡献如下：&lt;/p>
+&lt;ol>
+&lt;li>作者发现，模型的上下文长度可以有效提升LLM的推理能力。&lt;/li>
+&lt;li>作者提出了基于online mirror descent的强化学习训练方法。&lt;/li>
+&lt;li>作者发现可以通过long context scaling和policy optimization来提升模型的推理能力。&lt;/li>
+&lt;li>作者提出了long2short的推理方法，可以有效提升short CoT模型的推理能力。&lt;/li>
+&lt;/ol>
+&lt;h2 id="architecture">&lt;a href="#architecture" class="header-anchor">&lt;/a>Architecture
+&lt;/h2>&lt;p>论文中包括两个模型，一个是k1.5 base model， 其是一个多模态大模型。另一个是Kimi-1.5 reasoning model（简称为k1.5），k1.5是基于kimi-1.5 base model， 通过强化学习训练得到的推理模型。&lt;/p>
+&lt;h3 id="kimi-15-base-model">&lt;a href="#kimi-15-base-model" class="header-anchor">&lt;/a>Kimi-1.5 base model
+&lt;/h3>&lt;p>k1.5 base model是一个基于transformer的多模态大模型，论文没有给出详细的模型结构，只有如下的示意图&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k1.5/k1-5-model-arch.png"
+width="1210"
+height="287"
+loading="lazy"
+alt="Architecture of k1.5 base model"
+class="gallery-image"
+data-flex-grow="421"
+data-flex-basis="1011px"
+>&lt;/p>
+&lt;p>k1.5 base model的训练包括三个阶段：&lt;/p>
+&lt;ol>
+&lt;li>Vision-language pretraining stage: 这一阶段的目的是让模型拥有语言和视觉的表征能力。训练时，模型先在纯文本的数据上进行训练，然后提高加入图文交错的数据进行训练，直到训练数据中图文交错的数据占比达到30%。模型的更新方式为先冻结LLM更新visual tower, 然后解冻LLM更新所有参数。&lt;/li>
+&lt;li>Vision-language cooldown stage: 这一阶段的目的是让模型保持多模态理解能力。作者发现，使用合成数据可以提高模型在这一阶段的表现。因此，作者使用闭源大语言模型，基于math, knowledge和code domain的pretraining data来合成了一些QA pair数据对，然后讲这些QA pair数据对加入到训练数据中。&lt;/li>
+&lt;li>Long-context activation stage: 这一阶段的目的是让模型在长上下文的数据上进行训练，以提升模型在长上下文上的理解能力。这一阶段包含了40%的full attention data以及60%的partial attention data。其中，full attention data是基于真实数据和合成的QA以及summary数据得到的，partial attention data是在cooldown data找那个通过均匀采样得到的。这一阶段，模型的上下文长度从4096逐步增加到131072。&lt;/li>
+&lt;/ol>
+&lt;h3 id="kimi-k15">&lt;a href="#kimi-k15" class="header-anchor">&lt;/a>Kimi k1.5
+&lt;/h3>&lt;p>Kimi k1.5是基于k1.5 base model， 通过进一步训练得到的推理模型。k1.5的训练包括四个阶段：&lt;/p>
+&lt;ol>
+&lt;li>pretraining：这一步就是k1.5 base model的训练， 包括三个小阶段。前面已经介绍过了。&lt;/li>
+&lt;li>vanilla SFT：这一步的目的是使得k1.5 base model具有指令跟随能力。对于non-reasoning任务，作者先使用人类标注产生一个seed dataset，然后基于seed dataset训练一个seed model，最后根据收集的prompt来使用seed model来生成回答。对于reasoning任务，作者使用了rejection sampling来扩展SFT数据集&lt;/li>
+&lt;li>long-CoT SFT： 这一步的目的是让模型能够像人类一样进行推理，能够掌握最基本的推理策略，即：planning，evaluation，reflection和exploration。从而为RL训练提供一个良好的初始化。&lt;/li>
+&lt;li>RL：这一步就是通过RL来提高模型的推理能力。我们在下一节中进行详细的介绍。&lt;/li>
+&lt;/ol>
+&lt;h2 id="rl">&lt;a href="#rl" class="header-anchor">&lt;/a>RL
+&lt;/h2>&lt;h3 id="problem-definition">&lt;a href="#problem-definition" class="header-anchor">&lt;/a>Problem Definition
+&lt;/h3>&lt;p>给定一个训练数据集 $\mathcal{D} = \{(x_i, y_i^\star)\}_ {i=1}^n$， 其中 $x_ i$ 是问题， $y_{i}^\star$ 是ground truth。我们希望找到一个模型 $\pi_{\theta}$ ，来解决这个问题。通常问题比较难，因此我们使用chain of thought（CoT）的方法来解决这个问题。具体做法就是让模型输出中间步骤 $z=(z_1, z_2, ..., z_m)$， 来连接问题 $x_i$ 和答案 $y$。其中， $z_j$ 是模型在第 $j$ 步的推理结果，即 $z_t\sim\pi_{\theta}(x_i, z_{&lt;t})$, $y\sim \pi_{\theta}(x_i, z)$。&lt;/p>
+&lt;p>通常，我们还会使用一个reward model $r_{\phi}$，来评估模型输出的答案的质量。一个常用的reward model是基于答案的正确性来评估的，即 $r_{\phi}(x_i, y, y^\star) = \mathbb{I}[y=y_i^\star]$ 。这样，我们要求解的问题就变成了最大化中间步骤和最终答案的reward，即&lt;/p>
+$$
+\max_{\theta} \mathbb{E}_ {(x, y^\star)\sim\mathcal{D},(y,z,)\sim\pi_{\theta}} r_{\phi}(x, y, y^\star)
+$$&lt;h3 id="policy-optimization">&lt;a href="#policy-optimization" class="header-anchor">&lt;/a>Policy Optimization
+&lt;/h3>&lt;p>作者使用了online policy mirror descent来解决上面提到的优化问题。在每个iteration中，存在一个reference model $\pi_{\theta_r}$ ， 以及一个当前要更新的模型 $\pi_{\theta}$ 。online policy mirror descent要解决的优化问题为：&lt;/p>
+$$
+\min_{\theta} \mathbb{E}_ {(x, y^\star)\sim\mathcal{D}} \left[\mathbb{E}_ {(y,z,)\sim\pi_{\theta}}\left[r_{\phi}(x, y, y^\star) - \beta \mathcal{D}_ {KL}(\pi_{\theta}(y,z\mid x)\Vert \pi_{\theta_r}(y,z\mid x))\right]\right]
+$$&lt;p>其中， $\beta$ 是超参数，用于平衡reward和KL散度 $\mathcal{D}_{KL}(\cdot)$.&lt;/p>
+&lt;p>上述问题有一个闭式解，即：&lt;/p>
+$$
+\pi^\star(y,z\mid x)=\pi_{\theta_r}(y,z\mid x)\exp\left(\frac{r_{\phi}(x, y, y^\star)}{\beta}\right)/Z(x;\beta)
+$$&lt;p>其中，&lt;/p>
+$$
+Z(x;\beta):=\sum_{y,z}\pi_{\theta_r}(y,z\mid x)\exp\left(\frac{r_{\phi}(x, y, y^\star)}{\beta}\right)
+$$&lt;p>是归一化因子。在闭式解的表达式中，我们对两边取对数，得到：&lt;/p>
+$$
+r_{\phi}(x, y, y^\star) - \beta \log Z - \beta \log\frac{\pi^\star(y,z\mid x)}{\pi_{\theta_r}(y,z\mid x)}=0
+$$&lt;p>这是最优策略满足的等式。作者这里使用了L2 loss来优化当前策略 $\pi_{\theta}$ ，即：&lt;/p>
+$$
+\min_{\theta} \mathbb{E}_ {(x, y^\star)\sim\mathcal{D}} \left[\mathbb{E}_ {(y,z,)\sim\pi_ {\theta_r}}\left[r_{\phi}(x, y, y^\star) - \beta \log Z - \beta \log\frac{\pi_{\theta}(y,z\mid x)}{\pi_{\theta_r}(y,z\mid x)}\right]^2\right]
+$$&lt;p>这里需要注意的一点是response $(y,z)$ 是基于reference model $\pi_{\theta_r}$ 生成的，而不再是基于当前策略 $\pi_{\theta}$ 生成的。这是Kimi-1.5的RL训练和传统RL训练的一个不同点。这也是为什么k1.5说他是off-policy的原因。&lt;/p>
+&lt;p>接下来，我们就可以对上面的目标函数求梯度，我们将里层的函数展开为 $(a-b-c)^2=(a-b)^2-2(a-b)c+c^2$ 的形式，然后对 $\theta$ 求梯度，得到：&lt;/p>
+$$
+\mathbb{E}_ {(x, y^\star)\sim\mathcal{D}} \left[\mathbb{E}_ {(y,z,)\sim\pi_{\theta_r}}\left[\nabla_{\theta}\log \pi_{\theta}(y,z\mid x)(r_{\phi}(x, y, y^\star) - \beta \log Z) - \frac{\beta}{2} \nabla_{\theta}\left(\log\frac{\pi_{\theta}(y,z\mid x)}{\pi_{\theta_r}(y,z\mid x)}\right)^2\right]\right]
+$$&lt;p>如果我们对每个问题$x$,采样 $k$ 个response $(y,z)$ ，那么我们可以近似上式中内部的期望，得到：&lt;/p>
+$$
+\frac{1}{k}\sum_{i=1}^k\left[\nabla_{\theta}\log \pi_{\theta}(y_i,z_i\mid x)(r_{\phi}(x, y_i, y^\star) - \bar{r}) - \frac{\beta}{2} \nabla_{\theta}\left(\log\frac{\pi_{\theta}(y_i,z_i\mid x)}{\pi_{\theta_r}(y_i,z_i\mid x)}\right)^2\right]
+$$&lt;p>这里， $\bar{r}$ 是 $\beta \log Z$ 的估计值。作者提供了两种估计方法：&lt;/p>
+&lt;ol>
+&lt;li>基于采样的 $(y_i,z_i)\sim \pi_{\theta_r}$ 对 $\beta \log Z$ 进行估计：&lt;/li>
+&lt;/ol>
+$$
+\bar{r}=\beta\log\frac{1}{k}\sum_{j=1}^k\exp\left(\frac{r_{\phi}(x, y_j, y^\star)}{\beta}\right)
+$$&lt;ol start="2">
+&lt;li>直接使用samples rewards的平均值来近似：&lt;/li>
+&lt;/ol>
+$$
+\bar{r}=\frac{1}{k}\sum_{i=1}^k r_{\phi}(x, y_i, y^\star)
+$$&lt;p>作者提到，第二种方法效果很好并且计算效率更高，因此作者在实验中使用了第二种方法。&lt;/p>
+&lt;p>训练时，作者每次从数据集中采样一个batch的样本，然后使用上述的梯度更新模型。模型参数更新完之后，作者将新的模型作为reference model，然后重复上述过程。&lt;/p>
+&lt;blockquote>
+&lt;p>Remark
+作者还探究了为什么不使用value network。作者认为，在强化学习中，value network通常用于评估当前状态的价值，但是在reasoning model中，训练的目的是让模型能够充分探索，以提高模型在不同任务中的泛化性。因此，作者认为使用value network可能会限制模型的探索能力。&lt;/p>
+&lt;/blockquote>
+&lt;h3 id="training-strategy">&lt;a href="#training-strategy" class="header-anchor">&lt;/a>Training Strategy
+&lt;/h3>&lt;p>作者提出了两个提高采样效率的方法：&lt;/p>
+&lt;ol>
+&lt;li>Curriculum Sampling. 这种采样方式会将问题按照难度进行排序，然后按照难度从易到难进行采样。以逐步提高模型的推理能力。&lt;/li>
+&lt;li>Prioritized Sampling.作者还采用了prioritized sampling来提高采样效率。也就是说，对于回答错误的问题，模型会进行更多的采样。&lt;/li>
+&lt;/ol>
+&lt;h2 id="infra">&lt;a href="#infra" class="header-anchor">&lt;/a>Infra
+&lt;/h2>&lt;h3 id="training-system">&lt;a href="#training-system" class="header-anchor">&lt;/a>Training System
+&lt;/h3>&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k1.5/k1-5-training-system.png"
+width="1112"
+height="530"
+loading="lazy"
+alt="Large Scale Reinforcement Learning Training System for LLM"
+class="gallery-image"
+data-flex-grow="209"
+data-flex-basis="503px"
+>&lt;/p>
+&lt;p>为了高效地进行RL训练，作者构建了一个iterative synchronous RL训练框架。框架如上图所示。框架的创新之处在于&lt;strong>Partial Rollout&lt;/strong>，该方法可以更高效的处理复杂的推理轨迹。框架包含了以下几部分：&lt;/p>
+&lt;ol>
+&lt;li>rollout worker: 该部分负责生成推理轨迹。然后将生成的推理轨迹加入到replay buffer中。&lt;/li>
+&lt;li>master: 管理data flow和replay buffer和train worker之间的通信。&lt;/li>
+&lt;li>train worker: 根据获取的rollout轨迹更新模型。&lt;/li>
+&lt;li>code execution service: 在代码相关任务中，该部分负责执行代码，并返回执行结果。&lt;/li>
+&lt;/ol>
+&lt;p>&lt;strong>Partial Rollout&lt;/strong>：Partial Rollout的目的是为了整体的训练效率。其做法就是给定一个固定的outpu token budget，然后限制推理轨迹的长度。当长度超过token限制时，没有完成的部分就会被存入到replay buffer中，以供后续的训练使用。&lt;/p>
+&lt;h3 id="deployment-framework">&lt;a href="#deployment-framework" class="header-anchor">&lt;/a>Deployment Framework
+&lt;/h3>&lt;p>根据前面的介绍，我们知道k1.5每个iteration的训练包括两步：&lt;/p>
+&lt;ol>
+&lt;li>inference phase: 基于Reference model进行采样，生成推理轨迹。&lt;/li>
+&lt;li>training phase: 基于采样得到的推理轨迹，更新模型。&lt;/li>
+&lt;/ol>
+&lt;p>如果我们直接使用Megatron和vLLM来实现上述的训练和推理，那么会存在以下问题：&lt;/p>
+&lt;ol>
+&lt;li>Megatron和vLLM的并行策略可能并不一致，因此很难进行参数共享&lt;/li>
+&lt;li>在训练过程中，vLLM可能会保留一些GPU，这就导致了训练和推理的资源分配不均。&lt;/li>
+&lt;li>推理和训练的资源需求可能并不一致，无法动态调控显卡资源&lt;/li>
+&lt;/ol>
+&lt;p>因此，作者构建了一个hybrid deployment framework来解决上述问题，其框架如下图所示。&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k1.5/k1-5-hybrid-deployment-framework.png"
+width="867"
+height="560"
+loading="lazy"
+alt="Hybrid Deployment Framework"
+class="gallery-image"
+data-flex-grow="154"
+data-flex-basis="371px"
+>&lt;/p>
+&lt;p>该框架的主要优势在于使用Kubernetes Sidecar containers来在一个pod中共享所有的GPU资源。这样就避免了资源分配不均的问题。&lt;/p>
+&lt;h2 id="数据">&lt;a href="#%e6%95%b0%e6%8d%ae" class="header-anchor">&lt;/a>数据
+&lt;/h2>&lt;h3 id="数据处理">&lt;a href="#%e6%95%b0%e6%8d%ae%e5%a4%84%e7%90%86" class="header-anchor">&lt;/a>数据处理
+&lt;/h3>&lt;ol>
+&lt;li>RL prompt set. 作者认为prompt的quality和diversity对RL训练至关重要。因此作者基于diverse coverage, balanced difficuty以及accurate evaluation来构建了一个RL prompt set。对于多样性，作者确保数据集覆盖多个domain。对于平衡难度，作者通过多次采样，根据通过率来给每个样本的难易程度打分。对于准确性，作者筛掉了多选题，正确题和证明题，确保模型能够生成正确的推理步骤。最后，作者还让模型进行猜测，如果模型猜测的正确率比较高，那么就认为该样本是easy-to-hack的，就会筛掉。&lt;/li>
+&lt;li>Test Case Generation for Coding. 作者使用&lt;a class="link" href="https://github.com/luogu-dev/cyaron" target="_blank" rel="noopener"
+>CYaRon&lt;/a>来生成coding任务的测试用例。通过与Kimi k1.5结合，作者构建了一个包含323个测试用例的训练集。&lt;/li>
+&lt;li>Reward modeling for Math. 作者使用了两种方法来提高reward model的准确性。第一个是classic RM，作者基于InstructGPT，构造了大约800K的数据训练了一个value-head based RM。模型会基于问题，参考答案和模型生成的答案来判断模型生成的答案是否正确。第二个是Chain of Thought RM，作者基于收集的800k CoT数据对kimi进行了finetune，然后对模型生成的推理步骤进行打分。最终发现，Chain of Thought RM的效果更好。因此，作者在RL训练中使用了Chain of Thought RM。&lt;/li>
+&lt;li>Vision RL Data。 作者从三个方面构建了vision RL数据集：real-world data, synthetic visual reasoning data以及text-rendered data.&lt;/li>
+&lt;/ol>
+&lt;h3 id="数据集">&lt;a href="#%e6%95%b0%e6%8d%ae%e9%9b%86" class="header-anchor">&lt;/a>数据集
+&lt;/h3>&lt;ol>
+&lt;li>pretraining：其中，纯文本数据包括Engligh, Chinese, Code, math reasoning以及Knowledge这5个领域。多模态数据包括captioning, image-text interleaving, OCR, Knowledge以及QA数据集等。附录B介绍了数据集的来源和处理过程。&lt;/li>
+&lt;li>SFT： vanilla SFT数据集包含1M的纯文本数据，其中包含500K的general QA数据，200K的coding数据，200K的数学和科学数据，5K的创作写作数据以及20K的长上下文任务（总结，QA，翻译和写作等）。作者还构建了1M的图文数据，包括chart理解，OCR，grounding，visual coding, visual reasoning以及visual aided math/science problems等&lt;/li>
+&lt;li>long-CoT SFT：该阶段的数据基于refined RL prompt set，使用了prompt engineering来构建了一个少量但高质量的long-CoT数据集。用于将reasoning能力内化到模型中。&lt;/li>
+&lt;/ol>
+&lt;h2 id="long2short">&lt;a href="#long2short" class="header-anchor">&lt;/a>Long2short
+&lt;/h2>&lt;p>为了降低推理成本，作者提出了long2short的推理方法。该方法通过将长上下文推理转化为短上下文推理，让模型能够更加高效的完成推理。作者尝试了几种方法来实现long2short：&lt;/p>
+&lt;ol>
+&lt;li>Model merging:将long-CoT模型和short-CoT模型进行合并，然后进行推理。这里采用的办法是对两个模型的权重取平均。&lt;/li>
+&lt;li>shortest rejection sampling：通过对同一个问题进行多次采样（论文中每个问题采样8次），然后选择最短的，正确的推理步骤作为最终答案。&lt;/li>
+&lt;li>&lt;a class="link" href="https://maosong.website/p/notes-on-dpo/" target="_blank" rel="noopener"
+>DPO&lt;/a>：通过对同一个问题进行多次采样，选择最短的正确的回答作为正样本，最长的回答作为负样本，然后使用DPO进行训练。&lt;/li>
+&lt;li>Long2short RL：作者在RL阶段，选择一个在performance和token efficiency之间达到平衡的模型作为 base model，然后加入了一个long2short RL训练阶段。该阶段，作者加入了length penalty以及降低了maximum rollout length来鼓励模型生成更短的推理步骤。&lt;/li>
+&lt;/ol>
+&lt;h3 id="length-penalty">&lt;a href="#length-penalty" class="header-anchor">&lt;/a>Length penalty
+&lt;/h3>&lt;p>Length penalty的目的是降低模型的overthinking和训练成本。作者加入了一个length reward，对于问题 $x$ 和采样的回答 $(y_i,z_i)$ ，回答 $(y_i,z_i)$ 的length定义为 $len(x_i)=\text{length}([z_i, y_i])$ length reward定义为：&lt;/p>
+$$
+r_{\text{length}}(x, (y_i,z_i))=\begin{cases}
+\lambda, &amp; \text{if } r(x, y_i, y^\star) = 1 \\
+\min(0,\lambda), &amp; \text{if } r(x, y_i, y^\star) = 0 \\
+\end{cases}
+$$&lt;p>其中&lt;/p>
+$$
+\lambda = 0.5 - \frac{len(x_i)-\min_{j}len(x_j)}{\max_{j}len(x_j)-\min_{j}len(x_j)}
+$$&lt;p>也就是说，当回答正确时，我们鼓励模型生成更长的推理步骤。反之，我们鼓励模型生成更短的推理步骤。&lt;/p>
+&lt;h2 id="实验">&lt;a href="#%e5%ae%9e%e9%aa%8c" class="header-anchor">&lt;/a>实验
+&lt;/h2>&lt;h3 id="实验结果">&lt;a href="#%e5%ae%9e%e9%aa%8c%e7%bb%93%e6%9e%9c" class="header-anchor">&lt;/a>实验结果
+&lt;/h3>&lt;ol>
+&lt;li>K1.5在long-CoT任务上的表现&lt;/li>
+&lt;/ol>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k1.5/k1-5-long-cot-benchmark.png"
+width="1118"
+height="425"
+loading="lazy"
+alt="Long-CoT-benchmark"
+class="gallery-image"
+data-flex-grow="263"
+data-flex-basis="631px"
+>&lt;/p>
+&lt;ol start="2">
+&lt;li>K1.5在Short-CoT任务上的表现&lt;/li>
+&lt;/ol>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k1.5/k1-5-short-cot-benchmark.png"
+width="1357"
+height="566"
+loading="lazy"
+alt="Short-CoT-benchmark"
+class="gallery-image"
+data-flex-grow="239"
+data-flex-basis="575px"
+>&lt;/p>
+&lt;ol start="3">
+&lt;li>
+&lt;p>Long Context Scaling
+作者在实验中还探究了上下文长度对模型推理能力的影响。作者针对几个模型进行了实验，结果在图5和图6里面。结果发现，随着上下文长度的增加，模型的推理能力会逐渐提升。&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Long2short&lt;/p>
+&lt;/li>
+&lt;/ol>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k1.5/k1-5-long2short.png"
+width="1354"
+height="590"
+loading="lazy"
+alt="Long2short"
+class="gallery-image"
+data-flex-grow="229"
+data-flex-basis="550px"
+>&lt;/p>
+&lt;h3 id="消融实验">&lt;a href="#%e6%b6%88%e8%9e%8d%e5%ae%9e%e9%aa%8c" class="header-anchor">&lt;/a>消融实验
+&lt;/h3>&lt;ol>
+&lt;li>Scaling of model size and context length. 作者探究了模型大小和上下文长度对模型推理能力的影响，结果在图8里面。结果发现
+&lt;ol>
+&lt;li>小模型可以通过Long CoT来达到大模型的效果&lt;/li>
+&lt;li>大模型具有更高的token效率&lt;/li>
+&lt;li>理想情况下，使用具有更长上下文的大模型，可以同时达到更高的推理能力和更高的token效率，否则，使用上下文长度更长的小模型&lt;/li>
+&lt;/ol>
+&lt;/li>
+&lt;li>Effects of using negative gradients. 作者探究了使用负梯度对模型推理能力的影响。作者与ReST方法进行了对比，结果在图10里面。结果发现，ReST回到只模型产生更长的推理步骤。作者认为，选取合适的优化方法，可以有效提升模型的推理能力。&lt;/li>
+&lt;li>Sampling strategies. 作者还探究了采样策略对模型推理能力的影响。作者与均匀采样进行了对比，结果在图9里面。结果发现，论文提出的采样策略可以有效提升模型的推理能力。&lt;/li>
+&lt;/ol>
+&lt;h2 id="结论">&lt;a href="#%e7%bb%93%e8%ae%ba" class="header-anchor">&lt;/a>结论
+&lt;/h2>&lt;p>作者提出了Kimi k1.5，一个基于强化学习训练的多模态推理模型。作者介绍了Kimi k1.5的训练方法，数据集，infra上的优化以及long2short的推理方法。作者的主要贡献在于：&lt;/p>
+&lt;ol>
+&lt;li>作者发现，模型的上下文长度可以有效提升LLM的推理能力。&lt;/li>
+&lt;li>作者提出了基于online mirror descent的强化学习训练方法。&lt;/li>
+&lt;li>作者提出了long2short的推理方法，可以有效提升short CoT模型的推理能力。&lt;/li>
+&lt;/ol>
+&lt;p>论文的问题在于对于多模态的内容介绍较少，感觉还是更倾向于文本推理任务。&lt;/p>
+&lt;h2 id="参考文献">&lt;a href="#%e5%8f%82%e8%80%83%e6%96%87%e7%8c%ae" class="header-anchor">&lt;/a>参考文献
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2501.12599" target="_blank" rel="noopener"
+>Kimi k1.5: Scaling Reinforcement Learning with LLMs&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

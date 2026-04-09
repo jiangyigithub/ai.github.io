@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Synthetic Data on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/synthetic-data/</link><description>Recent content in Synthetic Data on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/synthetic-data/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on Phi-4</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-phi-4/</link><pubDate>Mon, 16 Dec 2024 17:33:52 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-phi-4/</guid><description>&lt;h1 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h1>&lt;p>微软在12月12号发布了Phi-4的技术报告,主要关注了数据的构建，特别是。Phi-4是一个14B的大语言模型，主要在STEM相关的QA任务以及推理相关的任务上表现比较好。Phi-4主要在三个方面进行了改进：&lt;/p>
+&lt;ol>
+&lt;li>在pre-training和mid-training阶段使用了合成数据进行训练&lt;/li>
+&lt;li>&lt;/li>
+&lt;/ol>
+&lt;h1 id="data">&lt;a href="#data" class="header-anchor">&lt;/a>Data
+&lt;/h1>&lt;h1 id="pre-training">&lt;a href="#pre-training" class="header-anchor">&lt;/a>Pre-training
+&lt;/h1>&lt;h2 id="architecture">&lt;a href="#architecture" class="header-anchor">&lt;/a>Architecture
+&lt;/h2>&lt;h1 id="post-training">&lt;a href="#post-training" class="header-anchor">&lt;/a>Post-training
+&lt;/h1>&lt;h2 id="dpo">&lt;a href="#dpo" class="header-anchor">&lt;/a>DPO
+&lt;/h2>&lt;h2 id="sft">&lt;a href="#sft" class="header-anchor">&lt;/a>SFT
+&lt;/h2>&lt;h1 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="https://techcommunity.microsoft.com/blog/aiplatformblog/introducing-phi-4-microsoft%E2%80%99s-newest-small-language-model-specializing-in-comple/4357090" target="_blank" rel="noopener"
+>Blog&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://arxiv.org/abs/2412.08905" target="_blank" rel="noopener"
+>Arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

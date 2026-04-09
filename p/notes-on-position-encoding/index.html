@@ -1,0 +1,453 @@
+<!doctype html><html lang=en dir=ltr><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><link rel=dns-prefetch href=https://fonts.googleapis.com><link rel=dns-prefetch href=https://cdn.jsdelivr.net><link rel=dns-prefetch href=https://scripts.simpleanalyticscdn.com><link rel=preconnect href=https://fonts.googleapis.com crossorigin><link rel=preconnect href=https://cdn.jsdelivr.net crossorigin><link rel=preconnect href=https://scripts.simpleanalyticscdn.com crossorigin><meta http-equiv=x-dns-prefetch-control content="on"><meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=5,minimum-scale=1"><meta name=format-detection content="telephone=no"><meta name=theme-color content="#4e54c8" media="(prefers-color-scheme: light)"><meta name=theme-color content="#1a1a2e" media="(prefers-color-scheme: dark)"><link rel=apple-touch-icon href><meta name=description content="从Absolute position encoding到RoPE"><meta name=keywords content><meta name=author content="Jiang Yi"><link rel=canonical href=https://github.com/jiangyigithub/ai.github.io/p/notes-on-position-encoding/><meta property="og:title" content="Notes on Position encoding"><meta property="og:description" content="从Absolute position encoding到RoPE"><meta property="og:type" content="article"><meta property="og:url" content="https://github.com/jiangyigithub/ai.github.io/p/notes-on-position-encoding/"><meta property="og:site_name" content="Jiang Yi(姜祎)'s Homepage"><meta property="og:locale" content="en"><meta property="og:image" content="https://github.com/jiangyigithub/ai.github.io/p/notes-on-position-encoding/RoPE_binary_position_encoding.png"><meta property="og:image:alt" content="Notes on Position encoding"><meta property="article:published_time" content="2025-05-19T10:46:39+08:00"><meta property="article:modified_time" content="2026-04-08T21:44:44+08:00"><meta property="article:author" content="Jiang Yi"><meta property="article:tag" content="position encoding"><meta name=robots content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"><meta name=googlebot content="index, follow"><script type=application/ld+json>{"@context":"https://schema.org","@type":"Article","headline":"Notes on Position encoding","description":"从Absolute position encoding到RoPE","author":{"@type":"Person","name":"Jiang Yi"},"datePublished":"2025-05-19T10:46:39\u002b08:00","dateModified":"2026-04-08T21:44:44\u002b08:00","image":"https:\/\/github.com\/jiangyigithub\/ai.github.io\/p\/notes-on-position-encoding\/RoPE_binary_position_encoding.png","publisher":{"@type":"Organization","name":"Jiang Yi(姜祎)\u0027s Homepage","logo":{"@type":"ImageObject","url":"https:\/\/github.com\/jiangyigithub\/ai.github.io\/"}},"mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/github.com\/jiangyigithub\/ai.github.io\/p\/notes-on-position-encoding\/"},"keywords":"position encoding","articleSection":"post","inLanguage":"en"}</script><title>Notes on Position encoding</title>
+<link rel=stylesheet href=/jiangyigithub/ai.github.io/scss/style.min.fb2ef3860c8335f835ed6d55e46d9c435d7a37375d695eed32deb59ecfadc82b.css><script async src=https://scripts.simpleanalyticscdn.com/latest.js></script></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.getItem(e)||localStorage.setItem(e,"auto")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><a href=#main-content class=skip-to-main>Skip to main content</a><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label="Toggle Menu">
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/jiangyigithub/ai.github.io/><img src=/jiangyigithub/ai.github.io/img/avatar_hu16686390329192940120.jpg width=300 height=300 class=site-logo loading=lazy alt=Avatar></a></figure><div class=site-meta><h1 class=site-name><a href=/jiangyigithub/ai.github.io>Jiang Yi(姜祎)'s Homepage</a></h1><h2 class=site-description>whatever you do,keep a high external profile.</h2></div></header><ol class=menu-social><li><a href=https://space.bilibili.com/26251043 target=_blank title=bilibili rel=me><svg role="img" viewBox="0 0 24 24"><title>Bilibili</title><path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.858.0 17.347v-7.36c.036-1.511.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.234 1.234.0 01-.373-.906c0-.356.124-.658.373-.907l.027-.027c.267-.249.573-.373.92-.373s.653.124.92.373L9.653 4.44c.071.071.134.142.187.213h4.267a.836.836.0 01.16-.213l2.853-2.747c.267-.249.573-.373.92-.373s.662.151.929.4.391.551.391.907c0 .355-.124.657-.373.906zM5.333 7.24c-.746.018-1.373.276-1.88.773-.506.498-.769 1.13-.786 1.894v7.52c.017.764.28 1.395.786 1.893.507.498 1.134.756 1.88.773h13.334c.746-.017 1.373-.275 1.88-.773.506-.498.769-1.129.786-1.893v-7.52c-.017-.765-.28-1.396-.786-1.894-.507-.497-1.134-.755-1.88-.773zM8 11.107c.373.0.684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c0-.373.129-.689.386-.947.258-.257.574-.386.947-.386zm8 0c.373.0.684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373z"/></svg></a></li><li><a href=https://github.com/jiangyigithub target=_blank title=GitHub rel=me><svg class="icon icon-tabler icon-tabler-brand-github" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6.0 00-1.3-3.2 4.2 4.2.0 00-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3.0 00-6.2.0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2.0 00-.1 3.2A4.6 4.6.0 004 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a></li><li><a href='https://scholar.google.com/citations?user=BaqGkQQAAAAJ' target=_blank title="Google Scholar" rel=me><svg role="img" viewBox="0 0 24 24"><title>Google Scholar</title><path d="M5.242 13.769.0 9.5 12 0l12 9.5-5.242 4.269C17.548 11.249 14.978 9.5 12 9.5c-2.977.0-5.548 1.748-6.758 4.269zM12 10a7 7 0 100 14 7 7 0 000-14z"/></svg></a></li></ol><ol class=menu id=main-menu><li><a href=/jiangyigithub/ai.github.io/><svg class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<span>Home</span></a></li><li><a href=/jiangyigithub/ai.github.io/archives/><svg class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<span>Archives</span></a></li><li><a href=/jiangyigithub/ai.github.io/search/><svg class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>Search</span></a></li><li><a href=/jiangyigithub/ai.github.io/tags/><svg class="icon icon-tabler icon-tabler-tag" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11 3l9 9a1.5 1.5.0 010 2l-6 6a1.5 1.5.0 01-2 0L3 11V7a4 4 0 014-4h4"/><circle cx="9" cy="9" r="2"/></svg>
+<span>Tags</span></a></li><li><a href=/jiangyigithub/ai.github.io/about/><svg class="icon icon-tabler icon-tabler-link" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M10 14a3.5 3.5.0 005 0l4-4a3.5 3.5.0 00-5-5l-.5.5"/><path d="M14 10a3.5 3.5.0 00-5 0l-4 4a3.5 3.5.0 005 5l.5-.5"/></svg>
+<span>About</span></a></li><li class=menu-bottom-section><ol class=menu><li id=dark-mode-toggle><svg class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="8" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<svg class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="16" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<span>Dark Mode</span></li></ol></li></ol></aside><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">Table of contents</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#position-encoding总结>Position encoding总结</a></li><li><a href=#位置编码>位置编码</a></li><li><a href=#绝对位置编码>绝对位置编码</a><ol><li><a href=#整数位置编码>整数位置编码</a></li><li><a href=#二进制位置编码>二进制位置编码</a></li><li><a href=#sinusoidal>Sinusoidal</a></li></ol></li><li><a href=#相对位置编码>相对位置编码</a><ol><li><a href=#rope>RoPE</a></li></ol></li><li><a href=#2d-推导>2D 推导</a><ol><li><a href=#r_gbmx_qbmx_k-m-n></a></li><li><a href=#theta_gbmx_qbmx_k-m-n></a></li><li><a href=#汇总>汇总</a></li><li><a href=#多维扩展>多维扩展</a></li></ol></li><li><a href=#rope-的远程衰减性质>RoPE 的远程衰减性质</a></li><li><a href=#rope-代码实现与理解>RoPE 代码实现与理解</a><ol><li><a href=#naive-实现>Naive 实现</a></li></ol></li><li><a href=#llama-实现>LLaMA 实现</a></li><li><a href=#通用实现>通用实现</a></li><li><a href=#结论>结论</a></li><li><a href=#参考文献>参考文献</a></li></ol></nav></div></section></aside><main id=main-content class="main full-width" role=main aria-label="Main content"><article class=main-article><header class=article-header><div class=article-details><header class=article-category><a href=/jiangyigithub/ai.github.io/categories/llm/>LLM
+</a><a href=/jiangyigithub/ai.github.io/categories/tutorial/>Tutorial</a></header><div class=article-title-wrapper><h2 class=article-title><a href=/jiangyigithub/ai.github.io/p/notes-on-position-encoding/>Notes on Position encoding</a></h2><h3 class=article-subtitle>从Absolute position encoding到RoPE</h3></div><footer class=article-time><div><svg class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>May 19, 2025</time></div><div><svg class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<time class=article-time--reading>10 minute read</time></div></footer></div></header><section class=article-content><blockquote><p>本文前半部分参考 <a class=link href=https://huggingface.co/blog/designing-positional-encoding target=_blank rel=noopener>参考文献1</a>，推荐大家看博客原文。</p></blockquote><h2 id=position-encoding总结><a href=#position-encoding%e6%80%bb%e7%bb%93 class=header-anchor></a>Position encoding总结</h2><p>在 <a class=link href=https://maosong.website/p/notes-on-attention-bias/ target=_blank rel=noopener>上一篇blog</a> 中, 我们介绍了 Attention 的两个性质，也就是在不加 position encoding 的情况下，Attention 对于 query 是 permutation equivariant 的，对于 key 和 value 是 permutation invariant 的。</p><p>但是“我爱你”和“你爱我”这两句话所表示的含义应该是不一样的，我们将这两句话作为 key 和 value 的时候，我们发现模型的输出是一致的，这显然是不能接受的。因此，我们就需要加入 position encoding，让模型学习到语序信息，从而明白不同的语序有不同的含义。</p><p>下面是测试代码 （来自 <a class=link href=https://huggingface.co/blog/designing-positional-encoding target=_blank rel=noopener>参考文献1</a>）</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl><span class=kn>import</span> <span class=nn>torch</span>
+</span></span><span class=line><span class=cl><span class=kn>import</span> <span class=nn>torch.nn</span> <span class=k>as</span> <span class=nn>nn</span>
+</span></span><span class=line><span class=cl><span class=kn>from</span> <span class=nn>transformers</span> <span class=kn>import</span> <span class=n>AutoTokenizer</span><span class=p>,</span> <span class=n>AutoModel</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=n>model_id</span> <span class=o>=</span> <span class=s2>&#34;meta-llama/Llama-3.2-1B&#34;</span>
+</span></span><span class=line><span class=cl><span class=n>tok</span> <span class=o>=</span> <span class=n>AutoTokenizer</span><span class=o>.</span><span class=n>from_pretrained</span><span class=p>(</span><span class=n>model_id</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=n>model</span> <span class=o>=</span> <span class=n>AutoModel</span><span class=o>.</span><span class=n>from_pretrained</span><span class=p>(</span><span class=n>model_id</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=n>text</span> <span class=o>=</span> <span class=s2>&#34;The dog chased another dog&#34;</span>
+</span></span><span class=line><span class=cl><span class=n>tokens</span> <span class=o>=</span> <span class=n>tok</span><span class=p>(</span><span class=n>text</span><span class=p>,</span> <span class=n>return_tensors</span><span class=o>=</span><span class=s2>&#34;pt&#34;</span><span class=p>)[</span><span class=s2>&#34;input_ids&#34;</span><span class=p>]</span>
+</span></span><span class=line><span class=cl><span class=n>embeddings</span> <span class=o>=</span> <span class=n>model</span><span class=o>.</span><span class=n>embed_tokens</span><span class=p>(</span><span class=n>tokens</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=n>hdim</span> <span class=o>=</span> <span class=n>embeddings</span><span class=o>.</span><span class=n>shape</span><span class=p>[</span><span class=o>-</span><span class=mi>1</span><span class=p>]</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=n>W_q</span> <span class=o>=</span> <span class=n>nn</span><span class=o>.</span><span class=n>Linear</span><span class=p>(</span><span class=n>hdim</span><span class=p>,</span> <span class=n>hdim</span><span class=p>,</span> <span class=n>bias</span><span class=o>=</span><span class=kc>False</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=n>W_k</span> <span class=o>=</span> <span class=n>nn</span><span class=o>.</span><span class=n>Linear</span><span class=p>(</span><span class=n>hdim</span><span class=p>,</span> <span class=n>hdim</span><span class=p>,</span> <span class=n>bias</span><span class=o>=</span><span class=kc>False</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=n>W_v</span> <span class=o>=</span> <span class=n>nn</span><span class=o>.</span><span class=n>Linear</span><span class=p>(</span><span class=n>hdim</span><span class=p>,</span> <span class=n>hdim</span><span class=p>,</span> <span class=n>bias</span><span class=o>=</span><span class=kc>False</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=n>mha</span> <span class=o>=</span> <span class=n>nn</span><span class=o>.</span><span class=n>MultiheadAttention</span><span class=p>(</span><span class=n>embed_dim</span><span class=o>=</span><span class=n>hdim</span><span class=p>,</span> <span class=n>num_heads</span><span class=o>=</span><span class=mi>4</span><span class=p>,</span> <span class=n>batch_first</span><span class=o>=</span><span class=kc>True</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>with</span> <span class=n>torch</span><span class=o>.</span><span class=n>no_grad</span><span class=p>():</span>
+</span></span><span class=line><span class=cl>    <span class=k>for</span> <span class=n>param</span> <span class=ow>in</span> <span class=n>mha</span><span class=o>.</span><span class=n>parameters</span><span class=p>():</span>
+</span></span><span class=line><span class=cl>        <span class=n>nn</span><span class=o>.</span><span class=n>init</span><span class=o>.</span><span class=n>normal_</span><span class=p>(</span><span class=n>param</span><span class=p>,</span> <span class=n>std</span><span class=o>=</span><span class=mf>0.1</span><span class=p>)</span> <span class=c1># Initialize weights to be non-negligible</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=n>output</span><span class=p>,</span> <span class=n>_</span> <span class=o>=</span> <span class=n>mha</span><span class=p>(</span><span class=n>W_q</span><span class=p>(</span><span class=n>embeddings</span><span class=p>),</span> <span class=n>W_k</span><span class=p>(</span><span class=n>embeddings</span><span class=p>),</span> <span class=n>W_v</span><span class=p>(</span><span class=n>embeddings</span><span class=p>))</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=n>dog1_out</span> <span class=o>=</span> <span class=n>output</span><span class=p>[</span><span class=mi>0</span><span class=p>,</span> <span class=mi>2</span><span class=p>]</span>
+</span></span><span class=line><span class=cl><span class=n>dog2_out</span> <span class=o>=</span> <span class=n>output</span><span class=p>[</span><span class=mi>0</span><span class=p>,</span> <span class=mi>5</span><span class=p>]</span>
+</span></span><span class=line><span class=cl><span class=nb>print</span><span class=p>(</span><span class=sa>f</span><span class=s2>&#34;Dog output identical?: </span><span class=si>{</span><span class=n>torch</span><span class=o>.</span><span class=n>allclose</span><span class=p>(</span><span class=n>dog1_out</span><span class=p>,</span> <span class=n>dog2_out</span><span class=p>,</span> <span class=n>atol</span><span class=o>=</span><span class=mf>1e-6</span><span class=p>)</span><span class=si>}</span><span class=s2>&#34;</span><span class=p>)</span> <span class=c1>#True</span>
+</span></span></code></pre></td></tr></table></div></div><p>Position encoding 可以分为绝对位置编码 (absolute position encoding, APE)，相对位置编码 (relative position encoding, RPE) 以及可学习的位置编码。可学习位置编码主要是 BERT 类的模型在使用，其训练成本比较高，本文不做讨论。绝对位置编码是原始 transformer 里提出的编码模式，现在的大多数基于 transformer 模型使用的都是相对位置编码。</p><p>本文中，我们先介绍位置编码应该具有的性质，然后我们分别介绍绝对位置编码和相对位置编码，我们将着重关注苏剑林老师提出来的 RoPE。</p><h2 id=位置编码><a href=#%e4%bd%8d%e7%bd%ae%e7%bc%96%e7%a0%81 class=header-anchor></a>位置编码</h2><p>在介绍位置编码之前，我们首先应该关注位置编码的性质，位置编码的目标是为输入的 token embedding 增加位置信息，那么理想的位置编码应该是怎么样的呢？</p><p>我们这里直接引用 <a class=link href=https://huggingface.co/blog/designing-positional-encoding target=_blank rel=noopener>参考文献1</a> 中给定的性质：</p><ol><li><strong>性质 1</strong>: token sequence 中每个位置的位置编码都是唯一的。这个很好理解，如果不唯一的话，那么根据前面推导的性质，这两个位置的 attention 输出就完全一致了</li><li><strong>性质 2</strong>: 线性相关性。也就是说，如果我们知道了位置 $p$ 处的位置编码，那么理想情况下，我们应该能比较简单地得到 $p+k$ 处的位置编码，理想情况下，我们应该有 $PE(p+k)=W_kPE(p)$.</li><li><strong>性质 3</strong>: 泛化到长上下文中去。我们希望位置编码不仅在 8K 的上下文起作用，还希望位置编码能够泛化到 32K 的上下文</li><li><strong>性质 4</strong>: 生成模式是固定的。固定的模式有助于模型更好地学习位置相关的信息</li><li><strong>性质 5</strong>: 可以扩展到多维。我们希望位置编码可以从文本扩展到图片再到视频，也就是从 $1D$ 到 $nD$.</li></ol><h2 id=绝对位置编码><a href=#%e7%bb%9d%e5%af%b9%e4%bd%8d%e7%bd%ae%e7%bc%96%e7%a0%81 class=header-anchor></a>绝对位置编码</h2><p>绝对位置编码依照其名称，其思想就是为每个位置的 token 分配一个固定的位置信息，也就是对于输入的 hidden states $\bm{x}=[\bm{x}_1,\dots,\ \bm{x}_m]\in\mathbb{R}^{m\times d}$, 我们有</p>$$
+\bm{x}_i' = \bm{x}_i + p_i, i=1,\dots, m
+$$<p>这里，$p_i\in\mathbb{R}^d$. 我们的 attention 就变成了</p>$$
+\mathrm{Attn}(X) = \mathrm{softmax}\left(\frac{(Q+P)(K+P)^T}{\sqrt{d}}\right)V\in\mathbb{R}^{m\times d}
+$$<p>这里</p>$$
+P = [p_1,\dots,p_m]\in\mathbb{R}^{m\times d}， Q= W_QX\in\mathbb{R}^{m\times d}, K=W_KX, V=W_VX\in\mathbb{R}^{n\times d}
+$$<h3 id=整数位置编码><a href=#%e6%95%b4%e6%95%b0%e4%bd%8d%e7%bd%ae%e7%bc%96%e7%a0%81 class=header-anchor></a>整数位置编码</h3><p>一个最简单的想法就是我们使用正整数来标记 token 所在的位置，也就是</p>$$
+PE(i) = [i, \dots, i]=i\mathbf{1}_{d\times 1}\in\mathbb{R}^d,\ i=1,\dots,m
+$$<p>可以看到，这个简单的设计满足性质 1，性质 2，性质 3，性质 4.</p><p>但是，注意到 attention 的输入 $X$ 通常是经过 Layer Normalization 处理过后的，因此其按列符合正态分布，并且均值和方差一般较小。当我们加上整数位置编码之后，其 token 本身的信息就会被污染，也就是信噪比非常低。一个解决方法就是我们对 $PE(i)$ 进行 normalization，即</p>$$
+PE(i)' = \frac{1}{m}PE(i) = \frac{i}{m}\mathbf{1}_{d\times 1}
+$$<p>现在所有的位置编码的值都比较小，但是我们发现新的位置编码不满足性质 2 了，这是因为现在位置编码还和 sequence 长度有关，我们从位置 $p$ 到位置 $p+k$ 不仅取决于 $k$ 还取决于 sequence 长度 $m$</p><h3 id=二进制位置编码><a href=#%e4%ba%8c%e8%bf%9b%e5%88%b6%e4%bd%8d%e7%bd%ae%e7%bc%96%e7%a0%81 class=header-anchor></a>二进制位置编码</h3><p>既然整数位置编码的主要问题是对输入影响太大，我们能否找一个不影响输入的整数位置编码方式呢？ <a class=link href=https://huggingface.co/blog/designing-positional-encoding target=_blank rel=noopener>参考文献1</a> 提出了二进制位置编码，因为每个 token 是 $d$ 维的，因此我们可以使用 $d$ 位二进制来表示 $i$. 比如说，当 $d=3$, $m=4$ 时，我们的位置编码分别为</p>$$
+PE(0) =p_{(000)_2} = [0, 0, 0],\ PE(1) =p_{(001)_2}= [0, 0, 1],\ PE(2) =p_{(010)_2} = [0, 1, 0],\ PE(3) =p_{(011)_2} = [0, 1, 1]
+$$<p>现在，我们二进制位置编码满足性质 1，性质 2. 对于性质 3，由于 $d$ 位二进制的表示范围为 $[0, 2^d-1]$，因此其泛化性受到 $d$ 的影响。</p><p><a class=link href=https://huggingface.co/blog/designing-positional-encoding target=_blank rel=noopener>参考文献1</a> 画出了不同位置的值的变化情况。我们这里也模仿绘制出类似的曲线图</p><p><img src=/jiangyigithub/ai.github.io/p/notes-on-position-encoding/RoPE_binary_position_encoding.png width=1400 height=800 loading=lazy alt="Binary Position Encoding" class=gallery-image data-flex-grow=175 data-flex-basis=420px></p><p>我们发现，二进制位置编码高位，也就是 $PE(i)_{d}$ 的变化很慢，而低位，也就是 $PE(i)_{0}$ 变化很快，</p><p>二进制位置编码解决了整数位置编码的信噪比过低和线性相关性。但是其问题是其对不同位置的 token embedding 产生的影响是不一样的。比如位置 1 和位置 2 的相同的 token embedding 之间的区别是：</p>$$
+(\bm{x}_2 + PE(2)) - (\bm{x}_1 + PE(1)) = (\bm{x}_2-\bm{x}_1)+ [0, 1, -1]
+$$<p>一般来说, $\bm{x}_2-\bm{x}_1$ 比较小，因此使用二进制位置编码的问题是输入位置的微小变化（增加一个 token 或减少一个 token）都会对最终结果产生巨大影响。因此，我们需要想办法解决这个问题。</p><h3 id=sinusoidal><a href=#sinusoidal class=header-anchor></a>Sinusoidal</h3><p>前面提到二进制位置编码的问题是相邻 token 之间变化太大，不够光滑。因此我们想要增加一个光滑性质，也就是说我们希望：</p><ol><li>位置编码值在 $[-1, 1]$ 之间，防止对 token embedding 产生影响</li><li>相邻 token 的位置编码尽可能相近，即 $|PE(k+p)-PE(p)| \leq \delta |k|$, 其中 $\delta>0$ 是一个比较小的数。</li><li>与二进制一样，高位的变化比较慢，低位的变化比较快</li></ol><p>一个想法就是利用三角函数 $\sin$ 或者 $\cos$，三角函数满足前两个性质， 对于第三个性质，我们可以通过控制频率来满足。这样我们得到的位置编码就具有如下形式：</p>$$
+PE(p, i) = \sin\left(\frac{p}{\theta^{i/d}}\right)
+$$<p>其中 $\theta$ 是我们的超参数。</p><p>我们现在来推导一下上面位置编码的线性相关性：</p>$$
+PE(p+k) = \sin\left(\frac{p+k}{\theta^{i/d}}\right)=PE(p)\cos\left(\frac{k}{\theta^{i/d}}\right) + \cos\left(\frac{p}{\theta^{i/d}}\right)\sin\left(\frac{k}{\theta^{i/d}}\right)
+$$<p>我们发现，$\sin$ 位置编码不满足线性相关性。但是出现的 $\cos$ 给了我们启发，也就是我们可以同时使用 $\sin$ 和 $\cos$ 来完成位置编码，这也是原始 transformer 里提出来的 Sinusoidal 位置编码，其形式为：</p>$$
+\begin{aligned}
+PE(p, 2i) &= \sin\left(\frac{p}{\theta^{2i/d}}\right)\\
+PE(p, 2i+1) &= \cos\left(\frac{p}{\theta^{2i/d}}\right)
+\end{aligned}
+$$<p>现在，记 $\omega_i=1/\theta^{2i/d}$, 我们再推导一下线性相关性，就得到：</p>$$
+\begin{aligned}
+\begin{bmatrix}
+PE(p+k, 2i)\\
+PE(p+k, 2i+1)\\
+\end{bmatrix}&=\begin{bmatrix}
+        \sin \omega_i(p+k)\\
+\cos \omega_i(p+k)
+\end{bmatrix}\\
+&=\begin{bmatrix}
+        \sin \omega_i(\omega_ip)\cos(\omega_ik)+\cos w_i(\omega_ip)\sin(\omega_ik)\\
+\cos \omega_i(\omega_ip)\cos(\omega_ik)-\sin w_i(\omega_ip)\sin(\omega_ik)
+\end{bmatrix}\\
+&= \begin{bmatrix}
+        \cos(\omega_ik)& \sin(\omega_ik)\\
+        -\sin(\omega_ik)& \cos(\omega_ik)
+    \end{bmatrix}\begin{bmatrix}
+PE(p, 2i)\\
+PE(p, 2i+1)\\
+\end{bmatrix}
+\end{aligned}
+$$<p>也就是说，Sinusoidal 位置编码满足线性相关性。对于 Sinusoidal 位置编码我们也可以进行可视化：</p><p><img src=/jiangyigithub/ai.github.io/p/notes-on-position-encoding/RoPE_sinusoidal_position_encoding.png width=1400 height=800 loading=lazy alt="Sinusoidal Position Encoding" class=gallery-image data-flex-grow=175 data-flex-basis=420px></p><h2 id=相对位置编码><a href=#%e7%9b%b8%e5%af%b9%e4%bd%8d%e7%bd%ae%e7%bc%96%e7%a0%81 class=header-anchor></a>相对位置编码</h2><p>前面介绍了绝对位置编码，每个位置的位置编码是固定的。但是绝对位置编码的问题是，模型比较难以学习相对位置关系。</p><p>举个例子，我们提到上下文时，通常会使用“上一节”，“上一章”这些表示相对位置关系的词。</p><p>因此，我们希望让模型学习相对位置关系而不是绝对位置关系，因为相对关系更符合我们的认知。</p><h3 id=rope><a href=#rope class=header-anchor></a>RoPE</h3><p>RoPE 由苏剑林老师提出，最早应用于 LLaMA 架构（没有确认），后续被大多数模型所采用。</p><p>之前的 PE 大多数关注于加性位置编码，也就是<strong>假设位置编码的形式为 $\bm{x}+\bm{p}$</strong>, 基于这种假设，已有的工作基本都集中于优化下面的 Q 和 K 的内积</p>$$
+\langle f_q(\bm{x}_q, m), f_k(\bm{x}_k, n) \rangle
+$$<p>这里 $f_q(\bm{x}_q, m)=W_q(\bm{x}_q+\bm{p}_m)$, $f_k(\bm{x}_k, n)=W_k(\bm{x}_k+ \bm{p}_n)$.</p><p>而 RoPE 里面，作者使用了一个不同的假设： <strong>假设内积应该仅包含两者的相对信息</strong>，也就是</p>$$
+\langle f_q(\bm{x}_q, m), f_q(\bm{x}_k, n)\rangle := g(\bm{x}_q,\bm{x}_k, m-n)
+$$<p>这里的 $f$ 和 $g$ 都是未知函数。我们的目标就是从这个公式中推导出一个合适的位置编码出来。</p><p>不失一般性，我们可以假设</p>$$
+f_q(\bm{x}_m,0) = \bm{x}_q,\quad f_q(\bm{x}_n, 0) = \bm{x}_k
+$$<p>这个假设代表初始条件下，我们不对输入做任何改变，也就是不增加位置信息。</p><h2 id=2d-推导><a href=#2d-%e6%8e%a8%e5%af%bc class=header-anchor></a>2D 推导</h2><p>与 RoPE 一样，我们直接使用复平面来进行推导。</p><p>我们假设 $d=2$, 注意到二维平面上的每个点都可以表示为如下形式</p>$$
+\bm{z} = (x,y) = re^{i\theta}
+$$<p>其中 ($\mathrm{atan2}$ 定义参考 <a class=link href=https://en.wikipedia.org/wiki/Polar_coordinate_system target=_blank rel=noopener>维基百科</a>)</p>$$
+r = \|\bm{z}\|_2 = \sqrt{x^2+y^2}\in\mathbb{R},\quad \theta = \mathrm{atan2}(y, x)\in\mathbb{R},
+$$<p>现在，对于三个向量 $f_q(\bm{x}_q, m)$, $f_q(\bm{x}_k, n)$, $g(\bm{x}_q,\bm{x}_k, m-n)$ 我们可以写出其极坐标形式：</p>$$
+\begin{aligned}
+f_q(\bm{x}_q,m) &:= r_q(\bm{x}_q,m)e^{i\theta_q(\bm{x}_q,m)}\\
+f_k(\bm{x}_k, n) &:= r_k(\bm{x}_k, n)e^{i\theta_k(\bm{x}_k, n)}\\
+g(\bm{x}_q,\bm{x}_k, m-n) &:= r_g(\bm{x}_q,\bm{x}_k, m-n)e^{i\theta_g(\bm{x}_q,\bm{x}_k, m-n)}
+\end{aligned}
+$$<p>我们计算内积并比较同类项得到：</p>$$
+\begin{aligned}
+r_g(\bm{x}_q,\bm{x}_k, m-n) &:= r_q(\bm{x}_q,m)r_k(\bm{x}_k, n)\\
+\theta_g(\bm{x}_q,\bm{x}_k, m-n) &:= \theta_q(\bm{x}_q,m)-\theta_k(\bm{x}_k, n)
+\end{aligned}\tag{3}
+$$<p>我们接下来分别推导 $r_g(\bm{x}_q,\bm{x}_k, m-n)$ 和 $\theta_g(\bm{x}_q,\bm{x}_k, m-n)$ 的形式</p><h3 id=r_gbmx_qbmx_k-m-n><a href=#r_gbmx_qbmx_k-m-n class=header-anchor></a>$r_g(\bm{x}_q,\bm{x}_k, m-n)$</h3><p>我们令 $m=n=0$ 可以得到初始条件</p>$$
+r_g(\bm{x}_q,\bm{x}_k, 0) = r_q(\bm{x}_q,0)r_k(\bm{x}_k, 0)=\|\bm{q}\|_2\|\bm{k}\|_2
+$$<p>我们再令 $n=0$,得到</p>$$
+r_g(\bm{x}_q,\bm{x}_k, m) = r_q(\bm{x}_q,m)r_k(\bm{x}_k, 0)=r_q(\bm{x}_q,m)\|\bm{k}\|_2=\frac{r_g(\bm{x}_q,\bm{x}_k, m-n)}{r_k(\bm{x}_k, n)}\|\bm{k}\|_2
+$$<p>这里最后一个等式带入了原始等式 (3)，注意到左侧与 $n$ 无关，因此右侧我们选取 $n=1$, 得到</p>$$
+r_g(\bm{x}_q,\bm{x}_k, m) = \frac{r_g(\bm{x}_q,\bm{x}_k, m-1)}{r_k(\bm{x}_k, 1)}\|\bm{k}\|_2 =\cdots= r_g(\bm{x}_q,\bm{x}_k, 0)\left(\frac{\|\bm{k}\|_2 }{r_k(\bm{x}_k, 1)}\right)^{m+1}
+$$<p>令 $m=0$ 我们有</p>$$
+r_k(\bm{x}_k, 1) = \|\bm{k}\|_2.
+$$<p>因此我们最终的表达式为：</p>$$
+r_g(\bm{x}_q,\bm{x}_k, m) = r_g(\bm{x}_q,\bm{x}_k, 0) = \|\bm{q}\|_2\|\bm{k}\|_2.
+$$<p>并且，通过分别设置 $m=0$ 以及 $n=0$ 我们还可以得到</p>$$
+r_q(\bm{x}_q,m) = \|\bm{q}\|_2,\quad r_k(\bm{x}_k, n) = \|\bm{k}\|_2
+$$<h3 id=theta_gbmx_qbmx_k-m-n><a href=#theta_gbmx_qbmx_k-m-n class=header-anchor></a>$\theta_g(\bm{x}_q,\bm{x}_k, m-n)$</h3><p>令 $m=n=0$, 我们得到初始条件</p>$$
+\theta_g(\bm{x}_q,\bm{x}_k, 0) = \theta_q(\bm{x}_q,0)-\theta_k(\bm{x}_k, 0)=\theta_q-\theta_k
+$$<p>令 $n=1$, 我们有</p>$$
+\begin{aligned}
+\theta_g(\bm{x}_q,\bm{x}_k, m-1) &= \theta_q(\bm{x}_q,m)-\theta_k(\bm{x}_k, 1)\\
+&=\theta_g(\bm{x}_q,\bm{x}_k, m-n) + \theta_k(\bm{x}_k, n)-\theta_k(\bm{x}_k, 1)
+\end{aligned}
+$$<p>这里我们带入了公式 (3)，注意到公式左边与 $n$ 无关，因此在公式右侧我们令 $n=0$, 得到</p>$$
+\theta_g(\bm{x}_q,\bm{x}_k, m-1) = \theta_g(\bm{x}_q,\bm{x}_k, m)+ \theta_k(\bm{x}_k, 0)-\theta_k(\bm{x}_k, 1)
+$$<p>分别令 $m=1,2,\dots$ 并相加这些等式，我们得到</p>$$
+\theta_g(\bm{x}_q,\bm{x}_k, 0) = \theta_g(\bm{x}_q,\bm{x}_k, m) + m(\theta_k(\bm{x}_k, 0)-\theta_k(\bm{x}_k, 1))
+$$<p>即</p>$$
+\theta_g(\bm{x}_q,\bm{x}_k, m) = m(\theta_k(\bm{x}_k, 1)-\theta_k(\bm{x}_k, 0))+(\theta_q-\theta_k)\tag{4}
+$$<p>注意到</p>$$
+\theta_g(\bm{x}_q,\bm{x}_k, m) = \theta_q(\bm{x}_q,m)-\theta_k(\bm{x}_k, 0)=\theta_q(\bm{x}_q,m)-\theta_k
+$$<p>带入上式我们就得到</p>$$
+\theta_q(\bm{x}_q,m) = m(\theta_k(\bm{x}_k, 1)-\theta_k(\bm{x}_k, 0))+\theta_q
+$$<p>在 (4) 式中再令 $m=m-n$，并带入 $\theta_q(\bm{x}_q,m)$ 就有</p>$$
+\theta_k(\bm{x}_k,n) = n(\theta_k(\bm{x}_k, 1)-\theta_k(\bm{x}_k, 0))+\theta_k
+$$<h3 id=汇总><a href=#%e6%b1%87%e6%80%bb class=header-anchor></a>汇总</h3><p>最后，我们将以上结果放在一起，就得到</p>$$
+f_q(\bm{x}_q,m) = \bm{q}e^{im\theta}, f_v(\bm{x}_k,m) = \bm{k}e^{in\theta}
+$$<p>这里 $\theta=\theta_k(\bm{x}_k, 1)-\theta_k(\bm{x}_k, 0)$ 是一个超参数，用于控制频率。</p><p>我们记</p>$$
+R_{\theta,m} = \begin{bmatrix}
+\cos m\theta & -\sin m\theta\\
+    \sin m\theta & \cos m\theta
+\end{bmatrix}
+$$<p>则我们有：</p>$$
+f_q(\bm{x}_q,m) = R_{\theta,m}\bm{q}, f_v(\bm{x}_k,m) = R_{\theta,n}\bm{k}.
+$$<p>并且</p>$$
+\langle f_q(\bm{x}_q,m), f_v(\bm{x}_k,m)\rangle = \bm{q}^TR_{\theta,m-n}\bm{k} \tag{5}
+$$<h3 id=多维扩展><a href=#%e5%a4%9a%e7%bb%b4%e6%89%a9%e5%b1%95 class=header-anchor></a>多维扩展</h3><p>上面是 2D 的情况，对于多维情况，苏剑林老师通过将两个元素组对，然后分别进行处理，得到了多维的情形：</p>$$
+R_{\theta,m}^d = \begin{bmatrix}
+R_{\theta_1,m} &  & && & \\
+    & & R_{\theta_2,m} &  &   & \\
+    &&&& \ddots & \\
+  &&&& & R_{\theta_{d/2},m}
+\end{bmatrix}\in\mathbb{R}^{d\times d}
+$$<p>我们可以验证公式 (5) 仍然是成立的。</p><h2 id=rope-的远程衰减性质><a href=#rope-%e7%9a%84%e8%bf%9c%e7%a8%8b%e8%a1%b0%e5%87%8f%e6%80%a7%e8%b4%a8 class=header-anchor></a>RoPE 的远程衰减性质</h2><p>我们接下来看一下结果与相对距离 $m-n$ 之间的关系， 注意到</p>$$
+\langle f_q(\bm{x}_q,m), f_v(\bm{x}_k,m)\rangle = \bm{q}^TR_{\theta,m-n}\bm{k} = \sum_{i=1}^{d/2} \bm{q}_i^TR_{\theta, m-n}\bm{k}_i
+$$<p>这里 $\bm{q}_i=[q_{2i},q_{2i+1}]^T$, $\bm{k}_i=[k_{2i},k_{2i+1}]^T$ 分别是对应的 pair，我们考虑其中一个分量，不妨假设 $\|\bm{q}\|_2=\|\bm{k}\|_2=1$, 我们有</p>$$
+\begin{aligned}
+\bm{q}_i^TR_{\theta, m-n}\bm{k}_i
+&\leq \bm{q}_i^TR_{\theta, m-n}\bm{q}_i\\
+&= \bm{q}_i^T\left(\frac{R_{\theta, m-n}+R_{\theta, m-n}^T}{2}\right)\bm{q}_i\\
+&\leq \lambda_{\max}\left(\frac{R_{\theta, m-n}+R_{\theta, m-n}^T}{2}\right) \\
+&= \cos (m-n)\theta_i
+\end{aligned}
+$$<p>其中，第一个不等式是因为 两个向量相等时其内积最大，第二个不等式是由于二次型最大值为矩阵的特征值。</p><p>这样我们就有</p>$$
+\langle f_q(\bm{x}_q,m), f_v(\bm{x}_k,m)\rangle \leq \sum_{i=1}^{d/2}\cos (m-n)\theta_i.
+$$<p>我们可以简单画出对应的曲线：</p><p><img src=/jiangyigithub/ai.github.io/p/notes-on-position-encoding/RoPE_long_term_decay.png width=1200 height=600 loading=lazy alt="Long term decay of RoPE" class=gallery-image data-flex-grow=200 data-flex-basis=480px></p><p>这里针对不同的配置，结果也会略微不同，具体分析可以参加知乎回答 <a class=link href=https://zhuanlan.zhihu.com/p/705492804 target=_blank rel=noopener>RoPE的远距离衰减</a></p><h2 id=rope-代码实现与理解><a href=#rope-%e4%bb%a3%e7%a0%81%e5%ae%9e%e7%8e%b0%e4%b8%8e%e7%90%86%e8%a7%a3 class=header-anchor></a>RoPE 代码实现与理解</h2><h3 id=naive-实现><a href=#naive-%e5%ae%9e%e7%8e%b0 class=header-anchor></a>Naive 实现</h3><p>我们接下来看一下如何实现 RoPE</p>$$
+\Theta_m\bm{x}=\begin{bmatrix}
+\cos m\theta_0 & -\sin m\theta_0 & &&\cdots &\cdots &\cdots \\
+    \sin m\theta_0 & \cos m\theta_0 & &&\cdots &\cdots &\cdots\\
+    & & \cos m\theta_1 & -\sin m\theta_1 & \cdots  &\cdots &\cdots\\
+    & & \sin m\theta_1 & \cos m\theta_1 & \cdots &\cdots &\cdots \\
+    &&&& \ddots &\vdots &\vdots\\
+    &&&& & \cos m\theta_{d/2} & -\sin m\theta_{d/2}\\
+&&&& & \sin m\theta_{d/2} & \cos m\theta_{d/2}
+\end{bmatrix}\begin{bmatrix}
+x_1\\
+x_2\\
+\vdots \\
+x_d
+\end{bmatrix}
+$$<p>在实现的时候，我们一般根据 $\sin$ 和 $\cos$ 进行分组，也就是</p>$$
+\Theta_m\bm{x}=\begin{bmatrix}
+\cos m\theta_0\\
+\cos m\theta_0\\
+\vdots\\
+\cos m\theta_{d/2}\\
+\cos m\theta_{d/2}\\
+\end{bmatrix}\odot \begin{bmatrix}
+x1\\
+x2\\
+\vdots\\
+x_{d-1}\\
+x_d\\
+\end{bmatrix} + \begin{bmatrix}
+\sin m\theta_0\\
+\sin m\theta_0\\
+\vdots\\
+\sin m\theta_{d/2}\\
+\sin m\theta_{d/2}\\
+\end{bmatrix}\odot
+\begin{bmatrix}
+-\ x_2\\
+x_1\\
+\vdots\\
+-x_d\\
+x_{d-1}\\
+\end{bmatrix}
+$$<p>我们通常按照奇偶 index 来分别计算，然后通过重排序来得到最终的结果，实现代码如下：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl><span class=k>def</span> <span class=nf>apply_rotary_pos_emb</span><span class=p>(</span><span class=n>x</span><span class=p>:</span> <span class=n>torch</span><span class=o>.</span><span class=n>Tensor</span><span class=p>,</span> <span class=n>sin</span><span class=p>:</span> <span class=n>torch</span><span class=o>.</span><span class=n>Tensor</span><span class=p>,</span> <span class=n>cos</span><span class=p>:</span> <span class=n>torch</span><span class=o>.</span><span class=n>Tensor</span><span class=p>)</span> <span class=o>-&gt;</span> <span class=n>torch</span><span class=o>.</span><span class=n>Tensor</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>    <span class=n>x_even</span> <span class=o>=</span> <span class=n>x</span><span class=p>[</span><span class=o>...</span><span class=p>,</span> <span class=p>::</span><span class=mi>2</span><span class=p>]</span>  <span class=c1># (seq_len, d_k_half)</span>
+</span></span><span class=line><span class=cl>    <span class=n>x_odd</span> <span class=o>=</span> <span class=n>x</span><span class=p>[</span><span class=o>...</span><span class=p>,</span> <span class=mi>1</span><span class=p>::</span><span class=mi>2</span><span class=p>]</span>  <span class=c1># (seq_len, d_k_half)</span>
+</span></span><span class=line><span class=cl>    <span class=n>odds</span> <span class=o>=</span> <span class=n>cos</span> <span class=o>*</span> <span class=n>x_even</span> <span class=o>-</span> <span class=n>sin</span> <span class=o>*</span> <span class=n>x_odd</span>  <span class=c1># (...,seq_len, d_k_half)</span>
+</span></span><span class=line><span class=cl>    <span class=n>evens</span> <span class=o>=</span> <span class=n>sin</span> <span class=o>*</span> <span class=n>x_even</span> <span class=o>+</span> <span class=n>cos</span> <span class=o>*</span> <span class=n>x_odd</span>  <span class=c1># (...,seq_len, d_k_half)</span>
+</span></span><span class=line><span class=cl>    <span class=n>stacked</span> <span class=o>=</span> <span class=n>torch</span><span class=o>.</span><span class=n>stack</span><span class=p>((</span><span class=n>odds</span><span class=p>,</span> <span class=n>evens</span><span class=p>),</span> <span class=o>-</span><span class=mi>2</span><span class=p>)</span>  <span class=c1># (...,seq_len, 2, d_k_half)</span>
+</span></span><span class=line><span class=cl>    <span class=n>stacked_trans</span> <span class=o>=</span> <span class=n>rearrange</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>        <span class=n>stacked</span><span class=p>,</span> <span class=s2>&#34;... seq_len double d_k_half -&gt; ... seq_len d_k_half double&#34;</span>
+</span></span><span class=line><span class=cl>    <span class=p>)</span>  <span class=c1># (...,seq_len, d_k_half, 2)</span>
+</span></span><span class=line><span class=cl>    <span class=n>out</span> <span class=o>=</span> <span class=n>rearrange</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>        <span class=n>stacked_trans</span><span class=p>,</span> <span class=s2>&#34;... seq_len d_k_half double -&gt; ... seq_len (d_k_half double)&#34;</span>
+</span></span><span class=line><span class=cl>    <span class=p>)</span>  <span class=c1># (..., seq_len, d_k)</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>out</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=llama-实现><a href=#llama-%e5%ae%9e%e7%8e%b0 class=header-anchor></a>LLaMA 实现</h2><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl><span class=k>def</span> <span class=nf>precompute_freqs_cis</span><span class=p>(</span><span class=n>dim</span><span class=p>:</span> <span class=nb>int</span><span class=p>,</span> <span class=n>end</span><span class=p>:</span> <span class=nb>int</span><span class=p>,</span> <span class=n>theta</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>10000.0</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=n>freqs</span> <span class=o>=</span> <span class=mf>1.0</span> <span class=o>/</span> <span class=p>(</span><span class=n>theta</span> <span class=o>**</span> <span class=p>(</span><span class=n>torch</span><span class=o>.</span><span class=n>arange</span><span class=p>(</span><span class=mi>0</span><span class=p>,</span> <span class=n>dim</span><span class=p>,</span> <span class=mi>2</span><span class=p>)[:</span> <span class=p>(</span><span class=n>dim</span> <span class=o>//</span> <span class=mi>2</span><span class=p>)]</span><span class=o>.</span><span class=n>float</span><span class=p>()</span> <span class=o>/</span> <span class=n>dim</span><span class=p>))</span>
+</span></span><span class=line><span class=cl>    <span class=n>t</span> <span class=o>=</span> <span class=n>torch</span><span class=o>.</span><span class=n>arange</span><span class=p>(</span><span class=n>end</span><span class=p>,</span> <span class=n>device</span><span class=o>=</span><span class=n>freqs</span><span class=o>.</span><span class=n>device</span><span class=p>)</span>  <span class=c1># type: ignore</span>
+</span></span><span class=line><span class=cl>    <span class=n>freqs</span> <span class=o>=</span> <span class=n>torch</span><span class=o>.</span><span class=n>outer</span><span class=p>(</span><span class=n>t</span><span class=p>,</span> <span class=n>freqs</span><span class=p>)</span><span class=o>.</span><span class=n>float</span><span class=p>()</span>  <span class=c1># type: ignore</span>
+</span></span><span class=line><span class=cl>    <span class=n>freqs_cis</span> <span class=o>=</span> <span class=n>torch</span><span class=o>.</span><span class=n>polar</span><span class=p>(</span><span class=n>torch</span><span class=o>.</span><span class=n>ones_like</span><span class=p>(</span><span class=n>freqs</span><span class=p>),</span> <span class=n>freqs</span><span class=p>)</span>  <span class=c1># complex64</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>freqs_cis</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>def</span> <span class=nf>reshape_for_broadcast</span><span class=p>(</span><span class=n>freqs_cis</span><span class=p>:</span> <span class=n>torch</span><span class=o>.</span><span class=n>Tensor</span><span class=p>,</span> <span class=n>x</span><span class=p>:</span> <span class=n>torch</span><span class=o>.</span><span class=n>Tensor</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=n>ndim</span> <span class=o>=</span> <span class=n>x</span><span class=o>.</span><span class=n>ndim</span>
+</span></span><span class=line><span class=cl>    <span class=k>assert</span> <span class=mi>0</span> <span class=o>&lt;=</span> <span class=mi>1</span> <span class=o>&lt;</span> <span class=n>ndim</span>
+</span></span><span class=line><span class=cl>    <span class=k>assert</span> <span class=n>freqs_cis</span><span class=o>.</span><span class=n>shape</span> <span class=o>==</span> <span class=p>(</span><span class=n>x</span><span class=o>.</span><span class=n>shape</span><span class=p>[</span><span class=mi>1</span><span class=p>],</span> <span class=n>x</span><span class=o>.</span><span class=n>shape</span><span class=p>[</span><span class=o>-</span><span class=mi>1</span><span class=p>])</span>
+</span></span><span class=line><span class=cl>    <span class=n>shape</span> <span class=o>=</span> <span class=p>[</span><span class=n>d</span> <span class=k>if</span> <span class=n>i</span> <span class=o>==</span> <span class=mi>1</span> <span class=ow>or</span> <span class=n>i</span> <span class=o>==</span> <span class=n>ndim</span> <span class=o>-</span> <span class=mi>1</span> <span class=k>else</span> <span class=mi>1</span> <span class=k>for</span> <span class=n>i</span><span class=p>,</span> <span class=n>d</span> <span class=ow>in</span> <span class=nb>enumerate</span><span class=p>(</span><span class=n>x</span><span class=o>.</span><span class=n>shape</span><span class=p>)]</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>freqs_cis</span><span class=o>.</span><span class=n>view</span><span class=p>(</span><span class=o>*</span><span class=n>shape</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>def</span> <span class=nf>apply_rotary_emb</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>    <span class=n>xq</span><span class=p>:</span> <span class=n>torch</span><span class=o>.</span><span class=n>Tensor</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>    <span class=n>xk</span><span class=p>:</span> <span class=n>torch</span><span class=o>.</span><span class=n>Tensor</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>    <span class=n>freqs_cis</span><span class=p>:</span> <span class=n>torch</span><span class=o>.</span><span class=n>Tensor</span><span class=p>,</span>
+</span></span><span class=line><span class=cl><span class=p>)</span> <span class=o>-&gt;</span> <span class=n>Tuple</span><span class=p>[</span><span class=n>torch</span><span class=o>.</span><span class=n>Tensor</span><span class=p>,</span> <span class=n>torch</span><span class=o>.</span><span class=n>Tensor</span><span class=p>]:</span>
+</span></span><span class=line><span class=cl>    <span class=n>xq_</span> <span class=o>=</span> <span class=n>torch</span><span class=o>.</span><span class=n>view_as_complex</span><span class=p>(</span><span class=n>xq</span><span class=o>.</span><span class=n>float</span><span class=p>()</span><span class=o>.</span><span class=n>reshape</span><span class=p>(</span><span class=o>*</span><span class=n>xq</span><span class=o>.</span><span class=n>shape</span><span class=p>[:</span><span class=o>-</span><span class=mi>1</span><span class=p>],</span> <span class=o>-</span><span class=mi>1</span><span class=p>,</span> <span class=mi>2</span><span class=p>))</span>
+</span></span><span class=line><span class=cl>    <span class=n>xk_</span> <span class=o>=</span> <span class=n>torch</span><span class=o>.</span><span class=n>view_as_complex</span><span class=p>(</span><span class=n>xk</span><span class=o>.</span><span class=n>float</span><span class=p>()</span><span class=o>.</span><span class=n>reshape</span><span class=p>(</span><span class=o>*</span><span class=n>xk</span><span class=o>.</span><span class=n>shape</span><span class=p>[:</span><span class=o>-</span><span class=mi>1</span><span class=p>],</span> <span class=o>-</span><span class=mi>1</span><span class=p>,</span> <span class=mi>2</span><span class=p>))</span>
+</span></span><span class=line><span class=cl>    <span class=n>freqs_cis</span> <span class=o>=</span> <span class=n>reshape_for_broadcast</span><span class=p>(</span><span class=n>freqs_cis</span><span class=p>,</span> <span class=n>xq_</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=n>xq_out</span> <span class=o>=</span> <span class=n>torch</span><span class=o>.</span><span class=n>view_as_real</span><span class=p>(</span><span class=n>xq_</span> <span class=o>*</span> <span class=n>freqs_cis</span><span class=p>)</span><span class=o>.</span><span class=n>flatten</span><span class=p>(</span><span class=mi>3</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=n>xk_out</span> <span class=o>=</span> <span class=n>torch</span><span class=o>.</span><span class=n>view_as_real</span><span class=p>(</span><span class=n>xk_</span> <span class=o>*</span> <span class=n>freqs_cis</span><span class=p>)</span><span class=o>.</span><span class=n>flatten</span><span class=p>(</span><span class=mi>3</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>xq_out</span><span class=o>.</span><span class=n>type_as</span><span class=p>(</span><span class=n>xq</span><span class=p>),</span> <span class=n>xk_out</span><span class=o>.</span><span class=n>type_as</span><span class=p>(</span><span class=n>xk</span><span class=p>)</span>
+</span></span></code></pre></td></tr></table></div></div><p>在 LLaMA 中，我们首先还是计算 $\theta_i$, 然后在计算的过程中，我们将 $(x_i,x_{i+1})$ 视作一个复数，然后 乘以 $\exp(im\theta)$, 最后再取实部得到最终的结果</p><h2 id=通用实现><a href=#%e9%80%9a%e7%94%a8%e5%ae%9e%e7%8e%b0 class=header-anchor></a>通用实现</h2><p>实际上，naive 版本的实现与现在大语言模型所采用的实现并不一致，我们先看一下现有的大语言模型的 RoPE 实现，这里我们将 <a class=link href=https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py target=_blank rel=noopener>LLaMA的transformer代码</a> 放在下面，</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl><span class=k>def</span> <span class=nf>rotate_half</span><span class=p>(</span><span class=n>x</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=s2>&#34;&#34;&#34;Rotates half the hidden dims of the input.&#34;&#34;&#34;</span>
+</span></span><span class=line><span class=cl>    <span class=n>x1</span> <span class=o>=</span> <span class=n>x</span><span class=p>[</span><span class=o>...</span><span class=p>,</span> <span class=p>:</span> <span class=n>x</span><span class=o>.</span><span class=n>shape</span><span class=p>[</span><span class=o>-</span><span class=mi>1</span><span class=p>]</span> <span class=o>//</span> <span class=mi>2</span><span class=p>]</span>
+</span></span><span class=line><span class=cl>    <span class=n>x2</span> <span class=o>=</span> <span class=n>x</span><span class=p>[</span><span class=o>...</span><span class=p>,</span> <span class=n>x</span><span class=o>.</span><span class=n>shape</span><span class=p>[</span><span class=o>-</span><span class=mi>1</span><span class=p>]</span> <span class=o>//</span> <span class=mi>2</span> <span class=p>:]</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>torch</span><span class=o>.</span><span class=n>cat</span><span class=p>((</span><span class=o>-</span><span class=n>x2</span><span class=p>,</span> <span class=n>x1</span><span class=p>),</span> <span class=n>dim</span><span class=o>=-</span><span class=mi>1</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>def</span> <span class=nf>apply_rotary_pos_emb</span><span class=p>(</span><span class=n>q</span><span class=p>,</span> <span class=n>k</span><span class=p>,</span> <span class=n>cos</span><span class=p>,</span> <span class=n>sin</span><span class=p>,</span> <span class=n>position_ids</span><span class=o>=</span><span class=kc>None</span><span class=p>,</span> <span class=n>unsqueeze_dim</span><span class=o>=</span><span class=mi>1</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=n>cos</span> <span class=o>=</span> <span class=n>cos</span><span class=o>.</span><span class=n>unsqueeze</span><span class=p>(</span><span class=n>unsqueeze_dim</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=n>sin</span> <span class=o>=</span> <span class=n>sin</span><span class=o>.</span><span class=n>unsqueeze</span><span class=p>(</span><span class=n>unsqueeze_dim</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=n>q_embed</span> <span class=o>=</span> <span class=p>(</span><span class=n>q</span> <span class=o>*</span> <span class=n>cos</span><span class=p>)</span> <span class=o>+</span> <span class=p>(</span><span class=n>rotate_half</span><span class=p>(</span><span class=n>q</span><span class=p>)</span> <span class=o>*</span> <span class=n>sin</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=n>k_embed</span> <span class=o>=</span> <span class=p>(</span><span class=n>k</span> <span class=o>*</span> <span class=n>cos</span><span class=p>)</span> <span class=o>+</span> <span class=p>(</span><span class=n>rotate_half</span><span class=p>(</span><span class=n>k</span><span class=p>)</span> <span class=o>*</span> <span class=n>sin</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>q_embed</span><span class=p>,</span> <span class=n>k_embed</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>class</span> <span class=nc>LlamaRotaryEmbedding</span><span class=p>(</span><span class=n>torch</span><span class=o>.</span><span class=n>nn</span><span class=o>.</span><span class=n>Module</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=k>def</span> <span class=fm>__init__</span><span class=p>(</span><span class=bp>self</span><span class=p>,</span> <span class=n>dim</span><span class=p>,</span> <span class=n>max_position_embeddings</span><span class=o>=</span><span class=mi>2048</span><span class=p>,</span> <span class=n>base</span><span class=o>=</span><span class=mi>10000</span><span class=p>,</span> <span class=n>device</span><span class=o>=</span><span class=kc>None</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>        <span class=nb>super</span><span class=p>()</span><span class=o>.</span><span class=fm>__init__</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=bp>self</span><span class=o>.</span><span class=n>dim</span> <span class=o>=</span> <span class=n>dim</span>
+</span></span><span class=line><span class=cl>        <span class=bp>self</span><span class=o>.</span><span class=n>max_position_embeddings</span> <span class=o>=</span> <span class=n>max_position_embeddings</span>
+</span></span><span class=line><span class=cl>        <span class=bp>self</span><span class=o>.</span><span class=n>base</span> <span class=o>=</span> <span class=n>base</span>
+</span></span><span class=line><span class=cl>        <span class=n>inv_freq</span> <span class=o>=</span> <span class=mf>1.0</span> <span class=o>/</span> <span class=p>(</span><span class=bp>self</span><span class=o>.</span><span class=n>base</span> <span class=o>**</span> <span class=p>(</span><span class=n>torch</span><span class=o>.</span><span class=n>arange</span><span class=p>(</span><span class=mi>0</span><span class=p>,</span> <span class=bp>self</span><span class=o>.</span><span class=n>dim</span><span class=p>,</span> <span class=mi>2</span><span class=p>)</span><span class=o>.</span><span class=n>float</span><span class=p>()</span><span class=o>.</span><span class=n>to</span><span class=p>(</span><span class=n>device</span><span class=p>)</span> <span class=o>/</span> <span class=bp>self</span><span class=o>.</span><span class=n>dim</span><span class=p>))</span>
+</span></span><span class=line><span class=cl>        <span class=bp>self</span><span class=o>.</span><span class=n>register_buffer</span><span class=p>(</span><span class=s2>&#34;inv_freq&#34;</span><span class=p>,</span> <span class=n>inv_freq</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=bp>self</span><span class=o>.</span><span class=n>max_seq_len_cached</span> <span class=o>=</span> <span class=n>seq_len</span>
+</span></span><span class=line><span class=cl>        <span class=n>t</span> <span class=o>=</span> <span class=n>torch</span><span class=o>.</span><span class=n>arange</span><span class=p>(</span><span class=bp>self</span><span class=o>.</span><span class=n>max_seq_len_cached</span><span class=p>,</span> <span class=n>device</span><span class=o>=</span><span class=n>device</span><span class=p>,</span> <span class=n>dtype</span><span class=o>=</span><span class=bp>self</span><span class=o>.</span><span class=n>inv_freq</span><span class=o>.</span><span class=n>dtype</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=n>freqs</span> <span class=o>=</span> <span class=n>torch</span><span class=o>.</span><span class=n>einsum</span><span class=p>(</span><span class=s2>&#34;i,j-&gt;ij&#34;</span><span class=p>,</span> <span class=n>t</span><span class=p>,</span> <span class=bp>self</span><span class=o>.</span><span class=n>inv_freq</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>        <span class=c1># Different from paper, but it uses a different permutation in order to obtain the same calculation</span>
+</span></span><span class=line><span class=cl>        <span class=n>emb</span> <span class=o>=</span> <span class=n>torch</span><span class=o>.</span><span class=n>cat</span><span class=p>((</span><span class=n>freqs</span><span class=p>,</span> <span class=n>freqs</span><span class=p>),</span> <span class=n>dim</span><span class=o>=-</span><span class=mi>1</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>        <span class=bp>self</span><span class=o>.</span><span class=n>register_buffer</span><span class=p>(</span><span class=s2>&#34;cos_cached&#34;</span><span class=p>,</span> <span class=n>emb</span><span class=o>.</span><span class=n>cos</span><span class=p>()[</span><span class=kc>None</span><span class=p>,</span> <span class=kc>None</span><span class=p>,</span> <span class=p>:,</span> <span class=p>:]</span><span class=o>.</span><span class=n>to</span><span class=p>(</span><span class=n>dtype</span><span class=p>),</span> <span class=n>persistent</span><span class=o>=</span><span class=kc>False</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>        <span class=bp>self</span><span class=o>.</span><span class=n>register_buffer</span><span class=p>(</span><span class=s2>&#34;sin_cached&#34;</span><span class=p>,</span> <span class=n>emb</span><span class=o>.</span><span class=n>sin</span><span class=p>()[</span><span class=kc>None</span><span class=p>,</span> <span class=kc>None</span><span class=p>,</span> <span class=p>:,</span> <span class=p>:]</span><span class=o>.</span><span class=n>to</span><span class=p>(</span><span class=n>dtype</span><span class=p>),</span> <span class=n>persistent</span><span class=o>=</span><span class=kc>False</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=k>def</span> <span class=nf>forward</span><span class=p>(</span><span class=bp>self</span><span class=p>,</span> <span class=n>x</span><span class=p>,</span> <span class=n>seq_len</span><span class=o>=</span><span class=kc>None</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>        <span class=c1># x: [bs, num_attention_heads, seq_len, head_size]</span>
+</span></span><span class=line><span class=cl>        <span class=k>if</span> <span class=n>seq_len</span> <span class=o>&gt;</span> <span class=bp>self</span><span class=o>.</span><span class=n>max_seq_len_cached</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=bp>self</span><span class=o>.</span><span class=n>_set_cos_sin_cache</span><span class=p>(</span><span class=n>seq_len</span><span class=o>=</span><span class=n>seq_len</span><span class=p>,</span> <span class=n>device</span><span class=o>=</span><span class=n>x</span><span class=o>.</span><span class=n>device</span><span class=p>,</span> <span class=n>dtype</span><span class=o>=</span><span class=n>x</span><span class=o>.</span><span class=n>dtype</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>        <span class=k>return</span> <span class=p>(</span>
+</span></span><span class=line><span class=cl>            <span class=bp>self</span><span class=o>.</span><span class=n>cos_cached</span><span class=p>[:,</span> <span class=p>:,</span> <span class=p>:</span><span class=n>seq_len</span><span class=p>,</span> <span class=o>...</span><span class=p>]</span><span class=o>.</span><span class=n>to</span><span class=p>(</span><span class=n>dtype</span><span class=o>=</span><span class=n>x</span><span class=o>.</span><span class=n>dtype</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>            <span class=bp>self</span><span class=o>.</span><span class=n>sin_cached</span><span class=p>[:,</span> <span class=p>:,</span> <span class=p>:</span><span class=n>seq_len</span><span class=p>,</span> <span class=o>...</span><span class=p>]</span><span class=o>.</span><span class=n>to</span><span class=p>(</span><span class=n>dtype</span><span class=o>=</span><span class=n>x</span><span class=o>.</span><span class=n>dtype</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>        <span class=p>)</span>
+</span></span></code></pre></td></tr></table></div></div><p>我们将上述代码翻译成公式，现在我们的 $\Theta$ 变成了 (对应 <code>emb = torch.cat((freqs, freqs), dim=-1)</code>)</p>$$
+\Theta = [\theta_0,\dots,\theta_{d/2},\theta_0,\dots,\theta_{d/2}]^T
+$$<p>实际上 $\sin$ 部分对应的向量现在变成了</p>$$
+[-x_{d/2+1},
+-x_{d/2+2},
+\dots,
+-x_{d},
+x_1,
+\dots,
+x_{d/2}]^T
+$$<p>我们带回到原始公式，可以得到对应的 RoPE 操作变成了</p>$$
+R_{\theta,m}^d=\begin{bmatrix}
+\cos m\theta_0 &  & &  -\sin m\theta_0 & \cdots &\cdots &\cdots \\
+    & & \cos m\theta_1 & &-\sin m\theta_1 & \cdots  &\cdots \\
+& & & \cos m\theta_2 & &-\sin m\theta_2 & \cdots  \\
+    \vdots&\vdots&\vdots&\vdots& \vdots &\vdots &\vdots\\
+ & & &  &\cos m\theta_{d/2 - 1} & & -\sin m\theta_{d/2 - 1} \\
+\sin m\theta_0 && & \cos m\theta_0  &&\cdots &\cdots \\
+& & \sin m\theta_1 & &\cos m\theta_1 & \cdots &\cdots  \\
+    & & & \sin m\theta_2 & &\cos m\theta_2 & \cdots  \\
+    \vdots&\vdots&\vdots&\vdots& \vdots &\vdots &\vdots\\
+    &&&& \sin m\theta_{d/2 - 1}&  & \cos m\theta_{d/2 - 1}
+\end{bmatrix}
+$$<p>这列每一行的 $\cos$ 和 $\sin$ 都相差了 $d/2$ 列.</p><p>因此，这里的区别在于，原始 RoPE 计算的 pair 为 $(x_{i}, x_{i+1})$, 而 LLaMA 里的 RoPE 计算的 pair 为 $(x_{i}, x_{i+d/2})$. transformers library 使用这种方式，可以减少计算量，提高整体的计算效率。</p><p>为了适应使用 LLaMA 中实现的 RoPE 的，Huggingface 对权重进行了转换，使得基于原始 RoPE 实现的模型也可以获得加速.</p><p>假设 $d=8$，原始 RoPE 的 pair 为 <code>[(q_0, q_1), (q_2, q_3), (q_4, q_5), (q_6, q_7)]</code>, 新的 pair 为 <code>[(q_0, q_4), (q_1, q_5), (q_2, q_6), (q_3, q_7)]</code>. 我们希望对 index 进行 remap，我们发现一个满足条件的 permutation 为 <code>[0, 2, 4, 6, 1, 3, 5, 7]</code>, 也就是 <code>q_0->q_0</code>, <code>q_2->q_1</code>, &mldr;, <code>q_7->q_7</code>.</p><p>但是，如果我们在推理时这样做，就会降低整体速度，因此 Huggingface 的做法是改变 $W_Q$ 和 $W_K$ 的权重，具体来说，就是 $\Pi q=(\Pi W_Q)x$， 左边是在线转换，右侧离线转换。转换好 $W_Q$ 之后，正常计算就可以了。<a class=link href=https://github.com/huggingface/transformers/blob/e42587f596181396e1c4b63660abf0c736b10dae/src/transformers/models/llama/convert_llama_weights_to_hf.py target=_blank rel=noopener>具体代码</a> 为</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-python data-lang=python><span class=line><span class=cl><span class=c1># permute for sliced rotary</span>
+</span></span><span class=line><span class=cl><span class=k>def</span> <span class=nf>permute</span><span class=p>(</span><span class=n>w</span><span class=p>,</span> <span class=n>n_heads</span><span class=o>=</span><span class=n>n_heads</span><span class=p>,</span> <span class=n>dim1</span><span class=o>=</span><span class=n>dim</span><span class=p>,</span> <span class=n>dim2</span><span class=o>=</span><span class=n>dim</span><span class=p>):</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=n>w</span><span class=o>.</span><span class=n>view</span><span class=p>(</span><span class=n>n_heads</span><span class=p>,</span> <span class=n>dim1</span> <span class=o>//</span> <span class=n>n_heads</span> <span class=o>//</span> <span class=mi>2</span><span class=p>,</span> <span class=mi>2</span><span class=p>,</span> <span class=n>dim2</span><span class=p>)</span><span class=o>.</span><span class=n>transpose</span><span class=p>(</span><span class=mi>1</span><span class=p>,</span> <span class=mi>2</span><span class=p>)</span><span class=o>.</span><span class=n>reshape</span><span class=p>(</span><span class=n>dim1</span><span class=p>,</span> <span class=n>dim2</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=n>state_dict</span> <span class=o>=</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=sa>f</span><span class=s2>&#34;model.layers.</span><span class=si>{</span><span class=n>layer_i</span><span class=si>}</span><span class=s2>.self_attn.q_proj.weight&#34;</span><span class=p>:</span> <span class=n>permute</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>        <span class=n>loaded</span><span class=p>[</span><span class=sa>f</span><span class=s2>&#34;layers.</span><span class=si>{</span><span class=n>layer_i</span><span class=si>}</span><span class=s2>.attention.wq.weight&#34;</span><span class=p>]</span>
+</span></span><span class=line><span class=cl>    <span class=p>),</span>
+</span></span><span class=line><span class=cl>    <span class=sa>f</span><span class=s2>&#34;model.layers.</span><span class=si>{</span><span class=n>layer_i</span><span class=si>}</span><span class=s2>.self_attn.k_proj.weight&#34;</span><span class=p>:</span> <span class=n>permute</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>        <span class=n>loaded</span><span class=p>[</span><span class=sa>f</span><span class=s2>&#34;layers.</span><span class=si>{</span><span class=n>layer_i</span><span class=si>}</span><span class=s2>.attention.wk.weight&#34;</span><span class=p>]</span>
+</span></span><span class=line><span class=cl>    <span class=p>),</span>
+</span></span><span class=line><span class=cl>    <span class=o>...</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=结论><a href=#%e7%bb%93%e8%ae%ba class=header-anchor></a>结论</h2><p>本文中，我们回顾了位置编码，包括绝对位置编码和相对位置编码，我们着重介绍了 RoPE 的原理，推导以及代码实现。</p><h2 id=参考文献><a href=#%e5%8f%82%e8%80%83%e6%96%87%e7%8c%ae class=header-anchor></a>参考文献</h2><ol><li><a class=link href=https://huggingface.co/blog/designing-positional-encoding target=_blank rel=noopener>You could have designed state of the art positional encoding</a></li><li><a class=link href=https://discuss.huggingface.co/t/is-llama-rotary-embedding-implementation-correct/44509/2 target=_blank rel=noopener>Is LLaMA rotary embedding implementation correct?</a></li><li><a class=link href=https://github.com/huggingface/transformers/issues/25199 target=_blank rel=noopener>[LLaMA] Rotary positional embedding differs with official implementation</a></li><li><a class=link href=https://kexue.fm/archives/8130/comment-page-6#comments target=_blank rel=noopener>RoPE blog</a></li><li><a class=link href=http://arxiv.org/abs/2104.09864 target=_blank rel=noopener>RoFormer</a></li><li><a class=link href=https://zhuanlan.zhihu.com/p/1894384438206505105 target=_blank rel=noopener>位置编码之路</a></li><li><a class=link href=https://zhuanlan.zhihu.com/p/705492804 target=_blank rel=noopener>RoPE的远距离衰减</a></li></ol></section><footer class=article-footer><section class=article-tags><a href=/jiangyigithub/ai.github.io/tags/position-encoding/>Position Encoding</a></section><section class=article-copyright><svg class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span></section><section class=article-lastmod><svg class="icon icon-tabler icon-tabler-clock" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+<span>Last updated on April 8, 2026 at 9:44 PM</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css integrity=sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js integrity=sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js integrity=sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05 crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{const e=document.querySelector(".main-article");renderMathInElement(e,{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}],ignoredClasses:["gist"]})})</script></article><aside class=related-content--wrapper><h2 class=section-title>Related content</h2><div class=related-content><div class="flex article-list--tile"><article><a href=/jiangyigithub/ai.github.io/p/llm-memory-computation/><div class=article-details><h2 class=article-title>LLM Memory Computation</h2></div></a></article><article><a href=/jiangyigithub/ai.github.io/p/moe-tutorial/><div class=article-details><h2 class=article-title>MoE tutorial</h2></div></a></article><article><a href=/jiangyigithub/ai.github.io/p/load-balancing-tutorial/><div class=article-details><h2 class=article-title>Load Balancing tutorial</h2></div></a></article><article><a href=/jiangyigithub/ai.github.io/p/llm-flops-computation/><div class=article-details><h2 class=article-title>LLM FLOPs Computation</h2></div></a></article><article><a href=/jiangyigithub/ai.github.io/p/llm-parameter-computation/><div class=article-details><h2 class=article-title>LLM Parameter Computation</h2></div></a></article></div></div></aside><script src=https://utteranc.es/client.js repo=jiangyigithub/ai.github.io/ issue-term=pathname crossorigin=anonymous async></script><style>.utterances{max-width:unset}</style><script>let utterancesLoaded=!1;function setUtterancesTheme(e){let t=document.querySelector(".utterances iframe");t&&t.contentWindow.postMessage({type:"set-theme",theme:`github-${e}`},"https://utteranc.es")}addEventListener("message",e=>{if(e.origin!=="https://utteranc.es")return;utterancesLoaded=!0,setUtterancesTheme(document.documentElement.dataset.scheme)}),window.addEventListener("onColorSchemeChange",e=>{if(!utterancesLoaded)return;setUtterancesTheme(e.detail)})</script><footer class=site-footer><section class=copyright>&copy;
+2020 -
+2026 Jiang Yi(姜祎)'s Homepage</section><section class=powerby>Built with <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a><br>Theme <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.31.0>Stack</a></b> designed by <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a></section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css crossorigin=anonymous></main></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z+KMkF24hUW8WePSA9HM=" crossorigin=anonymous></script><script type=text/javascript src=/jiangyigithub/ai.github.io/ts/main.1e9a3bafd846ced4c345d084b355fb8c7bae75701c338f8a1f8a82c780137826.js defer></script><script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>

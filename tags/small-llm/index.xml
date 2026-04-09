@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Small LLM on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/small-llm/</link><description>Recent content in Small LLM on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/small-llm/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on SmolLM3</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-smollm3/</link><pubDate>Tue, 15 Jul 2025 11:01:13 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-smollm3/</guid><description>&lt;p>Hugging Face 在 2025 年 7 月 8 号发布了 SmolLM3, 一个 3B 的，128K 上下文，支持 6 种语言，支持 dual mode reasoning 的小语言模型。&lt;/p>
+&lt;h2 id="pre-training">&lt;a href="#pre-training" class="header-anchor">&lt;/a>Pre-training
+&lt;/h2>&lt;h3 id="architecture">&lt;a href="#architecture" class="header-anchor">&lt;/a>Architecture
+&lt;/h3>&lt;p>SmolLM3 是一个基于 transformer 的小语言模型，其模型架构与 SmolLM2 相似，SmolLM3 做了以下改进：&lt;/p>
+&lt;ol>
+&lt;li>使用 GQA 代替 multi-head attention. 作者通过消融实验发现 &lt;a class="link" href="https://maosong.website/p/notes-on-gqa/" target="_blank" rel="noopener"
+>GQA&lt;/a> 和 MHA 的效果差不多，并且还可以减少 KV cache 的 size&lt;/li>
+&lt;li>&lt;a class="link" href="https://maosong.website/p/notes-on-nope/" target="_blank" rel="noopener"
+>NoPE&lt;/a>: 作者使用了NoPE, 来选择性（每 4 个 layer）移除 position embedding. 这个方法可以在不损害模型短文本能力的同时，提高模型长上下文的表现&lt;/li>
+&lt;li>Intra-Document Masking: 不同的文档之间使用 attention masking 隔开&lt;/li>
+&lt;li>Training stability: 与 olmo 2 一样，作者移除了 embedding layer 的 weight decay, 来提升训练的稳定性。&lt;/li>
+&lt;/ol>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-smollm3/SmolLM3_model_atanomy.png"
+width="2554"
+height="1470"
+loading="lazy"
+alt="SmolLM3 model atanomy"
+class="gallery-image"
+data-flex-grow="173"
+data-flex-basis="416px"
+>&lt;/p>
+&lt;h3 id="data">&lt;a href="#data" class="header-anchor">&lt;/a>Data
+&lt;/h3>&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-smollm3/SmolLM3_pre-training_recipe.png"
+width="1932"
+height="1196"
+loading="lazy"
+alt="SmolLM3 pre-training recipe"
+class="gallery-image"
+data-flex-grow="161"
+data-flex-basis="387px"
+>&lt;/p>
+&lt;p>与 SmolLM2 一样，作者使用了&lt;strong>11.2T&lt;/strong> token 进行训练，训练包括 3 个 stage。作者针对数据混合策略进行了消融实验，实验配置如下：&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Stage&lt;/th>
+&lt;th>Stable phase&lt;/th>
+&lt;th>Stable phase&lt;/th>
+&lt;th>Decay phase&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Description&lt;/td>
+&lt;td>Base training&lt;/td>
+&lt;td>High quality injection&lt;/td>
+&lt;td>LR Decay&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Tokens&lt;/td>
+&lt;td>8T&lt;/td>
+&lt;td>2T&lt;/td>
+&lt;td>1.1T&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Web&lt;/td>
+&lt;td>85%&lt;/td>
+&lt;td>75%&lt;/td>
+&lt;td>63%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Code&lt;/td>
+&lt;td>12%&lt;/td>
+&lt;td>15%&lt;/td>
+&lt;td>24%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Math&lt;/td>
+&lt;td>3%&lt;/td>
+&lt;td>10%&lt;/td>
+&lt;td>13%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>datasets&lt;/td>
+&lt;td>&lt;strong>web&lt;/strong>: FineWeb-Edu, DCLM, FineWeb2, Fineweb2-HQ&lt;br>&lt;strong>code&lt;/strong>: The Stack v2, StarCoder2 PRS, Jupyter and Kaggle notebooks, Github issues, StackExchange&lt;br>&lt;strong>math&lt;/strong>: FineMath3, InfiWebMath3+&lt;/td>
+&lt;td>Adding Stack-Edu, FineMath4+, InfiWebMath4+, MegaMath&lt;/td>
+&lt;td>upsampling of high-quality code data&lt;br>upsampling math data and introducing instruction and reasoning datasets such as OpenMathReasoning&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>其中，Web data 包含 12% 的多语种数据。&lt;/p>
+&lt;h3 id="training-recipe">&lt;a href="#training-recipe" class="header-anchor">&lt;/a>Training Recipe
+&lt;/h3>&lt;p>训练过程中，作者使用了 2.36M tokens 的 batch size, 上下文长度为 4096. 优化器为 AdamW&lt;/p>
+&lt;p>作者使用了 nanotron 进行训练， datatrove 来处理数据， lighteval 来评估模型的表现。&lt;/p>
+&lt;p>模型在 384 张 H100 上训练了 24 天。分布式训练的配置如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-smollm3/SmolLM3_distributed_training.png"
+width="1672"
+height="1024"
+loading="lazy"
+alt="SmolLM3 distributed training"
+class="gallery-image"
+data-flex-grow="163"
+data-flex-basis="391px"
+>&lt;/p>
+&lt;h2 id="mid-training">&lt;a href="#mid-training" class="header-anchor">&lt;/a>Mid-training
+&lt;/h2>&lt;p>Mid-training 的主要目标为扩展模型的上下文以及提升模型的 reasoning 能力。&lt;/p>
+&lt;h3 id="long-context-extension">&lt;a href="#long-context-extension" class="header-anchor">&lt;/a>Long Context Extension
+&lt;/h3>&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-smollm3/SmolLM3_long_context_training.png"
+width="1942"
+height="1128"
+loading="lazy"
+alt="SmolLM3 long context training"
+class="gallery-image"
+data-flex-grow="172"
+data-flex-basis="413px"
+>&lt;/p>
+&lt;p>在预训练阶段结束之后，作者使用了额外的 &lt;strong>100B&lt;/strong> tokens 来扩展模型的上下文。作者将扩展过程分为两个 stage:&lt;/p>
+&lt;ol>
+&lt;li>Stage 1: 将模型的上下文从 4K 提升到 32K. 具体做法是将 RoPE 的 base frequency 提升到 1.5M&lt;/li>
+&lt;li>Stage 2: 将，模型的上下文从 32K 提升到 64K. 具体做法是将 RoPE 的 base frequency 提升到 5M&lt;/li>
+&lt;/ol>
+&lt;p>训练过程中，作者对 math, code 和 reasoning data 进行了上采样。作者发现，对长文本数据进行上采样并不会提高模型在 RULER 和 HELMET 上的表现。&lt;/p>
+&lt;blockquote>
+&lt;p>[!tip] Recall
+&lt;a class="link" href="https://maosong.website/p/notes-on-qwen2.5-1m/" target="_blank" rel="noopener"
+>Qwen2.5-1M&lt;/a> 里也分析了长文本数据的问题，也就是大部分长文本数据依然是局部相关性强，而全局相关性弱&lt;/p>
+&lt;/blockquote>
+&lt;p>与 &lt;a class="link" href="https://maosong.website/p/notes-on-qwen2.5/" target="_blank" rel="noopener"
+>Qwen2.5&lt;/a> 一样，作者还是用了 &lt;a class="link" href="https://maosong.website/p/notes-on-yarn/" target="_blank" rel="noopener"
+>YARN&lt;/a> 来在推理阶段进一步提高模型的上下文长度，作者发现模型可以处理 128K 上下文长度的文本。&lt;/p>
+&lt;h3 id="reasoning-mid-training">&lt;a href="#reasoning-mid-training" class="header-anchor">&lt;/a>Reasoning Mid-training
+&lt;/h3>&lt;p>扩展模型上下文长度之后，作者还额外增加了一个 mid-training stage 来提高模型的 reasoning 能力。这个阶段的目标在于提升模型的通用能力。作者希望模型不针对特定的 domain, 如 math 或者 code 等。&lt;/p>
+&lt;p>训练过程中，作者使用了 &lt;strong>35B&lt;/strong> 的 token. 数据来源包括 Open-Thoughts3-1.2M 以及 NVIDIA 的 Llama-Nemetron-Post-Training-Dataset-v1.1. Reasoning trace 由 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-r1/" target="_blank" rel="noopener"
+>DeepSeek-R1&lt;/a> 生成。作者使用了 ChatML 的格式，还使用了 Packing 来提升训练效率。训练持续了 4 个 epoch.&lt;/p>
+&lt;h2 id="post-training">&lt;a href="#post-training" class="header-anchor">&lt;/a>Post-training
+&lt;/h2>&lt;p>如何构建 dual instruction model 来同时支持 reasoning 和 non-reasoning 任务并没有一个共识，大部分模型的数据都是非公开的。因此，作者就构建了一个 training pipeline, 用于提升模型在两种模式下的能力。&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-smollm3/SmolLM3_post-training_recipe.png"
+width="1796"
+height="1208"
+loading="lazy"
+alt="SmolLM3 post-training recipe"
+class="gallery-image"
+data-flex-grow="148"
+data-flex-basis="356px"
+>&lt;/p>
+&lt;h3 id="chat-template">&lt;a href="#chat-template" class="header-anchor">&lt;/a>Chat Template
+&lt;/h3>&lt;p>作者首先构建了一个 chat template, 用于支持 reasoning 和 non-reasoning 两种模式。该 chat template 支持用户使用 &lt;code>/think&lt;/code> 和 &lt;code>/no_think&lt;/code> flag 来控制模型的思考模式。在 non-reasoning 模式下，作者还在模型输出中 prefill 了 &lt;code>&amp;lt;think&amp;gt;\n\n&amp;lt;/think&amp;gt;&lt;/code>, 这一点与 Qwen3 一致。&lt;/p>
+&lt;p>SmolLM3 还支持工具调用，其在 chat template 中加入了两种描述方式：XLM tools 和 Python tools.&lt;/p>
+&lt;p>SmolLM3 还在 system prompt 中加入了 metadata, 如知识的截止时间，当前的 reasoning mode 等。&lt;/p>
+&lt;h3 id="sft">&lt;a href="#sft" class="header-anchor">&lt;/a>SFT
+&lt;/h3>&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-smollm3/SmolLM3_synthetic_SFT_data.png"
+width="1562"
+height="940"
+loading="lazy"
+alt="SmolLM3 Synthetic SFT data"
+class="gallery-image"
+data-flex-grow="166"
+data-flex-basis="398px"
+>&lt;/p>
+&lt;p>作者针对 math, code, general reasoning, instruction following, 以及 multilinguality 这几个领域来提升模型的表现。&lt;/p>
+&lt;p>作者首先使用 reasoning mode 的 Qwen3-32B 来合成数据，合成数据的过程如上图所示。&lt;/p>
+&lt;p>最终，SFT 阶段的数据包括 &lt;strong>1.8B&lt;/strong> token, 其中 &lt;strong>1B&lt;/strong> 为 non-reasoning mode 的 token, 覆盖 12 个数据集， &lt;strong>0.8B&lt;/strong> 为 reasoning token, 覆盖 10 个数据集。作者训练了 4 个 epoch, 使用了 Packing 的技巧。&lt;/p>
+&lt;h3 id="apo">&lt;a href="#apo" class="header-anchor">&lt;/a>APO
+&lt;/h3>&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-smollm3/SmolLM3_synthetic_preference_data.png"
+width="1542"
+height="760"
+loading="lazy"
+alt="SmolLM3 synthetic preference data"
+class="gallery-image"
+data-flex-grow="202"
+data-flex-basis="486px"
+>&lt;/p>
+&lt;p>SFT 阶段之后，作者使用了 Tulu3 的 preference dataset 用于 non-reasoning mode 的训练，然后合成了一批数据用于 reasoning mode 的训练，这批合成数据使用 Qwen3 32B 和 Qwen3 0.6B 生成得到，具体做法就是 Qwen3 32B 输出的结果定义为正样本，Qwen3 0.6B 输出的结果定义为负样本。&lt;/p>
+&lt;p>作者使用了 APO 算法来进行训练，APO 是 &lt;a class="link" href="https://maosong.website/p/notes-on-dpo/" target="_blank" rel="noopener"
+>DPO&lt;/a> 的一个变体， DPO 的目标函数为&lt;/p>
+$$
+\mathcal{L}_{DPO}(x,y_w,y_{l}; \theta) = -\log \sigma(r_\theta(x,y_w) - r_\theta(x, y_l))
+$$&lt;p>其中&lt;/p>
+$$
+r_\theta(x,y) = \beta\log \frac{\pi_{\theta}(y\mid x)}{\pi_{ref}(y\mid x)}
+$$&lt;p>$\beta>0$ 是一个超参数。APO 的目标函数如下&lt;/p>
+$$
+\mathcal{L}_{APO}(x,y_w,y_l;\theta) = -\sigma(r_\theta(x,y_w)) + \sigma(r_\theta(x,y_l))
+$$&lt;p>作者发现，模型的 reasoning 能力提升之后，其长上下文能力反而下降了。作者认为这是因为在 reasoning mid-training stage 的训练中，提升 reasoning 能力损害了模型的 long context 能力。并且，APO 的训练数据上下文长度大多都在 24K 左右。为了解决这个问题，作者提出了 Model merging 的方法&lt;/p>
+&lt;h3 id="model-merging">&lt;a href="#model-merging" class="header-anchor">&lt;/a>Model Merging
+&lt;/h3>&lt;p>作者使用 MergeKit 来完成 model merging 的任务。merge 的过程包括两步：&lt;/p>
+&lt;ol>
+&lt;li>构造一个 model soup, 包括 APO 的每个 checkpoint&lt;/li>
+&lt;li>将 model soup 与 mid-training 的一个拥有强上下文能力的 checkpoint 结合起来，作者使用了 linear merge, APO model soup 和 mid-training checkpoint 的权重分别为 0.9 和 0.1.&lt;/li>
+&lt;/ol>
+&lt;blockquote>
+&lt;p>[!tip] Recall
+&lt;a class="link" href="https://maosong.website/p/notes-on-kimi-k1.5/" target="_blank" rel="noopener"
+>Kimi-k1.5&lt;/a> 也使用了 model merging 的方法，来将 long CoT 模型的能力迁移到 short-CoT 模型上去&lt;/p>
+&lt;/blockquote>
+&lt;h2 id="evaluation">&lt;a href="#evaluation" class="header-anchor">&lt;/a>Evaluation
+&lt;/h2>&lt;p>作者首先评估了一下 base model 的表现，评估使用了 12 个 benchmark, 对比的模型包括 &lt;a class="link" href="https://maosong.website/p/notes-on-qwen3/" target="_blank" rel="noopener"
+>Qwen3&lt;/a>, Gemma3, LLaMA 3.2. 结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-smollm3/SmolLM3_base_model_performance.png"
+width="2992"
+height="2059"
+loading="lazy"
+alt="SmolLM3 base model performance"
+class="gallery-image"
+data-flex-grow="145"
+data-flex-basis="348px"
+>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-smollm3/SmolLM3_base_model_extact_performance.png"
+width="2194"
+height="954"
+loading="lazy"
+alt="SmolLM3 base model performance"
+class="gallery-image"
+data-flex-grow="229"
+data-flex-basis="551px"
+>&lt;/p>
+&lt;p>模型的多语种表现如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-smollm3/SmolLM3_multilingual_performance.png"
+width="1600"
+height="1062"
+loading="lazy"
+alt="SmolLM3 multilingual performance"
+class="gallery-image"
+data-flex-grow="150"
+data-flex-basis="361px"
+>&lt;/p>
+&lt;p>Instruction (non-reasoning) 版本的评估结果如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-smollm3/SmolLM3_instruction_performance.png"
+width="2992"
+height="2064"
+loading="lazy"
+alt="SmolLM3 Instruct models performance (w/o reasoning)"
+class="gallery-image"
+data-flex-grow="144"
+data-flex-basis="347px"
+>&lt;/p>
+&lt;p>Reasoning 版本的评估结果如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-smollm3/SmolLM3_reasoning_performance.png"
+width="2158"
+height="1208"
+loading="lazy"
+alt="SmolLM3 reasoning performance"
+class="gallery-image"
+data-flex-grow="178"
+data-flex-basis="428px"
+>&lt;/p>
+&lt;p>可以看到，Qwen3-4B 的表现是最好的。而 SmolLM3 的表现在 3B 左右也是非常强劲的&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者提出了 SmolLM3, 一个拥有长上下，文多语种以及 dual mode reasoning 能力的大语言模型，作者详细介绍了数据，训练以及 model merging 的技巧，来提高模型的表现。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://huggingface.co/blog/smollm3" target="_blank" rel="noopener"
+>blog&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

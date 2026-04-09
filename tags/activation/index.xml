@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Activation on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/activation/</link><description>Recent content in Activation on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/activation/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on Softmax</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-softmax/</link><pubDate>Sat, 27 Dec 2025 16:39:53 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-softmax/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>softmax 函数用于将 $K$ 个实数转换为一个 $K$ 维概率分布。其具体做法是先对所有元素指数化，即求 $e^x$, 然后每个元素除以所有指数的和。即&lt;/p>
+$$
+\begin{aligned}
+\mathrm{softmax}:\mathbb{R}^K&amp;\to (0,1)^K\\
+\mathrm{softmax}(\mathbf{z}) &amp;=\left[\frac{e^{z_1}}{\sum_{j=1}^Ke^{z_j}},\dots,\frac{e^{z_K}}{\sum_{j=1}^Ke^{z_j}}\right]
+\end{aligned}
+$$&lt;h2 id="analysis">&lt;a href="#analysis" class="header-anchor">&lt;/a>Analysis
+&lt;/h2>&lt;h3 id="properties">&lt;a href="#properties" class="header-anchor">&lt;/a>Properties
+&lt;/h3>&lt;p>softmax 的第一个性质是 shift invariance, 即&lt;/p>
+$$
+\mathrm{softmax}(\mathbf{z}+c) = \mathrm{softmax}(\mathbf{z})
+$$&lt;p>证明比较容易：&lt;/p>
+$$
+\mathrm{softmax}(\mathbf{z}+c)_i = \frac{e^{z_i+c}}{\sum_{j=1}^Ke^{z_j+c}} = \frac{e^ce^{z_i}}{e^c\sum_{j=1}^Ke^{z_j}} = \frac{e^{z_i}}{\sum_{j=1}^Ke^{z_j}}=\mathrm{softmax}(\mathbf{z})_i,\ i=1,\dots,K
+$$&lt;h3 id="gradient">&lt;a href="#gradient" class="header-anchor">&lt;/a>Gradient
+&lt;/h3>&lt;p>向量输入下 Softmax 函数的 Jacobian 矩阵推导&lt;/p>
+&lt;p>设输入为向量 $\mathbf{z} = [z_1, z_2, \dots, z_d]^\top \in \mathbb{R}^d$，Softmax 函数的输出为向量 $\mathbf{a} = [a_1, a_2, \dots, a_d]^\top \in \mathbb{R}^d$，其中每个元素定义为：&lt;/p>
+$$
+a_j = \text{softmax}(\mathbf{z})_j = \frac{e^{z_j}}{\sum_{k=1}^d e^{z_k}}
+$$&lt;p>记分母（归一化因子）为 $S = \sum_{k=1}^d e^{z_k}$，则 $a_j = e^{z_j}/S$.&lt;/p>
+&lt;p>我们分两种情况计算 $\frac{\partial a_j}{\partial z_k}$：&lt;/p>
+&lt;p>当 $j = k$ 时， 此时求 $a_j$ 对自身输入 $z_j$ 的偏导数：&lt;/p>
+$$
+\frac{\partial a_j}{\partial z_j} = \frac{\partial}{\partial z_j} \left( \frac{e^{z_j}}{S} \right) = \frac{e^{z_j}S-e^{z_j}e^{z_j}}{S^2}=\frac{e^{z_j}}{S}\left(1-\frac{e^{z_j}}{S}\right)=a_j(1-a_j)
+$$&lt;p>当 $j \neq k$ 时， 此时求 $a_j$ 对输入 $z_k$ 的偏导数有：&lt;/p>
+$$
+\frac{\partial a_j}{\partial z_k} = \frac{\partial}{\partial z_k} \left( \frac{e^{z_j}}{S} \right) = \frac{0\cdot S-e^{z_j}e^{z_k}}{S^2}=-\frac{e^{z_j}e^{z_k}}{S}=-a_ja_j
+$$&lt;p>综合以上两种情况，Jacobian 矩阵 $\mathbf{J}$ 可表示为：&lt;/p>
+$$
+\mathbf{J} = \text{diag}(\mathbf{a}) - \mathbf{a} \mathbf{a}^\top
+$$&lt;h2 id="interpretation">&lt;a href="#interpretation" class="header-anchor">&lt;/a>Interpretation
+&lt;/h2>&lt;h3 id="soft-argmax">&lt;a href="#soft-argmax" class="header-anchor">&lt;/a>Soft Argmax
+&lt;/h3>&lt;p>softmax 是 argmax 的 smooth approximation, 所以实际上 softmax 指的是 “soft argmax&amp;quot;. 为了证明这一点，我们首先定义如下函数&lt;/p>
+$$
+\mathrm{softmax}(\mathbf{z};\tau) =\mathrm{softmax}(\mathbf{z}/\tau)=\left[\frac{e^{z_1/\tau}}{\sum_{j=1}^Ke^{z_j/\tau}},\dots,\frac{e^{z_K/\tau}}{\sum_{j=1}^Ke^{z_j/\tau}}\right]
+$$&lt;p>易知， $\mathrm{softmax}(\mathbf{z})=\mathrm{softmax}(\mathbf{z};1)$. 并且，$\mathrm{softmax}$ 还是一个光滑函数&lt;/p>
+&lt;p>我们定义 smooth approximation 为&lt;/p>
+&lt;blockquote>
+&lt;p>Definition
+如果 $\lim_{\tau\to0^+}\mathrm{softmax}(\mathbf{z};\tau)=\mathbb{1}_{\arg\max(\mathbf{z})}$, 则我们说 $\mathrm{softmax}(\cdot;\tau)$ 是 $\arg\max$ 的光滑近似，特别地，$\mathrm{softmax}(\cdot)$ 是 $\arg\max$ 的光滑近似。
+这里 $\arg\max(\mathbf{z})=\arg\max_k z_k$ 是最大值的索引， $\mathbb{1}\in\{0,1\}^K$ 是示性函数 (indicator function), 即 $\mathbb{1}_{\arg\max(\mathbf{z})}[i]=1$ 当且仅当 $z_i=\max_jz_j$.&lt;/p>
+&lt;/blockquote>
+&lt;p>我们下面来进行证明。我们不妨假设最大值唯一，其 index 为 $m$, 即 $z_m = \max_i z_i$. 由前面的性质，我们有：&lt;/p>
+$$
+\mathrm{softmax}(\mathbf{z};\tau) = \mathrm{softmax}(\mathbf{z}-z_m;\tau) =\left[\frac{e^{(z_1-z_m)/\tau}}{\sum_{j=1}^Ke^{(z_j-z_m)/\tau}},\dots,\frac{e^{(z_K-z_m)/\tau}}{\sum_{j=1}^Ke^{(z_j-z_m)/\tau}}\right]
+$$&lt;p>此时，我们有&lt;/p>
+$$
+\lim_{\tau\to0^+}\mathrm{softmax}(\mathbf{z};\tau)_i = \begin{cases}
+1, &amp;\text{if }i = m\\
+0, &amp;\text{otherwise}
+\end{cases}
+$$&lt;p>当最大值不唯一的时候，我们记 $\mathcal{I} = \{i\in[K]\mid z_i=\max_j z_j\}$, 与上面方法类似，最终 $\mathrm{softmax}(\cdot;\tau)$ 的结果为&lt;/p>
+$$
+\lim_{\tau\to0^+}\mathrm{softmax}(\mathbf{z};\tau)_i = \begin{cases}
+1/|\mathcal{I}|, &amp;\text{if }i \in \mathcal{I}\\
+0, &amp;\text{otherwise}
+\end{cases}
+$$&lt;p>因此，我们就证明了 softmax 是 argmax 函数的 smooth approximation.&lt;/p>
+&lt;h3 id="statistical-mechanics">&lt;a href="#statistical-mechanics" class="header-anchor">&lt;/a>Statistical Mechanics
+&lt;/h3>&lt;h3 id="temperature">&lt;a href="#temperature" class="header-anchor">&lt;/a>Temperature
+&lt;/h3>&lt;p>我们前面介绍了 $\mathrm{softmax}(\mathbf{z};\tau)$ 函数，这里的 $\tau$ 实际上被称为温度 (temperature), 它控制了输入的 variance, $T$ 越大，输入的 variance 越低，输出就倾向于均匀分布，而 $T$ 越小，则说明输入的 variance 越高，输出就倾向于 one-hot 分布。&lt;/p>
+&lt;p>我们前面已经证明了后者，现在我们来证明一下前者，证明思路也很简单，$T\to+\infty$ 时，$e^{x/T}\to 1$, 因而&lt;/p>
+$$
+\lim_{\tau\to+\infty}\mathrm{softmax}(\mathbf{z};\tau)_i =\frac1K,\ i=1,\dots,K
+$$&lt;p>下面是可视化的代码以及结果&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="kn">import&lt;/span> &lt;span class="nn">numpy&lt;/span> &lt;span class="k">as&lt;/span> &lt;span class="nn">np&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="kn">import&lt;/span> &lt;span class="nn">matplotlib.pyplot&lt;/span> &lt;span class="k">as&lt;/span> &lt;span class="nn">plt&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="kn">from&lt;/span> &lt;span class="nn">scipy.interpolate&lt;/span> &lt;span class="kn">import&lt;/span> &lt;span class="n">make_interp_spline&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">softmax&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">e_x&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">np&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">exp&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">np&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">max&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">e_x&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="n">e_x&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">sum&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">num_elements&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">15&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">indices&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">np&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">arange&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">num_elements&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">logits&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">np&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">linspace&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mf">3.5&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mf">3.5&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">num_elements&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">scales&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="mf">0.01&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mf">0.1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mf">1.0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mf">5.0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mf">10.0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mf">100.0&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">figure&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">figsize&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">10&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">6&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">for&lt;/span> &lt;span class="n">s&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="n">scales&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">probs&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">softmax&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">logits&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">s&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">x_smooth&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">np&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">linspace&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">indices&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">min&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="n">indices&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">max&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="mi">300&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">spl&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">make_interp_spline&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">indices&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">probs&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">k&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">3&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">y_smooth&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">np&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">clip&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">spl&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x_smooth&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="c1"># Clip to ensure no negative artifacts&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">plot&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x_smooth&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">y_smooth&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">label&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s1">&amp;#39;Scale = &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">s&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s1">&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">linewidth&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">uniform_prob&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mf">1.0&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">indices&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">axhline&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">y&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">uniform_prob&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">color&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="s1">&amp;#39;black&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">linestyle&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="s1">&amp;#39;:&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">alpha&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mf">0.6&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">label&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s1">&amp;#39;Uniform distribution&amp;#39;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">xticks&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">indices&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">xlabel&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;Logit Index&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">fontsize&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">12&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">ylabel&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;Softmax Probability&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">fontsize&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">12&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">title&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;Impact of Variance Scaling on Softmax Distribution&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">fontsize&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">14&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">legend&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">title&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="s2">&amp;#34;Variance Scale&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">grid&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kc">True&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">linestyle&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="s1">&amp;#39;--&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">alpha&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mf">0.5&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">tight_layout&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">show&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-softmax/softmax_impact_variance.png"
+width="989"
+height="590"
+loading="lazy"
+alt="impact of variance on softmax"
+class="gallery-image"
+data-flex-grow="167"
+data-flex-basis="402px"
+>&lt;/p>
+&lt;p>可以看到，当 variance 比较小的时候，输出的分布接近于均匀分布，而 variance 越大，输出的分布越接近 One-hot 分布。&lt;/p>
+&lt;p>在 attention 的计算过程中，我们也有 softmax 函数，为了在 softmax 过程中避免 variance 的影响，现在会在计算 softmax 之前加入 normalization layer 来提前进行归一化。见 &lt;a class="link" href="https://maosong.website/p/notes-on-qk-norm/" target="_blank" rel="noopener"
+>QK-norm&lt;/a>.&lt;/p>
+&lt;h2 id="algorithms">&lt;a href="#algorithms" class="header-anchor">&lt;/a>Algorithms
+&lt;/h2>&lt;h3 id="implementation">&lt;a href="#implementation" class="header-anchor">&lt;/a>Implementation
+&lt;/h3>&lt;p>由于 $e^x$ 在实际计算时，非常容易溢出，因此在实现的时候，我们往往会考虑其数值稳定性。实际上，现在的 softmax 函数基本由 logsumexp 实现，logsumexp 函数定义如下&lt;/p>
+$$
+\mathrm{logsumexp}(\mathbf{z}) = \log \left(\sum_{i=1}^K e^{z_i}\right)
+$$&lt;p>softmax 函数与 logsumexp 函数的关系如下&lt;/p>
+$$
+\begin{aligned}
+\mathrm{softmax}(\mathbf{z}) &amp;=\exp\log\left(\frac{e^{\mathbf{z}}}{\sum_{j=1}^Ke^{z_j}}\right)\\
+&amp;= \exp\left(\mathbf{z} - \log\left(\sum_{i=1}^K e^{z_i}\right)\right)\\
+&amp;= \exp(\mathbf{z} - \mathrm{logsumexp}(\mathbf{z}))
+\end{aligned}
+$$&lt;p>考虑前面提到的 $e^x$ 数值溢出的问题，我们的输入会先经过 shift, 减掉最大值。此时我们有&lt;/p>
+$$
+\mathrm{softmax}(\mathbf{z}) = \mathrm{softmax}(\mathbf{z}-c) = \exp((\mathbf{z}-c) - \mathrm{logsumexp}(\mathbf{z}-c))
+$$&lt;p>这里我们使用了前面推导出来的 shift invariance 性质。对应的代码实现如下：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">softmax&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">x&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">x&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">max&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dim&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">keepdim&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="kc">True&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">values&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">log_sum_exp&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">log&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">sum&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">exp&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">keepdim&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="kc">True&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">exp&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">log_sum_exp&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h3 id="gumbel-softmax-reparametrization-trick">&lt;a href="#gumbel-softmax-reparametrization-trick" class="header-anchor">&lt;/a>Gumbel-softmax Reparametrization Trick
+&lt;/h3>&lt;p>TODO&lt;/p>
+&lt;h3 id="online-softmax">&lt;a href="#online-softmax" class="header-anchor">&lt;/a>Online Softmax
+&lt;/h3>&lt;p>注意到我们在计算 softmax 时，需要加载 $\mathbf{z}$ 的全部信息，如果 $\mathbf{z}$ 非常大的话，会产生频繁的内存读写进而影响整体效率。因此 &lt;a class="link" href="https://maosong.website/p/notes-on-flashattention/" target="_blank" rel="noopener"
+>flash attention&lt;/a> 中提出了 online softmax 算法来减少内存访问开销。&lt;/p>
+&lt;p>其具体做法是假设我们的输入被分为若干个 block, 即 $\mathbf{z}=[\mathbf{z}^1;\dots,\mathbf{z}^n]\in\mathbb{R}^K$, 这里 $\mathbf{z}^i\in\mathbb{R}^{K/n}$ ($K\mod n=0$).&lt;/p>
+&lt;p>对于 $\mathbf{z}\in\mathbb{R}^K$, flash attention 定义如下结果&lt;/p>
+$$
+m(\mathbf{z}) = \max_i z_i,\ f(\mathbf{z}) = [e^{z_1-m(\mathbf{z})},\dots,e^{z_K-m(\mathbf{z})}], \ \ell(\mathbf{z})=\sum_if(z)_i, \ \mathrm{softmax}(\mathbf{z}) = \frac{f(\mathbf{z})}{\ell(\mathbf{z})}
+$$&lt;p>对于 $\mathbf{z}=[\mathbf{z}^1;\dots,\mathbf{z}^n]\in\mathbb{R}^K$, 我们现在的计算方式为&lt;/p>
+$$
+\begin{aligned}
+m_i(\mathbf{z}) &amp;= \max([\mathbf{z}^1;\dots;\mathbf{z}^i]) = \max(m_{i-1}(\mathbf{z}),m(\mathbf{z}^i))\\
+\ell_i(\mathbf{z}) &amp;= \sum_{j=1}^if(\mathbf{z}^j) = \exp(m_{i-1}(\mathbf{z}) - m_i(\mathbf{z}))\ell(\mathbf{z}^{i-1}) + \exp(\mathbf{z}^i-m_i(\mathbf{z}))
+\end{aligned}
+$$&lt;p>因此，如果我们额外记录 $m(x)$ 以及 $\ell(x)$ 这两个量，那么我们可以每次仅计算 softmax 的一个 block. 计算完毕之后，$m_i(\mathbf{z})$ 和 $\ell_i(\mathbf{z})$ 就分别代表了 global max 和 global denominator.&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>我们回顾了机器学习中 softmax function 的基本定义与性质&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://en.wikipedia.org/wiki/Softmax_function" target="_blank" rel="noopener"
+>Softmax function&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://blog.ando.ai/posts/softmax-to-the-max/" target="_blank" rel="noopener"
+>Softmax to the Max&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://arxiv.org/pdf/1805.02867" target="_blank" rel="noopener"
+>Online normalizer calculation for softmax&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

@@ -1,0 +1,386 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Kuaishou on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/kuaishou/</link><description>Recent content in Kuaishou on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/kuaishou/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on Keye-VL 1.5</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-keye-vl-1.5/</link><pubDate>Thu, 11 Sep 2025 11:33:31 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-keye-vl-1.5/</guid><description>&lt;p>快手提出了 Keye-VL 1.5, 一个强调 reasoning, video understanding 的 8B 多模态大模型。作者提出了 slow-fast video encoding strategy 来提高模型的视频理解能力，作者通过在预训练和后训练提高了模型的长上下文能力和 reasoning 能力&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>作者回顾了多模态大模型的进展，然后提到视频理解能力仍然是一个挑战。为了解决这个问题，作者提出了 Keye-VL-1.5, 一个 8B 的视频理解多模态大模型。&lt;/p>
+&lt;p>Keye-VL-1.5 主要做了三点改进：&lt;/p>
+&lt;ol>
+&lt;li>在架构上，使用了 Slow-Fast Video Encoding&lt;/li>
+&lt;li>在预训练阶段，使用多个 stage 来提升模型的长上下文能力&lt;/li>
+&lt;li>在 post-training 阶段，提高模型的 reasoning 能力和 alignment 表现&lt;/li>
+&lt;/ol>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;h3 id="architecture">&lt;a href="#architecture" class="header-anchor">&lt;/a>Architecture
+&lt;/h3>&lt;p>Keye-VL 1.5 的架构与 &lt;a class="link" href="https://maosong.website/p/notes-on-keye-vl/" target="_blank" rel="noopener"
+>Keye-VL&lt;/a> 一致。&lt;/p>
+&lt;p>Keye-VL 1.5 主要做出的改进点为针对视频的 encoding 方式&lt;/p>
+&lt;p>作者回顾了已有 MLLM 处理视频的方式，比如 &lt;a class="link" href="https://maosong.website/p/notes-on-qwen2.5-vl/" target="_blank" rel="noopener"
+>Qwen2.5-VL&lt;/a> 使用 3D convolution 来 merge 相邻的两帧，&lt;a class="link" href="https://maosong.website/p/notes-on-seed1.5-vl/" target="_blank" rel="noopener"
+>Seed1.5-VL&lt;/a> 采用了 Dynamic Frame-Resolution Sampling 技巧，来根据 budget 和处理的任务来动态调整采样率 (frame) 和每一帧的图片精度 (resolution)。&lt;/p>
+&lt;p>但是这些方法很难进行泛化。因此，作者在本文中就提出了 &lt;strong>SlowFast video encoding stratrgy&lt;/strong>:&lt;/p>
+&lt;ol>
+&lt;li>Slow Pathway: 空间信息丰富（high resolution），时间信息简略 (low number of frames)&lt;/li>
+&lt;li>Fast Pathway: 时间信息丰富（high number of frames），空间信息简略 (low resolution)&lt;/li>
+&lt;/ol>
+&lt;p>为了区分 slow/fast frames, 作者提出了一个基于 patch similarity 的 metric:&lt;/p>
+&lt;ol>
+&lt;li>第一帧始终定义为 slow frame&lt;/li>
+&lt;li>接下来的每一帧，如果其和上一帧的相似度超过 $95\%$, 则定义为 fast frame; 反之则定义为 slow frame.&lt;/li>
+&lt;/ol>
+&lt;p>得到 slow/fast frames 之后，作者将 fast-frame 的 token budget 限制为 slow frame token budget 的 $30\%$ 来平衡时间信息以及空间信息。接下来，作者使用二分搜索来决定 slow frame 的 token budget. 为了区分 slow frame 和 fast frame 的 token, 作者使用了特殊的 token 来进行分离。&lt;/p>
+&lt;p>最终的处理结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-keye-vl-1.5/Keye-VL-1-5-video-encoding.png"
+width="1364"
+height="335"
+loading="lazy"
+alt="SlowFast Video Encoding"
+class="gallery-image"
+data-flex-grow="407"
+data-flex-basis="977px"
+>&lt;/p>
+&lt;h3 id="pre-training">&lt;a href="#pre-training" class="header-anchor">&lt;/a>Pre-training
+&lt;/h3>&lt;p>预训练的数据和 Keye-VL 基本一致，我们主要介绍改进的点&lt;/p>
+&lt;p>对于 Image caption 数据，作者认为这批数据可能会损害模型的指令跟随和 reasoning 能力，因此作者对数据进行了增广，主要是调整了数据的格式：&lt;/p>
+&lt;ol>
+&lt;li>QA, 数据格式为 &lt;code>&amp;lt;image, caption, [eos], question, answer&amp;gt;&lt;/code>&lt;/li>
+&lt;li>reverse QA, 数据格式为 &lt;code>&amp;lt;image, question, answer, [eos], caption&amp;gt;&lt;/code>&lt;/li>
+&lt;li>instruction following: 随机给一批数据作为输入，然后让模型基于特定 image 输出 caption&lt;/li>
+&lt;/ol>
+&lt;p>作者还构建了一个 trap question 来提高模型的 robustness 以及 faithfulness.&lt;/p>
+&lt;p>OCR 数据在 Keye-VL 的基础上加入了两点：&lt;/p>
+&lt;ol>
+&lt;li>Structured Document and Code Understanding: 基于 markdown 和 HTML 等数据来获取 code OCR 数据&lt;/li>
+&lt;li>Instruction Following OCR: 基于特定指令进行 OCR&lt;/li>
+&lt;/ol>
+&lt;p>对于 grounding 数据，作者进一步加入了 temporal grounding 数据，作者首先使用 TEMPURA&lt;/p>
+&lt;p>来将短视频分割成若干个 video clips. 然后作者使用 SOTA MLLM 来过滤数据，最后作者基于 Gemini2.5 来生成对应的 QA.&lt;/p>
+&lt;p>预训练和 Keye-VL 一样，包含 3 个 stage&lt;/p>
+&lt;p>前两个 stage，作者将模型的上下文限制为 8K, 使用了 DP 和 Zero-2 来减少内存开销。在 stage 3, 作者将模型的上下文从 8K 扩展到 128K, 对应的 base frequency 从 1M 提升到 8M. 训练数据包括长视频，长文本和大规模图片。作者将优化策略调整为 Zero-1, CP 和 PP 来支持 long-context 的训练。训练时数据分布为 video:images:text=24:50:26.&lt;/p>
+&lt;h3 id="post-training">&lt;a href="#post-training" class="header-anchor">&lt;/a>Post-training
+&lt;/h3>&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-keye-vl-1.5/Keye-VL-1-5-post-training-pipeline.png"
+width="1360"
+height="449"
+loading="lazy"
+alt="Post-Training Pipeline"
+class="gallery-image"
+data-flex-grow="302"
+data-flex-basis="726px"
+>&lt;/p>
+&lt;p>SFT 阶段使用了 &lt;strong>7.5M&lt;/strong> 多模态 QA 样本进行训练。&lt;/p>
+&lt;p>MPO 阶段的数据相比 Keye-VL 有所减少，包含：&lt;/p>
+&lt;ol>
+&lt;li>250K 开源样本&lt;/li>
+&lt;li>150K 纯文本数据&lt;/li>
+&lt;li>26K 人类标注数据&lt;/li>
+&lt;/ol>
+&lt;p>对于 reward model 的训练，作者使用了 SFT 和 RL 两个阶段。SFT 阶段的数据包括 R1-Reward 和 MMPR, 训练之后作者还是用比较短的 good response 来避免产生较长的回答&lt;/p>
+&lt;p>在 SFT 和 MPO 阶段之后，作者使用 LongCoT code-start 初步激活模型的 reasoning 能力。&lt;/p>
+&lt;p>作者构建了一个 5 部的自动化数据生成 pipeline, 如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-keye-vl-1.5/Keye-VL-1-5-LongCoT-data-generation-pipeline.png"
+width="1362"
+height="389"
+loading="lazy"
+alt="LongCoT data generation pipeline"
+class="gallery-image"
+data-flex-grow="350"
+data-flex-basis="840px"
+>&lt;/p>
+&lt;p>步骤如下：&lt;/p>
+&lt;ol>
+&lt;li>Multi-Source Data Collection and Enhancement：收集数据&lt;/li>
+&lt;li>Multi-Path Reasoning Generation with Confidence Quantification: 基于 confidence 来挑选数据&lt;/li>
+&lt;li>Comprehensive Two-Level Quality Assessment: 基于答案和过程的正确性来提高数据质量&lt;/li>
+&lt;li>Human-in-the-Loop Quality Enhancement: 对于中等质量的数据请人类进一步进行标注&lt;/li>
+&lt;li>Dynamic Quality Scoring and Data Utilization Strategy: 对数据进行打分，高质量数据进行上采样&lt;/li>
+&lt;/ol>
+&lt;p>接下来就是 General RL 过程。&lt;/p>
+&lt;p>对于通用的 RLVR 训练，作者使用了 &lt;a class="link" href="https://maosong.website/p/notes-on-gspo/" target="_blank" rel="noopener"
+>GSPO&lt;/a> 算法来进行训练。&lt;/p>
+&lt;p>在训练过程中，作者采取了 progressive hint sampling 方式，也就是提供不同程度的 hint 来提高模型的训练效率。作者将 hint 分为五个等级：&lt;/p>
+&lt;ol>
+&lt;li>Level 1 (Concept / Observation)&lt;/li>
+&lt;li>Level 2 (Strategy / Method)&lt;/li>
+&lt;li>Level 3 (Tools / Formula)&lt;/li>
+&lt;li>Level 4 (Steps / Calculation)&lt;/li>
+&lt;li>Level 5 (Complete Solution)&lt;/li>
+&lt;/ol>
+&lt;p>来提供不同程度的辅助，作者使用 Keye-VL 1.5 来确定最小的 hint level, 然后基于这个 level 提供信息进行 RL 的训练&lt;/p>
+&lt;p>为了进一步提高模型的表现，作者采用了一个和 &lt;a class="link" href="https://maosong.website/p/notes-on-seed1.5-vl/" target="_blank" rel="noopener"
+>Seed1.5-VL&lt;/a> 一样的迭代式训练策略，即反复进行 SFT 和 RL 来降低训练成本，提高训练效率。&lt;/p>
+&lt;p>最后，再通用 RL 阶段之后，作者加入了 alignment RL 的训练来进行对齐，reward 包括三个方面：&lt;/p>
+&lt;ol>
+&lt;li>rule-based reward&lt;/li>
+&lt;li>generative reward&lt;/li>
+&lt;li>model-based reward&lt;/li>
+&lt;/ol>
+&lt;p>任务主要包括三个方面：&lt;/p>
+&lt;ol>
+&lt;li>instruction following&lt;/li>
+&lt;li>format adherence&lt;/li>
+&lt;li>preference alignment&lt;/li>
+&lt;/ol>
+&lt;p>数据介绍如下：&lt;/p>
+&lt;ol>
+&lt;li>instruction following:25 类硬约束，20 类软约束，数据包括 17K 多模态数据和 23K 纯文本数据，奖励包括 rule-based reward 和 generative reward&lt;/li>
+&lt;li>reasoning: 12K 数学和逻辑推理数据&lt;/li>
+&lt;li>RAG: 提高模型的搜索能力，作者使用 GSPO 算法进行训练&lt;/li>
+&lt;/ol>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>模型表现如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-keye-vl-1.5/Keye-VL-1-5-Performance.png"
+width="1366"
+height="988"
+loading="lazy"
+alt="Performance of Keye-VL 1.5"
+class="gallery-image"
+data-flex-grow="138"
+data-flex-basis="331px"
+>&lt;/p>
+&lt;p>接下来作者进行了消融实验。&lt;/p>
+&lt;p>首先是不同训练阶段对模型表现的影响，如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-keye-vl-1.5/Keye-VL-1-5-ablation-training-stage.png"
+width="1369"
+height="458"
+loading="lazy"
+alt="Ablation study on training strategy"
+class="gallery-image"
+data-flex-grow="298"
+data-flex-basis="717px"
+>&lt;/p>
+&lt;p>实验结果显示，提高 SFT 训练数据可以有效提高模型在数学推理，逻辑推理和 OCR 任务上的表现。MPO 可以进一步提高模型的表现，Long CoT cold start 可以有效提高模型的 reasoning 表现。&lt;/p>
+&lt;p>作者还探究了 model merging 对模型表现的影响，作者首先基于 base model 和 OCR 数据训练得到 OCR expert, 然后进行 merge, 实验结果如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-keye-vl-1.5/Keye-VL-1-5-ablation-model-merging.png"
+width="1244"
+height="340"
+loading="lazy"
+alt="Ablation study on model merging"
+class="gallery-image"
+data-flex-grow="365"
+data-flex-basis="878px"
+>&lt;/p>
+&lt;p>实验结果显示，model merging 可以有效提高模型在 special domain 上的表现，并且还可以维持模型的通用能力&lt;/p>
+&lt;p>作者还发现：&lt;/p>
+&lt;ol>
+&lt;li>expert model 训练时间过长会影响最终 merge model 的表现&lt;/li>
+&lt;li>expert mode 训练的学习率应该要设置比较小&lt;/li>
+&lt;/ol>
+&lt;p>接下来，作者探究了 alignment RL 对模型表现的影响，&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-keye-vl-1.5/Keye-VL-1-5-ablation-alignment-RL.png"
+width="1385"
+height="275"
+loading="lazy"
+alt="Ablation on alignment RL"
+class="gallery-image"
+data-flex-grow="503"
+data-flex-basis="1208px"
+>&lt;/p>
+&lt;p>实验结果说明，alignment RL 可以在保持模型 reasoning 能力的同时提高模型的指令跟随能力&lt;/p>
+&lt;p>作者还探究了 hint 对模型表现的影响，使用不同 level hint 进行训练对模型表现影响的结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-keye-vl-1.5/Keye-VL-1-5-ablation-hint.png"
+width="1209"
+height="310"
+loading="lazy"
+alt="Ablation on hint level"
+class="gallery-image"
+data-flex-grow="390"
+data-flex-basis="936px"
+>&lt;/p>
+&lt;p>实验结果显示，使用 high level 的 hint 可以有效提高模型输出的正确率。&lt;/p>
+&lt;p>最后作者探究了 rejection sampling 对模型表现的影响，实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-keye-vl-1.5/Keye-VL-1-5-ablation-rejection-sampling.png"
+width="1384"
+height="340"
+loading="lazy"
+alt="Ablation on rejection sampling"
+class="gallery-image"
+data-flex-grow="407"
+data-flex-basis="976px"
+>&lt;/p>
+&lt;p>结果发现，通过 rejection sampling，模型的表现有了进一步的提升。因此作者采用了 ST-RL-(RFT-SFT)-(RFT-RL) 的训练方式来进行训练&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者在本文中提出了 Keye-VL1.5, 一个强调 video understanding 和 reasoning 的 MLLM. Keye-VL 1.5 使用了 SlowFast video encoding strategy 来提高模型的效率和视频理解能力。作者详细介绍了模型的数据，训练和评估。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2509.01563" target="_blank" rel="noopener"
+>arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on Keye-VL</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-keye-vl/</link><pubDate>Wed, 23 Jul 2025 11:11:43 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-keye-vl/</guid><description>&lt;p>Keye-VL 是快手在 25 年 7 月份提出的一个 8B 的多模态大模型，其亮点为短视频理解能力。预训练包括 4 个 stage，使用了 600B token，后训练包括 2 个 stage，用于提升模型的 reasoning 和 non-reasoning 能力。&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>作者首先回顾了已有的 MLLM 工作，然后强调理解短视频仍然是一个很难的任务，特别是要求模型基于 video 和 audio 来理解视频。因此，在本文中，作者提出了 Kwai Keye-VL，一个 8B 的多模态大模型，主要用于短视频理解任务。&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;h3 id="architecture">&lt;a href="#architecture" class="header-anchor">&lt;/a>Architecture
+&lt;/h3>&lt;p>Keye-VL 是一个标准的 ViT-MLP-LLM 的架构，其中，ViT 是 SigLIP-400M-384-14, MLP 是一个基于 SwiGLU 的 2 层 MLP，使用了和 &lt;a class="link" href="https://maosong.website/p/notes-on-qwen2.5-vl/" target="_blank" rel="noopener"
+>Qwen2.5-VL&lt;/a> 一样的 patch merge 方法，LLM 使用的是 Qwen3-8B，模型架构示意图如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-keye-vl/Keye-VL-architecture.png"
+width="1371"
+height="1000"
+loading="lazy"
+alt="Keye-VL model architecture"
+class="gallery-image"
+data-flex-grow="137"
+data-flex-basis="329px"
+>&lt;/p>
+&lt;p>作者针对 ViT 和 visual encoding 分别做了如下改进&lt;/p>
+&lt;h4 id="navit">&lt;a href="#navit" class="header-anchor">&lt;/a>NaViT
+&lt;/h4>&lt;p>作者实现了 native resolution ViT，来处理不同分辨率的图片。&lt;/p>
+&lt;p>具体做法为，作者基于 SigLIP-400M-384-14 来初始化 ViT。&lt;/p>
+&lt;p>然后，作者首先采用了 interpolation 来将 ViT 的 position encoding 扩展到不同的图片精度下面去。&lt;/p>
+&lt;p>接下来，作者提出了 2D RoPE 来进一步提升 position encoding 的表现。&lt;/p>
+&lt;p>最后，作者加入了 NaViT 的 packing 技巧来继续预训练 ViT.&lt;/p>
+&lt;p>在 ViT 预训练的过程中，作者使用了 &lt;strong>500B&lt;/strong> 的 token&lt;/p>
+&lt;h4 id="visual-encoding">&lt;a href="#visual-encoding" class="header-anchor">&lt;/a>Visual Encoding
+&lt;/h4>&lt;p>为了提升模型理解图片和视频的能力，作者针对图片和视频进行了进一步的处理。&lt;/p>
+&lt;p>对于不同精度的图片，作者将最大 token 个数设置为 16384。&lt;/p>
+&lt;p>对于视频，作者将每帧的 token 数限制在 $[128,768]$, 每个视频的最大 token 个数设置为 24576&lt;/p>
+&lt;p>对于提取的 frames，作者重新计算了 FPS, 然后在 3D RoPE 中让时间维度与真实时间严格对齐。&lt;/p>
+&lt;h3 id="pre-training">&lt;a href="#pre-training" class="header-anchor">&lt;/a>Pre-training
+&lt;/h3>&lt;h4 id="data">&lt;a href="#data" class="header-anchor">&lt;/a>Data
+&lt;/h4>&lt;p>预训练数据一共包括 600B token，覆盖了 6 个类别：&lt;/p>
+&lt;ul>
+&lt;li>Image caption: 包括中英文数据，来源为 LAION, DataComp 以及 Coyo. 作者基于 CLIP 来计算相速度，然后过滤掉相似度比较低的数据，作者还对数据进行了 re-caption，实验发现 re-caption 可以提高模型的细粒度图片理解能力&lt;/li>
+&lt;li>OCR &amp;amp; VQA: 数据包括开源数据和合成数据。合成数据包括 Synthesis 和 Rendering 两个方法，第一是基于 text-dense image 构建 OCR 数据以及基于 image-caption pair 数据使用 MLLM 构建 VQA 数据。第二是使用字体渲染工具合成高质量的 OCR 数据&lt;/li>
+&lt;li>Grounding &amp;amp; Counting: Grounding 数据主要包括 RefCoCo, VisualGenome, TolokaVQA, Counting 数据包括 PixMo. 作者仍然使用 CLIP 对数据进行过滤&lt;/li>
+&lt;li>Interleaved text-image data: 作者发现图文交错数据可以提供通用知识，并且还可以提高模型的视觉语言对齐能力，第三就是提升模型的泛化能力。作者主要从 academic PDF 以及结构化知识中提取对应的数据。作者基于 Garbled character recognition, low-resolution/broken image filtering 以及 text-image similarity validation 来保证数据的质量&lt;/li>
+&lt;li>Video understanding: 作者使用 Qwen2.5-omni 从 interleaved video-asr 来将视频数据转化图文交错数据， 然后基于 ASR 的结果进行 recaption，最后对每一帧进行 OCR. 作者还构建了 Frame-level re-ordering 以及 multiple video matching 两个任务来提高模型的上下文理解能力&lt;/li>
+&lt;li>Pure Text: 未提及&lt;/li>
+&lt;/ul>
+&lt;p>对于源数据，作者进行了数据清洗：&lt;/p>
+&lt;ol>
+&lt;li>使用 CLIP 对数据进行打分，然后过滤掉低质量的数据&lt;/li>
+&lt;li>使用开源的 MLLM 作为 discriminator 来选择高质量的数据&lt;/li>
+&lt;li>去重&lt;/li>
+&lt;/ol>
+&lt;h4 id="training-recipe">&lt;a href="#training-recipe" class="header-anchor">&lt;/a>Training Recipe
+&lt;/h4>&lt;p>预训练包括 4 个 stage：&lt;/p>
+&lt;ul>
+&lt;li>Stage 0: 使用 SigLIP 损失函数来继续训练 ViT&lt;/li>
+&lt;li>Stage 1: cross-modal Alignment，仅训练 MLP&lt;/li>
+&lt;li>Stage 2: multi-task pre-training, 解冻所有参数，使用 Multi-task 数据来训练模型&lt;/li>
+&lt;li>Stage 3: annealing, 在高质量数据集上进行 fine-tune，进一步提升模型的能力&lt;/li>
+&lt;/ul>
+&lt;p>作者发现，预训练后的模型在下游任务上的表现对训练数据配比非常敏感。为了解决这个问题，在最后一个训练阶段，作者使用了一个 merging 的技巧，来保持模型的能力。&lt;/p>
+&lt;h3 id="post-training">&lt;a href="#post-training" class="header-anchor">&lt;/a>Post-training
+&lt;/h3>&lt;p>post-training 阶段一共包含了 2 个 step, 5 个 stage, 第一个 step 包含 2 个 stage，用于提升模型的 non-reasoning 能力。第二个 step 包含 3 个 stage, 用于提升模型的 reasoning 能力&lt;/p>
+&lt;h4 id="no-reasoning-training">&lt;a href="#no-reasoning-training" class="header-anchor">&lt;/a>No-reasoning Training
+&lt;/h4>&lt;p>第一个 step 是 non-reasoning training, 包含了 SFT 和 MPO 两个 stage, 训练 pipeline 如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-keye-vl/Keye-VL-non-reasoning-training.png"
+width="1340"
+height="472"
+loading="lazy"
+alt="Non reasoning training pipeline"
+class="gallery-image"
+data-flex-grow="283"
+data-flex-basis="681px"
+>&lt;/p>
+&lt;p>&lt;strong>SFT&lt;/strong>
+SFT 阶段一共使用了 &lt;strong>5M&lt;/strong> 的多模态 QA 样本，为了提升数据的多样性，作者使用 TaskGalaxy 来将数据分类为 70,000 种任务类型，然后作者对每条数据，使用 MLLM 评估问题的难度，来过滤掉过于简单的问题。最后，作者请人类来进行标注，保证数据的可靠性。&lt;/p>
+&lt;p>&lt;strong>MPO&lt;/strong>
+训练方面，作者使用了 MPO 进行训练。
+数据方面，作者使用了：&lt;/p>
+&lt;ol>
+&lt;li>400,000 开源的数据，作者主要进行了去重以及过滤低质量的数据&lt;/li>
+&lt;li>50,000 偏好数据，基于 MM-RLHF 和 MMPR 等数据构建，然后构建高质量的 negative examples&lt;/li>
+&lt;li>10,000 条 self-improvement 样本：基于 benchmark 和人类反馈，使用 SFT model 的回答作为 chosen samples, 然后基于 reward model 或者 rule-based rewards 评估模型输出，选择分数最低的座位 rejected samples&lt;/li>
+&lt;li>90,000 纯文本样本： in-house data&lt;/li>
+&lt;li>30,000 人类标注样本：使用开源和闭源模型进行回答，然后请人类进行排序&lt;/li>
+&lt;/ol>
+&lt;h4 id="reasoning-training">&lt;a href="#reasoning-training" class="header-anchor">&lt;/a>Reasoning Training
+&lt;/h4>&lt;p>第二个 step 是 reasoning training, 包含了 CoT Cold-Start, Mix-Mode RL 和 Iterative Alignment 三个 stage, 训练 pipeline 如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-keye-vl/Keye-VL-reasoning-training.png"
+width="1358"
+height="596"
+loading="lazy"
+alt="Non reasoning training pipeline"
+class="gallery-image"
+data-flex-grow="227"
+data-flex-basis="546px"
+>&lt;/p>
+&lt;p>&lt;strong>CoT cold-start&lt;/strong>
+作者收集了如下数据：&lt;/p>
+&lt;ul>
+&lt;li>330, 000 条 non-reasoning 样本：和第一个 step 的数据分布类似，但是不重合&lt;/li>
+&lt;li>230,000 reasoning 样本：作者构建了一个 data construction pipeline,用于保证 long-CoT 的正确性&lt;/li>
+&lt;li>20,000 automatic reasoning 样本：作者基于 MMPR, MM-Eureka 以及 OpenR1-math 来收集数据，基于这些模型来训练模型自动化决定是否要进行 reasoning&lt;/li>
+&lt;li>100,000 agentic reasoning 样本：训练模型的 &amp;ldquo;think with image&amp;rdquo; 能力。基于 3M QA pairs，作者使用 Qwen2.5-72B 来识别需要进行 manipulating 的问题，然后生成对应的代码。接下来作者构建了一部分 OCR 数据，让模型学会 constrast enhancement 或者 rotation 操作。最后对于数学问题，作者让 Gemini-2.5-Pro 生成对应的思考过程，再让 GPT-4o 将对应的计算转换为可执行的代码。&lt;/li>
+&lt;li>32, 000 Video data: 包含了 24,000 条 thinking samples 和 80,000 条 non-thinking samples&lt;/li>
+&lt;/ul>
+&lt;p>训练时，所有样本混在一起进行训练。作者认为，将日常使用的 SFT 数据和 reasoning 数据放在一起训练，可以保持模型在通用场景下的能力。&lt;/p>
+&lt;p>&lt;strong>Mix-Mode RL&lt;/strong>
+训练数据主要包括 4 个任务：&lt;/p>
+&lt;ol>
+&lt;li>Multimodal perception: 复杂文本识别和 counting 任务&lt;/li>
+&lt;li>Multimodal reasoning: MMPR 和 MM-Eureka&lt;/li>
+&lt;li>Text-based mathematical reasoning: 数学推理问题&lt;/li>
+&lt;li>Agentic reasoning: 从 DeepEyes 中获取的 47,000 条样本&lt;/li>
+&lt;/ol>
+&lt;p>作者使用了 GRPO 来训练，reward 基于 MLLM 进行，包括最终结果和思考过程。&lt;/p>
+&lt;p>作者还使用 RL 来提高模型的短视频理解能力。作者发现 RL 训练之后，模型的短视频理解能力有了大幅度的提升。&lt;/p>
+&lt;p>&lt;strong>Iterative Alignment&lt;/strong>
+这一步主要解决模型的重复性输出，或者 reasoning logic 不对的问题。作者使用了 rejection-sampling 数据，包括 instruction following, OCR, mathematics, charts, counting 等。&lt;/p>
+&lt;p>作者基于 Rule-based score 和 model-based score 来进行打分，最后使用 MPO 算法进行训练。通过这个过程，模型的输出格式和动态思考能力都有了提升。&lt;/p>
+&lt;h2 id="evaluation">&lt;a href="#evaluation" class="header-anchor">&lt;/a>Evaluation
+&lt;/h2>&lt;p>作者首先评估了 ViT 的表现，主要有两点：&lt;/p>
+&lt;ol>
+&lt;li>在 SigLIP 的基础上加入 1D interpolation 之后，模型的表现所有下降，作者认为这是由于 1D 的 position encoding 无法识别 2D 的 patch 排列导致的&lt;/li>
+&lt;li>加入 2D RoPE 之后，ViT 与 SigLIP 的表现持平&lt;/li>
+&lt;/ol>
+&lt;p>接下来是 Keye-VL 在公开 benchmark 上的表现，如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-keye-vl/Keye-VL-performance.png"
+width="1068"
+height="1161"
+loading="lazy"
+alt="Performance of Keye-VL"
+class="gallery-image"
+data-flex-grow="91"
+data-flex-basis="220px"
+>&lt;/p>
+&lt;p>作者还构建了一个内部的 benchmark, 用于进一步评估模型的能力。&lt;/p>
+&lt;p>已有 benchmark 的问题：&lt;/p>
+&lt;ol>
+&lt;li>contamination&lt;/li>
+&lt;li>多语种覆盖不足：大部分 benchmark 都是英文的&lt;/li>
+&lt;li>任务和 domain 覆盖不足：大部分 benchmark 只考虑基本的 perception 和 reasoning 能力&lt;/li>
+&lt;li>任务难度和评估格式单调&lt;/li>
+&lt;/ol>
+&lt;p>构建 benchmark 的原则：&lt;/p>
+&lt;ol>
+&lt;li>在中文场景下的真实用户需求，open ended QA, 包括短视频理解能力&lt;/li>
+&lt;li>细粒度的评估&lt;/li>
+&lt;li>多样性高&lt;/li>
+&lt;li>没有 contamination&lt;/li>
+&lt;li>多角度评估策略: 正确性，相关性，理解性，流畅性和创造性&lt;/li>
+&lt;/ol>
+&lt;p>结果如下：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-keye-vl/Keye-VL-performance-internal.png"
+width="1339"
+height="559"
+loading="lazy"
+alt="Performance of Keye-VL on the internal benchmark"
+class="gallery-image"
+data-flex-grow="239"
+data-flex-basis="574px"
+>&lt;/p>
+&lt;p>分析：&lt;/p>
+&lt;ol>
+&lt;li>Keye-VL 在 OCR 等任务上的表现有所不足，其细粒度的识别能力也有所不足，会认错人。有时候还会忽略掉一些信息&lt;/li>
+&lt;li>描述 temporal action 时会出现不稳定性，模型对镜头的感知能力不足。需要准确定位时间等&lt;/li>
+&lt;li>在需要逻辑链条和数学计算时，模型能力不足，对于特定 domain 上的任务会出现事实性错误。写作时，模型倾向于输出通用的回答，而不是定制化的回答。&lt;/li>
+&lt;/ol>
+&lt;h2 id="discussion">&lt;a href="#discussion" class="header-anchor">&lt;/a>Discussion
+&lt;/h2>&lt;p>作者讨论了两点关键发现：&lt;/p>
+&lt;ol>
+&lt;li>reasoning 和 non-reasoning 的数据可以互相促进彼此的表现，这与 ERNIE 4.5 的发现一致。&lt;/li>
+&lt;li>作者认为通过 mix-mode 的训练，模型在简单和复杂任务上的表现都可以提升，因此作者使用了混合数据来进行训练，结果发现效果很好。&lt;/li>
+&lt;/ol>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>本文中，作者提出了 Keye-VL 8B，一个短视频理解能力出色的多模态大模型，作者详细介绍了 pre-training 和 post-training. 其中，mix-mode training 可以有效提高模型的表现。&lt;/p>
+&lt;p>作者认为 Keye-VL 有如下改进的地方：&lt;/p>
+&lt;ol>
+&lt;li>并没有优化 video encoder 或者是改进 video encoding 的策略&lt;/li>
+&lt;li>Keye-VL 的视觉感知能力有进一步的提升空间，其 &amp;ldquo;reasoning with image&amp;rdquo; 能力依然落后于领先的 reasoning model&lt;/li>
+&lt;li>使用一个额外的 MLLM 作为 reward model 会极大消耗算力，如何构建一个更可靠更高效的 reward model 需要进一步探索。&lt;/li>
+&lt;/ol>
+&lt;h2 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2507.01949" target="_blank" rel="noopener"
+>Arxiv&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://github.com/Kwai-Keye/Keye/tree/main" target="_blank" rel="noopener"
+>Github&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

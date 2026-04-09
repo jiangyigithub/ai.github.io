@@ -1,0 +1,356 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>NLP on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/categories/nlp/</link><description>Recent content in NLP on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/categories/nlp/index.xml" rel="self" type="application/rss+xml"/><item><title>ROUGE (Recall-Oriented Understudy)</title><link>https://github.com/jiangyigithub/ai.github.io/p/rouge-recall-oriented-understudy/</link><pubDate>Thu, 09 May 2024 17:35:20 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/rouge-recall-oriented-understudy/</guid><description>&lt;p>ROUGE stands for Recall-Oriented Understudy for Gisting Evaluation. It includes several automatic evaluation methods that measure the similarity between summaries.&lt;/p>
+&lt;h1 id="preliminaries">&lt;a href="#preliminaries" class="header-anchor">&lt;/a>Preliminaries
+&lt;/h1>&lt;h1 id="rouge-n-n-gram-co-occurrence-statistics">&lt;a href="#rouge-n-n-gram-co-occurrence-statistics" class="header-anchor">&lt;/a>ROUGE-N: N-gram co-occurrence statistics
+&lt;/h1>&lt;h2 id="definitions">&lt;a href="#definitions" class="header-anchor">&lt;/a>Definitions
+&lt;/h2>&lt;p>Given any string $y=y_1y_2\cdots y_K$, where $y_i,i\in{1,\dots,K}$ are characters and an integer $n\geq1$, we define the &lt;strong>set of $n$-gram&lt;/strong> to be&lt;/p>
+$$ G_n(y) = \{ y_1\cdots y_n, y_2\cdots y_{n+1}, \dots, y_{K-n+1}\cdots y_K\} $$&lt;p>NOTE that this is a set with unique elements, for example, $G_2(abab)=\{ab, ba\}$.&lt;/p>
+&lt;p>Given any two strings $s$ and $y$, we define &lt;strong>substring count&lt;/strong> $C(s,y)$ to tbe the number of appearances of $s$ as a substring of $y$. For example, $C(ab, abcbab)=2$ since $ab$ appear in $abcbab$ twice in position $1$ and $5$.&lt;/p>
+&lt;h2 id="base-version">&lt;a href="#base-version" class="header-anchor">&lt;/a>Base Version
+&lt;/h2>&lt;p>ROUGE-N is an n-gram recall between a candidate summary $\hat{y}$ and a set of reference summaries $S=\{y_1,\dots,y_n\}$. ROUGE-N is defined as follows:&lt;/p>
+$$ \text{ROUGE-N}(\hat{y}, S) = \frac{\sum_{i=1}^n\sum_{s\in G_N(y_i)}C(s,\hat{y})}{\sum_{i=1}^n\sum_{s\in G_N(y_i)}C(s, y_i)} $$&lt;p>Features of ROUGE-N:&lt;/p>
+&lt;ol>
+&lt;li>the denominator increases as we add more references, since there might exists multiple good summaries.&lt;/li>
+&lt;li>A candidate summary that contains words shared by more references is favored by the ROUGE-N measure.&lt;/li>
+&lt;/ol>
+&lt;h2 id="multiple-references">&lt;a href="#multiple-references" class="header-anchor">&lt;/a>Multiple references
+&lt;/h2>&lt;p>When there are multiple references for a candidate summary, it is suggests to use the following formula:&lt;/p>
+$$ \text{ROUGE-N}(\hat{y}, S) = \arg\max_{i=1,\dots,n}\text{ROUGE-N}(\hat{y}, \{y_i\}) $$&lt;p>the above formula is favored for the following reasons:&lt;/p>
+&lt;ol>
+&lt;li>There is no single &amp;ldquo;best&amp;rdquo; reference summary, the multiple reference formula allows ROUGE-N to take into account of all the possible reference summaries and provide a more accurate measure of the quality of the generated summary.&lt;/li>
+&lt;li>The multiple reference formula is more robust. If a reference summary contains a typo or a grammatical error, this can affect the ROUGE-N score.&lt;/li>
+&lt;li>The multiple reference formula can provide a more comprehensive evaluation of the generated summary, since it can allow ROUGE-N to evaluate the generated summary against a wider range pf possible reference summaries.&lt;/li>
+&lt;/ol>
+&lt;h1 id="rouge-l">&lt;a href="#rouge-l" class="header-anchor">&lt;/a>ROUGE-L
+&lt;/h1>&lt;p>A sequence $Z=[z_1,\dots,z_m]$ is a subsequence of another sequence $X=[x_1,\dots,x_n]$ if there exists a strict increasing sequence $[i_1,\dots,i_k]$ of indices of $X$ such that for all $j=1,\dots,k$, we have $x_{i_j}=z_j$.&lt;/p>
+&lt;p>Given two sequences $X$ and $Y$, the longest common subsequences (LCS) of $X$ and $Y$ is a common subsequences with maximum length.&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">longest_common_subsequence&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">str&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">y&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">str&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;compute the length of LCS of x and y
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2">
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> Args:
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> x (str): a string of length m
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> y (str): a string of length n
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2">
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> Return:
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> int: the length of LCS of x and y
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">m&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">n&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">y&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dp&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[[&lt;/span>&lt;span class="mi">0&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">_&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">m&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">)]&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">_&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">n&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">)]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">for&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">m&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">for&lt;/span> &lt;span class="n">j&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">n&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">y&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">j&lt;/span>&lt;span class="p">]:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dp&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">j&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">dp&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">j&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">else&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dp&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">j&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">max&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dp&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">j&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="n">dp&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">j&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">])&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">dp&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">m&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">n&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h2 id="sentence-level-lcs">&lt;a href="#sentence-level-lcs" class="header-anchor">&lt;/a>Sentence-level LCS
+&lt;/h2>&lt;p>The intuition of sentence-level LCS is that the longer the LCS of two summary sentences is, the more similar the two summaries are.&lt;/p>
+&lt;p>Given two summaries $X$ of length $m$ and $Y$ of length $n$, assuming $X$ is a reference summary sentence and $Y$ is a candidate summary sentence, the LCS-based recall, precision and F-measure are defined as follows:&lt;/p>
+$$ R_{LCS} = \frac{LCS(X, Y)}{m}, P_{LCS} = \frac{LCS(X, Y)}{n}, R_{LCS} = \frac{(1+\beta^2)R_{LCS}P_{LCS}}{R_{LCS}+\beta^2P_{LCS}} $$&lt;p>the above formula is called ROUGE-L. $\beta$ is a hyperparameter.&lt;/p>
+&lt;p>Features of ROUGE-L are listed as follows:&lt;/p>
+&lt;ol>
+&lt;li>It doesn&amp;rsquo;t require consecutive matches but in-sequence matches, which is more reasonable than n-grams.&lt;/li>
+&lt;li>It automatically includes longest in-sequence common n-grams, there fore no predefined n-gram length is necessary.&lt;/li>
+&lt;li>It&amp;rsquo;s value is less tan or equal to the minimum of unigram F-measure of $X$ and $Y$.&lt;/li>
+&lt;li>The disadvantage of ROUGE-L is that it only counts the main in-sequences words, therefore, other alternative LCSes and shorter sequences are not reflected in the final score.&lt;/li>
+&lt;/ol>
+&lt;h2 id="summary-level-lcs">&lt;a href="#summary-level-lcs" class="header-anchor">&lt;/a>Summary-level LCS
+&lt;/h2>&lt;p>We can apply sentence-level LCS-based F-measure score to summary level. Given a reference summary of $u$ sentences $\{r_1,\dots,r_u\}$ containing a total of $m$ words and a candidate summary of $v$ sentences $\{c_1,\dots,c_v\}$ containing a total of $n$ words, the summary-level LCS-based recall, precision and F-measure are defined as follows:&lt;/p>
+$$ R_{LCS} = \frac{\sum_{i=1}^u\max_{j}LCS(r_i, c_j)}{m}, P_{LCS} = \frac{\sum_{i=1}^v \max_{j}LCS(r_i, c_j)}{n}, R_{LCS} = \frac{(1+\beta^2)R_{LCS}P_{LCS}}{R_{LCS}+\beta^2P_{LCS}} $$&lt;h1 id="rouge-w">&lt;a href="#rouge-w" class="header-anchor">&lt;/a>ROUGE-W
+&lt;/h1>&lt;p>The basic LCS has a problem that it doesn&amp;rsquo;t differentiate LCSes of different spatial relations within their embedding sequences.&lt;/p>
+&lt;p>To improve the basic LSC method, we can simply remember the length of consecutive matches encountered so fat to a regular two dimensional dynamic program table computing LCS. we call this &lt;em>weighted LCS (WLCS)&lt;/em> and use $k$ to indicate the length of the current consecutive matches ending at words $x_i$ and $y_j$.&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">weighted_longest_common_subsequence&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">str&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">y&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">str&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">f&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">Callable&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;use dynamic programming to compute WLCS with a weighted function f
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2">
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> Args:
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> x (str): a candidate summary containing m words
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> y (str): a reference summary containing n words
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> f (Callable): a function satisfies f(x+y) &amp;gt; f(x) + f(y)
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2">
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> Return:
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> the WLCS score
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2">
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> Reference:
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> https://aclanthology.org/W04-1013
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">x&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">y&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">split&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="n">y&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">split&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">m&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">n&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">y&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">c&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[[&lt;/span>&lt;span class="mi">0&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">_&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">m&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">)]&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">_&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">n&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">)]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">w&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[[&lt;/span>&lt;span class="mi">0&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">_&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">m&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">)]&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">_&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">n&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">)]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">for&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">m&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">for&lt;/span> &lt;span class="n">j&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">n&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="n">y&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">j&lt;/span>&lt;span class="p">]:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># the length of consecutive matches at (i - 1, j - 1)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">k&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">w&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">j&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">c&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">j&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">c&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">j&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">f&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">k&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">f&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">k&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># remember the length of consecutive matches at (i - 1, j - 1)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">w&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">j&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">k&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">else&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">c&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">j&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">c&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">j&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">]:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">c&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">j&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">c&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">j&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">w&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">j&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="c1"># no match at (i, j)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">elif&lt;/span> &lt;span class="n">c&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">j&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">c&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">j&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">]:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">w&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">j&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span> &lt;span class="c1"># no match at (i, j)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">c&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">m&lt;/span>&lt;span class="p">][&lt;/span>&lt;span class="n">n&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>where &lt;code>c[i][j]&lt;/code> stores the WLCS score ending at word &lt;code>x[i]&lt;/code> of &lt;code>x&lt;/code> and &lt;code>y[i]&lt;/code> of &lt;code>y&lt;/code>. &lt;code>w&lt;/code> stores the length of consecutive matches at &lt;code>c[i][j]&lt;/code>. &lt;code>f&lt;/code> is a function of consecutive matches at &lt;code>c[i][j]&lt;/code>.&lt;/p>
+&lt;p>Recall, precision, F-score based on WLCS can be computed as follows:&lt;/p>
+$$ R_{WLCS} = f^{-1}\left(\frac{WLCS(X, Y)}{f(m)}\right), P_{WLCS} = f^{-1}\left(\frac{WLCS(X, Y)}{f(n)}\right), R_{LCS} = \frac{(1+\beta^2)R_{WLCS}P_{WLCS}}{R_{WLCS}+\beta^2P_{WLCS}} $$&lt;p>where $f$ is the inverse function of $f$. We call the WLCS-based F-measure as ROUGE-W. Usually, a function $f$ that has a close form inverse is preferred.&lt;/p>
+&lt;h1 id="rouge-s">&lt;a href="#rouge-s" class="header-anchor">&lt;/a>ROUGE-S
+&lt;/h1>&lt;p>Skip-bigram is any pair of words in their sentence order, allowing for arbitrary gaps. Skip-bigram co-occurrence statistics measure the overlap of skip-bigrams between a candidate translation and a set of reference translations.
+A sentence with $n$ words will have $\binom{n}{2}=n(n-1)/2$ skip-bigrams.&lt;/p>
+&lt;p>Recall, precision, F-score based on skip-bigram can be computed as follows:&lt;/p>
+$$ R_{\mathrm{SKIP2}} = \frac{\mathrm{SKIP2}(X, Y)}{m}, P_{\mathrm{SKIP2}} = \frac{\mathrm{SKIP2}(X, Y)}{n}, R_{\mathrm{SKIP2}} = \frac{(1+\beta^2)R_{\mathrm{SKIP2}}P_{\mathrm{SKIP2}}}{R_{\mathrm{SKIP2}}+\beta^2P_{\mathrm{SKIP2}}} $$&lt;p>where $\mathrm{SKIP2}(X, Y)$ is the number of skip-bigram matches between $X$ and $Y$. The F-score is called ROUGE-S.&lt;/p>
+&lt;h1 id="rouge-su">&lt;a href="#rouge-su" class="header-anchor">&lt;/a>ROUGE-SU
+&lt;/h1>&lt;p>One problem of ROUGE-S is that it doesn&amp;rsquo;t given any credit to a candidate sentence if the sentence doesn&amp;rsquo;t have any word pair co-occurring with its references.&lt;/p>
+&lt;p>To fix this problem, we extend ROUGE-S with the addition of unigram as counting unit. The extended version is called ROUGE-SU. We can also obtain ROUGE-SU from ROUGE-S by adding a begin-of-sentence marker at the beginning of candidate and reference sentences.&lt;/p>
+&lt;h1 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="https://aclanthology.org/W04-1013.pdf" target="_blank" rel="noopener"
+>ROUGE: A Package for Automatic Evaluation of Summaries&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://github.com/Yale-LILY/SummerTime/blob/e49058d928b4bd5b1017b7d774bea984bbdf5006/summertime/model/third_party/HMNet/Evaluation/OldROUGEEval.py" target="_blank" rel="noopener"
+>ROUGE Eval&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://github.com/google-research/google-research/tree/master/rouge" target="_blank" rel="noopener"
+>google-research rouge&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>BLEU (Bilingual Evaluation Understudy)</title><link>https://github.com/jiangyigithub/ai.github.io/p/bleu-bilingual-evaluation-understudy/</link><pubDate>Thu, 25 Apr 2024 22:46:53 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/bleu-bilingual-evaluation-understudy/</guid><description>&lt;p>BLEU (Bilingual Evaluation Understudy) is a widely used metric that evaluates the quality of the translated text with respect to the reference translations.&lt;/p>
+&lt;h1 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h1>&lt;p>The formula of BLEU is defined as follows:&lt;/p>
+$$ \mathrm{BLEU}_ {w_n}(\hat{S}, S) = \mathrm{BP} \cdot \exp\left(\sum_{n=1}^Nw_n\log p_n(\hat{S}, S) \right) $$&lt;p>where&lt;/p>
+&lt;ol>
+&lt;li>$\mathrm{BP}$ represents the Brevity Penalty to penalize the translations that are shorter than the reference translations.&lt;/li>
+&lt;li>$p_n$ represents the modified $n$-gram precision score&lt;/li>
+&lt;li>$w_n$ represents the weight for $p_n$, it satisfies $0\leq w_n\leq1$ and $\sum_{n=1}^Nw_n=1$.&lt;/li>
+&lt;/ol>
+&lt;p>Now we interprets three parts in detail.&lt;/p>
+&lt;h1 id="interpretation">&lt;a href="#interpretation" class="header-anchor">&lt;/a>Interpretation
+&lt;/h1>&lt;h2 id="definitions">&lt;a href="#definitions" class="header-anchor">&lt;/a>Definitions
+&lt;/h2>&lt;p>Given any string $y=y_1y_2\cdots y_K$, where $y_i,i\in{1,\dots,K}$ are characters and an integer $n\geq1$, we define the &lt;strong>set of $n$-gram&lt;/strong> to be&lt;/p>
+$$ G_n(y) = \{ y_1\cdots y_n, y_2\cdots y_{n+1}, \dots, y_{K-n+1}\cdots y_K\} $$&lt;p>NOTE that this is a set with unique elements, for example, $G_2(abab)=\{ab, ba\}$.&lt;/p>
+&lt;p>Given any two strings $s$ and $y$, we define &lt;strong>substring count&lt;/strong> $C(s,y)$ to tbe the number of appearances of $s$ as a substring of $y$. For example, $C(ab, abcbab)=2$ since $ab$ appear in $abcbab$ twice in position $1$ and $5$.&lt;/p>
+&lt;h2 id="modified-precision-score">&lt;a href="#modified-precision-score" class="header-anchor">&lt;/a>Modified precision score
+&lt;/h2>&lt;p>We start from the one candidate translation $\hat{y}$ and one reference translation $y$. The modified $n$-gram is defined as&lt;/p>
+$$ p_n(\hat{y}, y) = \frac{\sum_{s\in G_n(\hat{y})}\min (C(s,\hat{y}), C(s,y))}{\sum_{s\in G_n(\hat{y})}C(s,\hat{y})} $$&lt;p>The quantity measures how many $n$-grams of the reference translation $y$ appears in the candidate translation $\hat{y}$.
+In case that $\hat{y}$ is too short, we take a minimum between $C(s,\hat{y})$ and $ C(s,y)$. Then we normalize to make $p_n(\hat{y}, y)$ comparable among multiple translation pairs.&lt;/p>
+&lt;p>Now, suppose we have a candidate translation corpus, $\hat{S}=\{\hat{y}^1,\dots,\hat{y}^M\}$, and for each candidate translation $\hat{y}^i$, we have a reference translation corpus (there are multiple translations can represent the same meaning) $S_i=\{y^{i,1},\dots,y^{i,N_i}\}$. We define $S=\{S_1,\dots,S_M\}$, then our modified $n$-gram precision is defined as&lt;/p>
+$$ p_n(\hat{S}, S) = \frac{\sum_{i=1}^M\sum_{s\in G_n(\hat{y})}\min (C(s,\hat{y}), \max_{y\in S_i}C(s,y))}{\sum_{i=1}^M\sum_{s\in G_n(\hat{y})}C(s,\hat{y})} $$&lt;p>note that we have replaced $\min (C(s,\hat{y}), C(s,y))$ with $\min (C(s,\hat{y}), \max_{y\in S_i}C(s,y))$ since there are multiple reference translation, we use the most similar one. So this is to say: &amp;ldquo;There are multiple answer, go to choose the best one and compute the score.&amp;rdquo;&lt;/p>
+&lt;h2 id="bp-brevity-penalty">&lt;a href="#bp-brevity-penalty" class="header-anchor">&lt;/a>BP (Brevity Penalty)
+&lt;/h2>&lt;p>Candidate translations longer than their references are already penalized by the modified $n$-gram precision measure.
+Now, to penalize those translations shorter than the reference translations, we need add an penalty term. This is when brevity penalty comes out:&lt;/p>
+$$
+\mathrm{BP}=\begin{cases}1&amp;\text{ if }c > r\\
+\exp(1-\frac{r}{c})&amp;\text{ if }c \leq r
+\end{cases}
+$$&lt;p>where&lt;/p>
+&lt;ul>
+&lt;li>$c$ is the number of words or tokens of the candidate corpus. That is,&lt;/li>
+&lt;/ul>
+$$ c = \sum_{i=1}^M\mathrm{length}(\hat{y}^i) $$&lt;ul>
+&lt;li>$r$ is the number of words or tokens of the effective reference corpus length, where the effective reference is defined as the reference translation whose length is as close to the corresponding candidate translation as possible. That is&lt;/li>
+&lt;/ul>
+$$ r = \sum_{i=1}^M\mathrm{length}(y^{i,j}),\text{ where } y^{i,j}=\arg\min_{y\in S_i}|\mathrm{length}(\hat{y}^i)-\mathrm{length}(y)| $$&lt;p>with this penalty term, we wish the model to output the translations with the same length as the reference translations.&lt;/p>
+&lt;h2 id="weight">&lt;a href="#weight" class="header-anchor">&lt;/a>Weight
+&lt;/h2>&lt;p>The weight measures the importance of different precision score, in the original paper, the uniform weights are adopted, that is&lt;/p>
+$$ w_i = \frac{1}{N}, \ \text{ for } i=1,\dots,N $$&lt;h2 id="final-definition">&lt;a href="#final-definition" class="header-anchor">&lt;/a>Final definition
+&lt;/h2>&lt;p>The final definition of the BLEU is given by&lt;/p>
+$$ \mathrm{BLEU}_ {w}(\hat{S}, S) = \mathrm{BP} \cdot \exp\left(\sum_{n=1}^\infty w_n\log p_n(\hat{S}, S) \right) $$&lt;p>usually, the upper-bound of the above summation can be reduced to $\max_{i=1,\dots,M}\mathrm{length}(\hat{y}^i)$.&lt;/p>
+&lt;h1 id="analysis">&lt;a href="#analysis" class="header-anchor">&lt;/a>Analysis
+&lt;/h1>&lt;p>Disadvantages of BLEU:&lt;/p>
+&lt;ul>
+&lt;li>BLEU compares overlap in tokens from the predictions and references, instead of comparing meaning. This can lead to discrepancies between BLEU scores and human ratings.&lt;/li>
+&lt;li>BLEU scores are not comparable across different datasets, nor are they comparable across different languages.&lt;/li>
+&lt;li>BLEU scores can vary greatly depending on which parameters are used to generate the scores, especially when different tokenization and normalization techniques are used.&lt;/li>
+&lt;li>BLEU ignores synonym or similar expression, which causes refuses of reasonable translation.&lt;/li>
+&lt;li>BLEU is affected by common words.&lt;/li>
+&lt;/ul>
+&lt;h1 id="python-implementation">&lt;a href="#python-implementation" class="header-anchor">&lt;/a>Python Implementation
+&lt;/h1>&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;span class="lnt">38
+&lt;/span>&lt;span class="lnt">39
+&lt;/span>&lt;span class="lnt">40
+&lt;/span>&lt;span class="lnt">41
+&lt;/span>&lt;span class="lnt">42
+&lt;/span>&lt;span class="lnt">43
+&lt;/span>&lt;span class="lnt">44
+&lt;/span>&lt;span class="lnt">45
+&lt;/span>&lt;span class="lnt">46
+&lt;/span>&lt;span class="lnt">47
+&lt;/span>&lt;span class="lnt">48
+&lt;/span>&lt;span class="lnt">49
+&lt;/span>&lt;span class="lnt">50
+&lt;/span>&lt;span class="lnt">51
+&lt;/span>&lt;span class="lnt">52
+&lt;/span>&lt;span class="lnt">53
+&lt;/span>&lt;span class="lnt">54
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="kn">import&lt;/span> &lt;span class="nn">math&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="kn">from&lt;/span> &lt;span class="nn">typing&lt;/span> &lt;span class="kn">import&lt;/span> &lt;span class="n">Set&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">List&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">compute_n_gram_set&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">s&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">str&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">n&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="n">Set&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nb">str&lt;/span>&lt;span class="p">]:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="nb">set&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">s&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">i&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">n&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">s&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">n&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">modified_n_gram_precision&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S_hat&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">List&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nb">str&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="n">S&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">List&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">List&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nb">str&lt;/span>&lt;span class="p">]],&lt;/span> &lt;span class="n">n&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="nb">float&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S_hat&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">n&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="mf">0.0&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">numerator&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">denominator&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">for&lt;/span> &lt;span class="n">index&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">y_hat&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">enumerate&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S_hat&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">n_gram_set&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">compute_n_gram_set&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">y_hat&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">n&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="n">n_gram_set&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">continue&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># print(n_gram_set)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">for&lt;/span> &lt;span class="n">n_gram&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="n">n_gram_set&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">candidate_substr_count&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">y_hat&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">n_gram&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">best_ref_substr_count&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">best_ref_len&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">max&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="p">[(&lt;/span>&lt;span class="n">y&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">count&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">n_gram&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">y&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">y&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="n">S&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">index&lt;/span>&lt;span class="p">]],&lt;/span> &lt;span class="n">key&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="k">lambda&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">numerator&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="nb">min&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">candidate_substr_count&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">best_ref_substr_count&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">denominator&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">candidate_substr_count&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">numerator&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="n">denominator&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">brevity_penalty&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S_hat&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">List&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nb">str&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="n">S&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">List&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">List&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nb">str&lt;/span>&lt;span class="p">]])&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="nb">float&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">r&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">c&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">for&lt;/span> &lt;span class="n">index&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">y_hat&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">enumerate&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S_hat&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">c&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">y_hat&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">best_match_ref&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">min&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">index&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="n">key&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="k">lambda&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">abs&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">y_hat&lt;/span>&lt;span class="p">)))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">r&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">best_match_ref&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="mf">1.0&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="n">c&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="n">r&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="n">math&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">exp&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">r&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="n">c&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">compute_bleu_score&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S_hat&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">List&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nb">str&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="n">S&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">List&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">List&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nb">str&lt;/span>&lt;span class="p">]])&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="nb">float&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">assert&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S_hat&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># take N as a sufficiently large integer&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># N = max(len(y_hat) for y_hat in S_hat)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">N&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">sum&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">y_hat&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">y_hat&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="n">S_hat&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">bp&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">brevity_penalty&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S_hat&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">S&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">precisions&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="n">modified_n_gram_precision&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">S_hat&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">S&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">n&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">n&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">N&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">)]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># bleu_score = bp * exp(p_n)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">bp&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">math&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">exp&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">sum&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">math&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">log&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">precision&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">precision&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="n">precisions&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="n">precision&lt;/span> &lt;span class="o">!=&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h1 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="https://huggingface.co/spaces/evaluate-metric/bleu" target="_blank" rel="noopener"
+>Hugging Face space&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://aclanthology.org/P02-1040.pdf" target="_blank" rel="noopener"
+>Original Paper&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://en.wikipedia.org/wiki/BLEU" target="_blank" rel="noopener"
+>Wikipedia Documentation, Recommended&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

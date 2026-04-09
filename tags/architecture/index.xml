@@ -1,0 +1,684 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Architecture on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/architecture/</link><description>Recent content in Architecture on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/architecture/index.xml" rel="self" type="application/rss+xml"/><item><title>MoE tutorial</title><link>https://github.com/jiangyigithub/ai.github.io/p/moe-tutorial/</link><pubDate>Sat, 13 Dec 2025 16:04:04 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/moe-tutorial/</guid><description>&lt;p>本 blog 详细介绍了 MoE 模型的一些关键设计与相关实验结果，为 MoE 模型的学习提供基础。&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;h3 id="motivation">&lt;a href="#motivation" class="header-anchor">&lt;/a>Motivation
+&lt;/h3>&lt;p>现有大部分大语言模型均是基于 Transformer 架构，&lt;a class="link" href="https://maosong.website/p/kaplan-scaling-law/" target="_blank" rel="noopener"
+>Kaplan scaling law&lt;/a> 通过实验说明，大语言模型的表现与算力，数据，模型参数量息息相关。但是，对于 dense 模型来说，我们提高模型参数量时，必须同时提高所使用的算力。这就限制了大模型的 scaling law.&lt;/p>
+&lt;p>而 MoE 模型的解决方法为在计算时只激活部分参数，这样，我们就可以在同等激活参数量/算力下训练更大参数量的模型，从而达到更好地表现。&lt;/p>
+&lt;p>因此，MoE 模型的核心思想在于&lt;/p>
+&lt;blockquote>
+&lt;p>使用相同的激活参数量/算力，提高模型总参数量，从而达到更好的表现。&lt;/p>
+&lt;/blockquote>
+&lt;h3 id="definition">&lt;a href="#definition" class="header-anchor">&lt;/a>Definition
+&lt;/h3>&lt;p>MoE 模型和 dense 模型的示意图如下，图源 &lt;a class="link" href="https://maosong.website/p/notes-on-olmoe/" target="_blank" rel="noopener"
+>olmoe&lt;/a>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/olmoe-MoE_architecture.png"
+width="1356"
+height="912"
+loading="lazy"
+alt="olmoe-MoE_architecture"
+class="gallery-image"
+data-flex-grow="148"
+data-flex-basis="356px"
+>&lt;/p>
+&lt;p>一个 MoE layer 包括两个模块：&lt;/p>
+&lt;ol>
+&lt;li>Router：Router 负责为 token 指定合适的专家&lt;/li>
+&lt;li>Expert：Expert 负责处理 token&lt;/li>
+&lt;/ol>
+&lt;p>对于输入 $x\in\mathbb{R}^d$, 我们假设有 $N$ 个 Expert，router 一般是一个 linear layer 再加上一个 gating function (softmax 或者 sigmoid， 我们本文中使用 softmax), 其构建了 $\mathbb{R}^d\to\mathbb{R}^N$ 的映射，定义为：&lt;/p>
+$$
+G(x) =[G_1(x),\dots,G_N(x)] = \mathrm{softmax}(W_gx + b)\in\mathbb{R}^N
+$$&lt;p>其中 $W_g\in\mathbb{R}^{N\times d}$, $b\in\mathbb{R}^N$ 是可学习的参数。$G_{i}(x)$ 代表了当前 token $x$ 选择第 $i$ 个 Expert 的概率。&lt;/p>
+&lt;p>一般来说，Expert 会使用和 dense 模型一样的 MLP, 我们记为&lt;/p>
+$$
+E_i(x) = \mathrm{FFN}(x), \quad i = 1,\dots,N
+$$&lt;p>接下来，基于 $G(x)$ 和 $E(x)$, 我们会使用合适的方法来挑选 $K&lt;N$ 个 Expert 出来，其中 $K$ 是给定的超参数，我们记挑选出来的 $K$ 个 Expert 的 index 为 $e_1,\dots,e_K$, 即&lt;/p>
+$$
+e_i \in \{i\mid G_i(x)\in \mathrm{TopK}(G_i(x), K)\},\ i=1,\dots,K
+$$&lt;p>最终 MoE layer 的输出为&lt;/p>
+$$
+y = \sum_{i=1}^K\mathrm{Normalize}(G_{e_i}(x)) E_{e_i}(x)
+$$&lt;p>这里 $\mathrm{Normalize}(\cdot)$ 代表我们对于输出进行归一化，即&lt;/p>
+$$
+\mathrm{Normalize}(G_{e_i}) = \frac{\exp(G_{e_i})}{\sum_{i=1}^K \exp(G_{e_i})},\quad i=1,\dots,K
+$$&lt;h3 id="why-moe">&lt;a href="#why-moe" class="header-anchor">&lt;/a>Why MoE
+&lt;/h3>&lt;p>选择 MoE 的原因有三点：效率, scaling law 以及表现。&lt;/p>
+&lt;h4 id="efficiency">&lt;a href="#efficiency" class="header-anchor">&lt;/a>Efficiency
+&lt;/h4>&lt;p>MoE 训练更加高效，如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/Switch-Transformer-speed-comparison.png"
+width="839"
+height="672"
+loading="lazy"
+alt="Comparison between moe and dense models (Switch Transformer)"
+class="gallery-image"
+data-flex-grow="124"
+data-flex-basis="299px"
+>&lt;/p>
+&lt;p>&lt;a class="link" href="https://maosong.website/p/switch-transformer/" target="_blank" rel="noopener"
+>Switch Transformer&lt;/a> 的 实验结果说明，MoE model 的训练效率比 dense model 快 7 倍左右。其他模型也有类似结论。总的来说，MoE 模型相比于 dense 模型，训练效率更高。&lt;/p>
+&lt;h4 id="scaling-law">&lt;a href="#scaling-law" class="header-anchor">&lt;/a>Scaling Law
+&lt;/h4>&lt;p>MoE 模型可以突破传统 scaling law 的限制，在算力固定的情况下，我们可以通过提高 MoE 模型的稀疏度来进一步提高模型的表现&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/EL-activation-ratio-impact.png"
+width="829"
+height="485"
+loading="lazy"
+alt="Impact of the Activation Ratio A on Loss and Efficiency"
+class="gallery-image"
+data-flex-grow="170"
+data-flex-basis="410px"
+>&lt;/p>
+&lt;p>如上图所示，在 FLOPs 给定的情况下，随着模型稀疏度的提高，模型的表现和效率都有提升&lt;/p>
+&lt;h4 id="performance">&lt;a href="#performance" class="header-anchor">&lt;/a>Performance
+&lt;/h4>&lt;p>MoE 模型的表现更强，如下图所示，MoE 模型的训练，验证损失以及在下游任务上的表现均超过了 dense 模型&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/olmoe-MoE-vs-Dense-training-efficiency.png"
+width="1155"
+height="626"
+loading="lazy"
+alt="MoE vs. Dense (olmoe)"
+class="gallery-image"
+data-flex-grow="184"
+data-flex-basis="442px"
+>&lt;/p>
+&lt;h3 id="timeline">&lt;a href="#timeline" class="header-anchor">&lt;/a>Timeline
+&lt;/h3>&lt;p>激活参数比例变化图如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/moe_timeline_parameters.png"
+width="3320"
+height="1764"
+loading="lazy"
+alt="activation ratio of MoE models"
+class="gallery-image"
+data-flex-grow="188"
+data-flex-basis="451px"
+>&lt;/p>
+&lt;p>可以看到，当前大部分模型的激活比例都在 $5\%$ 左右。&lt;/p>
+&lt;p>另一方面，从专家的激活比例变化图如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/moe_timeline_experts.png"
+width="3294"
+height="1764"
+loading="lazy"
+alt="activation ratio (experts) of moe models"
+class="gallery-image"
+data-flex-grow="186"
+data-flex-basis="448px"
+>&lt;/p>
+&lt;p>可以看到，现在大部分模型总专家数都在 200-400 左右，&lt;a class="link" href="https://maosong.website/p/notes-on-kimi-k2/" target="_blank" rel="noopener"
+>Kimi-k2&lt;/a> 认为提高专家个数可以提高模型表现，而 LongCat 则是使用了 phantom expert 机制&lt;/p>
+&lt;h2 id="moe-design">&lt;a href="#moe-design" class="header-anchor">&lt;/a>MoE Design
+&lt;/h2>&lt;h3 id="experts-design">&lt;a href="#experts-design" class="header-anchor">&lt;/a>Experts Design
+&lt;/h3>&lt;h4 id="number-of-experts">&lt;a href="#number-of-experts" class="header-anchor">&lt;/a>Number of Experts
+&lt;/h4>&lt;p>一般来说，专家个数越多，模型越稀疏，模型表现越好。扩展专家个数有两个方式：&lt;/p>
+&lt;ol>
+&lt;li>直接增加专家个数，这会导致模型参数量上升，如 &lt;a class="link" href="https://maosong.website/p/switch-transformer/" target="_blank" rel="noopener"
+>Switch Transformer&lt;/a>&lt;/li>
+&lt;li>对已有的专家进行切分，将大专家切分为小专家，如 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseekmoe/" target="_blank" rel="noopener"
+>DeepSeekMoE&lt;/a>&lt;/li>
+&lt;/ol>
+&lt;p>&lt;a class="link" href="https://maosong.website/p/switch-transformer/" target="_blank" rel="noopener"
+>Switch Transformer&lt;/a> 也通过实验发现，增加专家个数可以显著提高模型的训练效率和表现，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/Switch-Transformer-scaling-law.png"
+width="1244"
+height="497"
+loading="lazy"
+class="gallery-image"
+data-flex-grow="250"
+data-flex-basis="600px"
+>&lt;/p>
+&lt;p>可以看到，当我们增加专家个数的时候，模型的表现是持续提升的。并且当我们增加专家个数之后，模型的训练效率也有所提升。&lt;/p>
+&lt;p>&lt;a class="link" href="https://maosong.website/p/notes-on-deepseekmoe/" target="_blank" rel="noopener"
+>DeepSeekMoE&lt;/a> 提出了 fine-granularity expert 的概念，其做法是通过减少 expert 的大小在相同参数量的场景下使用更多的专家。实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/DeepSeekMoE-ablation-experts.png"
+width="1197"
+height="552"
+loading="lazy"
+alt="DeepSeek-Moe shared experts ablation study"
+class="gallery-image"
+data-flex-grow="216"
+data-flex-basis="520px"
+>&lt;/p>
+&lt;p>可以看到，在稀疏度 (激活专家个数占总专家个数比例) 不变的情况下，提高专家的粒度，可以提高模型的表现。&lt;/p>
+&lt;p>&lt;a class="link" href="https://maosong.website/p/notes-on-olmoe/" target="_blank" rel="noopener"
+>olmoe&lt;/a> 对 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseekmoe/" target="_blank" rel="noopener"
+>DeepSeekMoE&lt;/a> 的这个观点进行了验证，结果如下图所示，&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/olmoe-expert-granularity.png"
+width="1446"
+height="592"
+loading="lazy"
+alt="Expert granularity"
+class="gallery-image"
+data-flex-grow="244"
+data-flex-basis="586px"
+>&lt;/p>
+&lt;p>结果显示，当专家粒度从 8E-1A 扩展到 32E-4A 时，模型在 HellaSwag 上的表现提升了 $10\%$, 但是进一步扩展到 64E-8A 时，模型的表现提升不到 $2\%$, 这说明了无限制提升专家粒度对模型的提升越来越有限。&lt;/p>
+&lt;p>&lt;a class="link" href="https://maosong.website/p/notes-on-kimi-k2/" target="_blank" rel="noopener"
+>Kimi-k2&lt;/a> 探究了针对 MoE 模型 sparsity 的 scaling law, 结果也说明，提升 sparsity 可以提高模型的表现。因此，其相对于 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v3/" target="_blank" rel="noopener"
+>DeepSeek-V3&lt;/a> 使用了 $50\%$ 额外的的专家数。&lt;a class="link" href="https://maosong.website/p/notes-on-ling-mini-beta/" target="_blank" rel="noopener"
+>Ling-mini-beta&lt;/a> 进一步验证了这个观点。&lt;/p>
+&lt;h4 id="shared-experts">&lt;a href="#shared-experts" class="header-anchor">&lt;/a>Shared Experts
+&lt;/h4>&lt;p>Shared Expert 由 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseekmoe/" target="_blank" rel="noopener"
+>DeepSeekMoE&lt;/a> 提出，其基本思想为，固定某几个专家，响应所有的 token，这样可以让某些专家学习到共有的知识，而让其他的专家学习到特定的知识。这个方法随后被 &lt;a class="link" href="https://maosong.website/p/notes-on-qwen1.5/" target="_blank" rel="noopener"
+>Qwen1.5&lt;/a>, &lt;a class="link" href="https://maosong.website/p/notes-on-qwen2/" target="_blank" rel="noopener"
+>Qwen2&lt;/a> , &lt;a class="link" href="https://maosong.website/p/notes-on-qwen2.5/" target="_blank" rel="noopener"
+>Qwen2.5&lt;/a> 以及 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v3/" target="_blank" rel="noopener"
+>DeepSeek-V3&lt;/a> 所采用。&lt;/p>
+&lt;p>&lt;a class="link" href="https://maosong.website/p/notes-on-deepseekmoe/" target="_blank" rel="noopener"
+>DeepSeekMoE&lt;/a> 给出的实验结果如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/DeepSeekMoE-ablation-experts.png"
+width="1197"
+height="552"
+loading="lazy"
+alt="DeepSeek-Moe shared experts ablation study"
+class="gallery-image"
+data-flex-grow="216"
+data-flex-basis="520px"
+>&lt;/p>
+&lt;p>作者发现，当使用 shared experts 之后，模型在大部分 benchmark 上的表现都有所提升。&lt;/p>
+&lt;p>&lt;a class="link" href="https://maosong.website/p/notes-on-olmoe/" target="_blank" rel="noopener"
+>olmoe&lt;/a> 在 32 个专家下进行了实验，比较了 4 个激活专家和 3 个激活专家 +1 个共享专家两种设置的表现，结果如下：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/olmoe-shared-experts.png"
+width="1156"
+height="477"
+loading="lazy"
+alt="Olmoe shared experts performance"
+class="gallery-image"
+data-flex-grow="242"
+data-flex-basis="581px"
+>&lt;/p>
+&lt;p>作者认为，加入 shared experts 之后，组合的可能性有所减少，这会降低模型的泛化性。因此，在 olmoe 中，作者没有使用 shared experts.&lt;/p>
+&lt;blockquote>
+&lt;p>虽然 &lt;a class="link" href="https://maosong.website/p/notes-on-qwen1.5/" target="_blank" rel="noopener"
+>Qwen1.5&lt;/a>, &lt;a class="link" href="https://maosong.website/p/notes-on-qwen2/" target="_blank" rel="noopener"
+>Qwen2&lt;/a> 和 &lt;a class="link" href="https://maosong.website/p/notes-on-qwen2.5/" target="_blank" rel="noopener"
+>Qwen2.5&lt;/a> 都使用了 shared experts, 但是后续的 &lt;a class="link" href="https://maosong.website/p/notes-on-qwen3/" target="_blank" rel="noopener"
+>Qwen3&lt;/a> 中却并没有使用。&lt;/p>
+&lt;/blockquote>
+&lt;p>&lt;a class="link" href="https://maosong.website/p/notes-on-ling-mini-beta/" target="_blank" rel="noopener"
+>Ling-mini-beta&lt;/a> 通过实验得出的结论为，shared expert 应该是一个非零的尽可能小的值，作者认为将 shared expert 设置为 1 是一个比较合理的选择。&lt;/p>
+&lt;h3 id="activation-function">&lt;a href="#activation-function" class="header-anchor">&lt;/a>Activation Function
+&lt;/h3>&lt;p>一般来说，在选取 top-K 专家时，我们会对 gating layer 的输出进行归一化，通常我们会使用 softmax function:&lt;/p>
+$$
+G(x) = \mathrm{softmax}(W_gx + b)\in\mathbb{R}^N
+$$&lt;p>但是，在 &lt;a class="link" href="https://maosong.website/p/notes-on-loss-free-balancing/" target="_blank" rel="noopener"
+>Loss-Free Balancing&lt;/a> 中，作者通过实验发现，使用 sigmoid 作为激活函数效果更好，即&lt;/p>
+$$
+G(x) = \mathrm{sigmoid}(W_gx + b)\in\mathbb{R}^N
+$$&lt;p>其对应的实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/loss-free-ablation-gating-function.png"
+width="917"
+height="573"
+loading="lazy"
+alt="Ablation study on gating function"
+class="gallery-image"
+data-flex-grow="160"
+data-flex-basis="384px"
+>&lt;/p>
+&lt;p>实验结果显示，sigmoid function 对于超参数更加 robust, 且表现也更好一些。 下面是一些使用不同激活函数的模型例子&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Activation function&lt;/th>
+&lt;th>Models&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>softmax&lt;/td>
+&lt;td>Step 3, Kimi-K2, gpt-oss-120B&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>sigmoid&lt;/td>
+&lt;td>GLM-4.5, dots.llm1, DeepSeek-V3&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="routing-z-loss">&lt;a href="#routing-z-loss" class="header-anchor">&lt;/a>Routing Z-loss
+&lt;/h3>&lt;p>Routing Z-loss 由 &lt;a class="link" href="https://maosong.website/p/st-moe/" target="_blank" rel="noopener"
+>ST-MoE&lt;/a> 提出， &lt;a class="link" href="https://maosong.website/p/switch-transformer/" target="_blank" rel="noopener"
+>Switch Transformer&lt;/a> 发现在 gating layer 中使用 &lt;code>float32&lt;/code> 精度可以提高训练稳定性，但是这还不够，因此 &lt;a class="link" href="https://maosong.website/p/st-moe/" target="_blank" rel="noopener"
+>ST-MoE&lt;/a> 使用了如下的 router Z-loss:&lt;/p>
+$$
+\mathcal{L}_z(x) = \frac1B\sum_{i=1}^B\left(\log\sum_{j=1}^N e^{x_j^{(i)}}\right)^2
+$$&lt;p>其中 $B$ 是 batch size ，$x_j^{(i)}=[W_gx_i+b]_j$ 代表了第 $j$ 个专家对 $i$ 个 token 的激活 logits. &lt;a class="link" href="https://maosong.website/p/notes-on-olmoe/" target="_blank" rel="noopener"
+>olmoe&lt;/a> 实验验证结果如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/olmoe-routing-z-loss.png"
+width="1162"
+height="419"
+loading="lazy"
+alt="Ablation study on Routing Z-loss"
+class="gallery-image"
+data-flex-grow="277"
+data-flex-basis="665px"
+>&lt;/p>
+&lt;p>可以看到，加入 router Z-loss 之后，模型训练的稳定性有所提升，因此 Olmoe 采取了这个改进，但是后续的 MoE 模型使用 Z-loss 较少，个人猜测原因是 &lt;a class="link" href="https://maosong.website/p/notes-on-loss-free-balancing/" target="_blank" rel="noopener"
+>Loss-Free Balancing&lt;/a> 中提出的加入额外的 loss 会影响 nex-token prediction loss&lt;/p>
+&lt;h3 id="routing-strategy">&lt;a href="#routing-strategy" class="header-anchor">&lt;/a>Routing Strategy
+&lt;/h3>&lt;p>routing 策略直接决定了 MoE 模型的有效性。在为专家分配 token 的时候，我们有如下方式：&lt;/p>
+&lt;ol>
+&lt;li>为每个 token 选取若干个专家&lt;/li>
+&lt;li>为每个专家选取若个个 token&lt;/li>
+&lt;li>动态分配 token 与专家之间的关系&lt;/li>
+&lt;/ol>
+&lt;p>三种选择方式如下图所示，图源 &lt;a class="link" href="https://arxiv.org/pdf/2209.01667" target="_blank" rel="noopener"
+>MoE survey&lt;/a>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/MoE_routing.png"
+width="1070"
+height="458"
+loading="lazy"
+class="gallery-image"
+data-flex-grow="233"
+data-flex-basis="560px"
+>&lt;/p>
+&lt;h4 id="expert-choice">&lt;a href="#expert-choice" class="header-anchor">&lt;/a>Expert Choice
+&lt;/h4>&lt;p>每个专家选取 top-k 的 token，此时每个专家处理的 token 个数是相同的，这个方法的好处是自带 load balance。缺点是自回归生成的方式没有完整序列长度的信息，从而导致 token dropping，也就是某些 token 不会被任何专家处理，某些 token 会被多个专家处理。&lt;/p>
+&lt;p>目前采用这个策略的有 OpenMoE-2， 核心思想是 dLLM 的输出长度固定，expert choice 策略更有效&lt;/p>
+&lt;h4 id="token-choice">&lt;a href="#token-choice" class="header-anchor">&lt;/a>Token Choice
+&lt;/h4>&lt;p>每个 token 选取 top-k 的专家，好处是每个 token 都会被处理，缺点是容易导致负载不均衡。因此，一般需要加上负载均衡或者 token dropping 策略来提高负载均衡&lt;/p>
+&lt;p>&lt;strong>Capacity Factor&lt;/strong>
+由 &lt;a class="link" href="https://maosong.website/p/switch-transformer/" target="_blank" rel="noopener"
+>Switch Transformer&lt;/a> 提出，其定义为&lt;/p>
+$$
+\text{expert capacity} = \left(\frac{\text{tokens per batch}}{\text{number of experts}}\right) * \text{capacity factor}
+$$&lt;p>设置 capacity factor 之后，当某个专家处理的 token 个数超过 capacity 之后，概专家的计算就会直接跳过，退化为 residual connection. 后续 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v2/" target="_blank" rel="noopener"
+>DeepSeek-V2&lt;/a> 也采用了这种策略，但是 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v3/" target="_blank" rel="noopener"
+>DeepSeek-V3&lt;/a> 弃用&lt;/p>
+&lt;p>&lt;strong>Load balancing Loss&lt;/strong>
+在训练目标中加入负载均衡损失，要求每个专家处理的 token 个数的分布尽可能均匀。&lt;/p>
+&lt;p>这部分具体见 &lt;a class="link" href="https://maosong.website/p/load-balancing-tutorial/" target="_blank" rel="noopener"
+>Load Balancing loss&lt;/a>&lt;/p>
+&lt;h4 id="global-choice">&lt;a href="#global-choice" class="header-anchor">&lt;/a>Global Choice
+&lt;/h4>&lt;p>全局分配决定 token 和专家的匹配关系，后续 Qwen 提出了 &lt;a class="link" href="https://maosong.website/p/notes-on-global-batch-load-balancing/" target="_blank" rel="noopener"
+>Global-batch load balancing&lt;/a> 使用了这种方式来提高专家的特化程度&lt;/p>
+&lt;h4 id="dynamic-routing">&lt;a href="#dynamic-routing" class="header-anchor">&lt;/a>Dynamic Routing
+&lt;/h4>&lt;p>根据输入 token 的难度动态决定激活专家的个数。LongCat 使用了一个 Phantom expert 的方法来实现根据 token 的难度动态分配专家。具体来说，除了 $N$ 个专家之外，MoE 还包括 $Z$ 个 zero-computation expert (现在一共有 $N+Z$ 个专家参与计算), 其计算方式如下&lt;/p>
+$$
+\begin{aligned}
+y &amp;= \sum_{i=1}^{K}\mathrm{Normalize}(G_{e_i}) E_{e_i}(x), e_i \in \{i\mid G_i(x)\in \mathrm{TopK}(G_i(x), K)\}\\
+E_{e_i}(x) &amp;= \begin{cases}
+FFN_{e_i}(x), &amp; \text{ if }1\leq i\leq N\\
+x, &amp; \text{ otherwise }\\
+\end{cases}
+\end{aligned}
+$$&lt;blockquote>
+&lt;p>注：LongCat 还是用了 &lt;a class="link" href="https://maosong.website/p/notes-on-loss-free-balancing/" target="_blank" rel="noopener"
+>Loss-Free Balancing&lt;/a>, 我们这里省略掉了。&lt;/p>
+&lt;/blockquote>
+&lt;h4 id="overview">&lt;a href="#overview" class="header-anchor">&lt;/a>Overview
+&lt;/h4>&lt;p>现在几乎所有的模型都选择方式 1，即每个 token 选取 top-k 的专家。 &lt;a class="link" href="https://maosong.website/p/notes-on-olmoe/" target="_blank" rel="noopener"
+>olmoe&lt;/a> 对比了以下方式 1 和方式 2 的表现，如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/olmoe-routing-strategy.png"
+width="1157"
+height="450"
+loading="lazy"
+alt="MoE routing strategy EC v.s. TC"
+class="gallery-image"
+data-flex-grow="257"
+data-flex-basis="617px"
+>&lt;/p>
+&lt;p>可以看到，加入 load balancing loss 之后，相比于 Expert Choice, Token Choice 的表现更好。但是，expert choice 更加高效，作者认为 expert choice 更适用于多模态，因为丢掉 noise image tokens 对 text token 影响会比较小。因此，在 olmoe 中，作者使用 token choice 作为 routing 策略&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/celebras-routing-landscape.png"
+width="1102"
+height="762"
+loading="lazy"
+alt="Routing strategy overview (celebras)"
+class="gallery-image"
+data-flex-grow="144"
+data-flex-basis="347px"
+>&lt;/p>
+&lt;h3 id="upcycling">&lt;a href="#upcycling" class="header-anchor">&lt;/a>Upcycling
+&lt;/h3>&lt;p>upsampling 是一个将 dense model 转化为 MoEmodel 的方法，具体做法就是我们复制 dense model 中的 FFN layer 得到对应 MoE layer 中的 Expert，然后我们再结合 router 训练，这样可以提高整体的训练效率。相关模型有 MiniCPM, &lt;a class="link" href="https://maosong.website/p/notes-on-qwen1.5/" target="_blank" rel="noopener"
+>Qwen1.5&lt;/a> 和 &lt;a class="link" href="https://maosong.website/p/mixstral-8x7b/" target="_blank" rel="noopener"
+>Mixtral MoE&lt;/a> (疑似)&lt;/p>
+&lt;p>实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/olmoe-sparse-upcycling.png"
+width="1440"
+height="680"
+loading="lazy"
+class="gallery-image"
+data-flex-grow="211"
+data-flex-basis="508px"
+>&lt;/p>
+&lt;p>从已有的结果来看，MoE 模型会被 dense 模型的一些超参数所限制，且训练不是很稳定。因此，现在一般不采用这种方法&lt;/p>
+&lt;h2 id="analysis-on-moe">&lt;a href="#analysis-on-moe" class="header-anchor">&lt;/a>Analysis on MoE
+&lt;/h2>&lt;h3 id="specialization-of-experts">&lt;a href="#specialization-of-experts" class="header-anchor">&lt;/a>Specialization of Experts
+&lt;/h3>&lt;p>OpenMoE 分析了 MoE 模型的特化程度，其结论如下&lt;/p>
+&lt;ol>
+&lt;li>作者发现，大部分专家对于不同的 domain 没有出现 specialization 情况，对于 math domain, specialization 现象比较明显，作者认为这是因为 math domain 包含更多的 special tokens&lt;/li>
+&lt;li>对于不同的语言，有部分专家出现 specialization 现象&lt;/li>
+&lt;li>部分专家对于 position ID 有 specialization 现象，并且连续的 token 更偏好相同的专家&lt;/li>
+&lt;li>作者还发现，部分专家对于 Token ID 有 specialization 现象，作者将这种现象称为 &lt;strong>Context-independent Specialization&lt;/strong>.&lt;/li>
+&lt;li>专家还会对语义相似的 token 进行聚类，并且这种聚类在训练早期就已经发生，作者认为其原因在于重新分配 token 会增加最终的 loss&lt;/li>
+&lt;li>对于 token dropping, 作者发现越靠后的 token, 其被 drop 的概率比例也越高。并且对于指令跟随数据，更多的 token 都会被丢掉，因此作者认为指令跟随数据是 MoE 模型的一种 OOD 数据&lt;/li>
+&lt;/ol>
+&lt;h3 id="saturation-of-experts">&lt;a href="#saturation-of-experts" class="header-anchor">&lt;/a>Saturation of Experts
+&lt;/h3>&lt;p>&lt;a class="link" href="https://maosong.website/p/notes-on-olmoe/" target="_blank" rel="noopener"
+>olmoe&lt;/a> 探究了训练过程中激活的专家和训练结束后激活的专家的匹配程度，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/olmoe-router-saturation.png"
+width="1149"
+height="393"
+loading="lazy"
+class="gallery-image"
+data-flex-grow="292"
+data-flex-basis="701px"
+>&lt;/p>
+&lt;p>实验结果说明，训练 $1\%$ 的数据之后，就有 $40\%$ 的 routing 和训练完毕的 routing 一致，当训练 $40\%$ 的数据之后，这个比例提升到了 $80\%$. 作者认为，这是专家特化的结果，初始的 routing 如果改变的话会带来表现下降，因此模型倾向于使用固定的专家处理特定的 token&lt;/p>
+&lt;p>作者还发现，later layers 比 early layers 饱和更快，early layer, 特别是 layer 0, 饱和的非常慢。作者认为，这是 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseekmoe/" target="_blank" rel="noopener"
+>DeepSeekMoE&lt;/a> 放弃在第一层使用 MoE layer 的原因，因为 load balancing loss 收敛更慢。后续 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v2/" target="_blank" rel="noopener"
+>DeepSeek-V2&lt;/a> 和 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v3/" target="_blank" rel="noopener"
+>DeepSeek-V3&lt;/a> 均在 early layer 上使用 dense layer 替换掉了 MoE layer&lt;/p>
+&lt;h2 id="optimization">&lt;a href="#optimization" class="header-anchor">&lt;/a>Optimization
+&lt;/h2>&lt;p>MoE 模型的优势在于表现好，但是模型参数往往非常大，为了方便使用，我们需要对训练好的 MoE 模型进行优化，目前主要有蒸馏，专家剪枝/合并以及量化等优化方法&lt;/p>
+&lt;p>蒸馏是一个将大模型能力传递给小模型的做法，目前已有的包括：&lt;/p>
+&lt;ol>
+&lt;li>&lt;a class="link" href="https://maosong.website/p/switch-transformer/" target="_blank" rel="noopener"
+>Switch Transformer&lt;/a> 通过蒸馏，在仅使用 $1/20$ 参数的情况下，保留了稀疏教师模型 $30\%$ 的表现&lt;/li>
+&lt;li>&lt;a class="link" href="https://maosong.website/p/notes-on-gemini2.5/" target="_blank" rel="noopener"
+>Gemini2.5&lt;/a> 通过蒸馏 Gemini2.5 Pro 得到 Gemini2.5 Flash&lt;/li>
+&lt;li>&lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-r1/" target="_blank" rel="noopener"
+>DeepSeek-R1&lt;/a> 通过蒸馏来提升小语言模型的 reasoning 能力&lt;/li>
+&lt;li>&lt;a class="link" href="https://maosong.website/p/notes-on-qwen3/" target="_blank" rel="noopener"
+>Qwen3&lt;/a> 对于小语言模型的训练使用了 off-policy distillation 和 on-policy distillation 来训练小语言模型&lt;/li>
+&lt;/ol>
+&lt;h2 id="code">&lt;a href="#code" class="header-anchor">&lt;/a>Code
+&lt;/h2>&lt;p>我们这里展示基于 &lt;a class="link" href="https://maosong.website/p/notes-on-olmoe/" target="_blank" rel="noopener"
+>olmoe&lt;/a> 的代码，代码如下&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;span class="lnt">38
+&lt;/span>&lt;span class="lnt">39
+&lt;/span>&lt;span class="lnt">40
+&lt;/span>&lt;span class="lnt">41
+&lt;/span>&lt;span class="lnt">42
+&lt;/span>&lt;span class="lnt">43
+&lt;/span>&lt;span class="lnt">44
+&lt;/span>&lt;span class="lnt">45
+&lt;/span>&lt;span class="lnt">46
+&lt;/span>&lt;span class="lnt">47
+&lt;/span>&lt;span class="lnt">48
+&lt;/span>&lt;span class="lnt">49
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">class&lt;/span> &lt;span class="nc">OlmoeSparseMoeBlock&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Module&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">super&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="fm">__init__&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_experts&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_experts&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">top_k&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_experts_per_tok&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">norm_topk_prob&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">norm_topk_prob&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">gate&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Linear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hidden_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_experts&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">bias&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="kc">False&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">experts&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">ModuleList&lt;/span>&lt;span class="p">([&lt;/span>&lt;span class="n">OlmoeMLP&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">_&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_experts&lt;/span>&lt;span class="p">)])&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="nf">forward&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">hidden_states&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">batch_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">sequence_length&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">hidden_dim&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">hidden_states&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">shape&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># hidden_states: (batch * sequence_length, hidden_dim)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">hidden_states&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">hidden_states&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">view&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">hidden_dim&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># router_logits: (batch * sequence_length, n_experts)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">router_logits&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">gate&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">hidden_states&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">routing_weights&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">F&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">softmax&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">router_logits&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">float&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># routing_weights: (batch * sequence_length, top_k)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># selected_experts: indices of top_k experts&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">routing_weights&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">selected_experts&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">topk&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">routing_weights&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">top_k&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="o">=-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">norm_topk_prob&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">routing_weights&lt;/span> &lt;span class="o">/=&lt;/span> &lt;span class="n">routing_weights&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">sum&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dim&lt;/span>&lt;span class="o">=-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">keepdim&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="kc">True&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># we cast back to the input dtype&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">routing_weights&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">routing_weights&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">to&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">hidden_states&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">dtype&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">final_hidden_states&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">zeros&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="p">(&lt;/span>&lt;span class="n">batch_size&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">sequence_length&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">hidden_dim&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">hidden_states&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">dtype&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">device&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">hidden_states&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">device&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># One hot encode the selected experts to create an expert mask&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># this will be used to easily index which expert is going to be selected&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">expert_mask&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">functional&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">one_hot&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">selected_experts&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">num_classes&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_experts&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">permute&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># Loop over all available experts in the model and perform the computation on each expert&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">for&lt;/span> &lt;span class="n">expert_idx&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_experts&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">expert_layer&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">experts&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">expert_idx&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">idx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">top_x&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">where&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">expert_mask&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">expert_idx&lt;/span>&lt;span class="p">])&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># Index the correct hidden states and compute the expert hidden state for&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># the current expert. We need to make sure to multiply the output hidden&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># states by `routing_weights` on the corresponding tokens (top-1 and top-2)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">current_state&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">hidden_states&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="kc">None&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">top_x&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">reshape&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">hidden_dim&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">current_hidden_states&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">expert_layer&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">current_state&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">routing_weights&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">top_x&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">idx&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># However `index_add_` only support torch tensors for indexing so we&amp;#39;ll use&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># the `top_x` tensor here.&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">final_hidden_states&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">index_add_&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">top_x&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">current_hidden_states&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">to&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">hidden_states&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">dtype&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">final_hidden_states&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">final_hidden_states&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">reshape&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">batch_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">sequence_length&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">hidden_dim&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">final_hidden_states&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">router_logits&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h2 id="infra">&lt;a href="#infra" class="header-anchor">&lt;/a>Infra
+&lt;/h2>&lt;p>针对 MoE 模型的 infra 主要涉及 expert parallelism (EP), EP 将 MoE layer 的计算分为了三个阶段：&lt;/p>
+&lt;ol>
+&lt;li>all-to-all dispatch: 基于 gating layer 的结果，将 token 通信传输到对应专家所在的 GPU 上&lt;/li>
+&lt;li>computation: 执行计算，即 $E_i(x)$.&lt;/li>
+&lt;li>all-to-all combine: 收集专家计算的结果，即 $y = \sum_{i=1}^K\mathrm{Normalize}(G_{e_i}(x)) E_{e_i}(x)$.&lt;/li>
+&lt;/ol>
+&lt;p>其框架图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/moe-tutorial/MoE-EP-pipeline.png"
+width="1131"
+height="832"
+loading="lazy"
+alt="pipeline of Expert Parallelism (EP)"
+class="gallery-image"
+data-flex-grow="135"
+data-flex-basis="326px"
+>&lt;/p>
+&lt;h2 id="challenges">&lt;a href="#challenges" class="header-anchor">&lt;/a>Challenges
+&lt;/h2>&lt;ul>
+&lt;li>构建针对 MoE 模型的 infra 比较困难，相关工作有 DeepSeek 提出的 DeepEP.&lt;/li>
+&lt;li>训练不稳定，特别是负载均衡。负载均衡做不好容易导致模型崩塌。&lt;/li>
+&lt;/ul>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>在本文中，我们系统性回顾了 MoE 的相关概念，MoE 模型已经是现在大语言模型的主流架构，比如商业模型 &lt;a class="link" href="https://maosong.website/p/notes-on-gemini2.5/" target="_blank" rel="noopener"
+>Gemini2.5&lt;/a>, 开源领先的模型 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v3/" target="_blank" rel="noopener"
+>DeepSeek-V3&lt;/a> , &lt;a class="link" href="https://maosong.website/p/notes-on-llama4-blog/" target="_blank" rel="noopener"
+>LLaMA4&lt;/a> 以及 &lt;a class="link" href="https://maosong.website/p/notes-on-qwen3/" target="_blank" rel="noopener"
+>Qwen3&lt;/a> 等都采用了 MoE 的架构，如何进一步优化 MoE 的训练方式是当前研究的一个重点方向。&lt;/p>
+&lt;h2 id="appendix">&lt;a href="#appendix" class="header-anchor">&lt;/a>Appendix
+&lt;/h2>&lt;p>MoE model information&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Year&lt;/th>
+&lt;th>total parameters&lt;/th>
+&lt;th>activated parameters&lt;/th>
+&lt;th>shared expert&lt;/th>
+&lt;th>Routed experts&lt;/th>
+&lt;th>activated experts&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>ST-MoE&lt;/td>
+&lt;td>2022/4&lt;/td>
+&lt;td>269B&lt;/td>
+&lt;td>32B&lt;/td>
+&lt;td>0&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>2&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Mistral&lt;/td>
+&lt;td>2024/1&lt;/td>
+&lt;td>47B&lt;/td>
+&lt;td>13B&lt;/td>
+&lt;td>0&lt;/td>
+&lt;td>8&lt;/td>
+&lt;td>2&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>DeepSeek-MoE&lt;/td>
+&lt;td>2024/1&lt;/td>
+&lt;td>145B&lt;/td>
+&lt;td>22B&lt;/td>
+&lt;td>4&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>12&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>DeepSeek-V2&lt;/td>
+&lt;td>2024/5&lt;/td>
+&lt;td>236B&lt;/td>
+&lt;td>21B&lt;/td>
+&lt;td>2&lt;/td>
+&lt;td>160&lt;/td>
+&lt;td>6&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LLaMA4&lt;/td>
+&lt;td>2025/4&lt;/td>
+&lt;td>400B&lt;/td>
+&lt;td>17B&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>DeepSeek-V3&lt;/td>
+&lt;td>2024/12&lt;/td>
+&lt;td>671B&lt;/td>
+&lt;td>37B&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>256&lt;/td>
+&lt;td>8&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Qwen3&lt;/td>
+&lt;td>2025/5&lt;/td>
+&lt;td>235B&lt;/td>
+&lt;td>22B&lt;/td>
+&lt;td>0&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>8&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>dots.llm1&lt;/td>
+&lt;td>2025/6&lt;/td>
+&lt;td>142B&lt;/td>
+&lt;td>14B&lt;/td>
+&lt;td>2&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>6&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Step 3&lt;/td>
+&lt;td>2025/7&lt;/td>
+&lt;td>316B&lt;/td>
+&lt;td>38B&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>48&lt;/td>
+&lt;td>3&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Kimi-K2&lt;/td>
+&lt;td>2025/7&lt;/td>
+&lt;td>1043B&lt;/td>
+&lt;td>32B&lt;/td>
+&lt;td>8&lt;/td>
+&lt;td>384&lt;/td>
+&lt;td>1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GLM-4.5&lt;/td>
+&lt;td>2025/8&lt;/td>
+&lt;td>355B&lt;/td>
+&lt;td>32B&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>160&lt;/td>
+&lt;td>8&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>gpt-oss&lt;/td>
+&lt;td>2025/8&lt;/td>
+&lt;td>116B&lt;/td>
+&lt;td>5B&lt;/td>
+&lt;td>0&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LongCat&lt;/td>
+&lt;td>2025/9&lt;/td>
+&lt;td>560B&lt;/td>
+&lt;td>27B*&lt;/td>
+&lt;td>0&lt;/td>
+&lt;td>768*&lt;/td>
+&lt;td>12&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Ling-1T&lt;/td>
+&lt;td>2025/10&lt;/td>
+&lt;td>1000B&lt;/td>
+&lt;td>51B&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>256&lt;/td>
+&lt;td>8&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;blockquote>
+&lt;p>Remark
+LongCat 采用了动态激活的方式，因此其结果有一个浮动范围。&lt;/p>
+&lt;/blockquote>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://arxiv.org/pdf/2101.03961" target="_blank" rel="noopener"
+>Switch Transformer&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://arxiv.org/pdf/2209.01667" target="_blank" rel="noopener"
+>MoE Survey&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://openreview.net/forum?id=xXTkbTBmqq" target="_blank" rel="noopener"
+>olmoe&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://arxiv.org/pdf/2006.16668" target="_blank" rel="noopener"
+>GShard&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://www.cnblogs.com/rossiXYZ/p/18800825" target="_blank" rel="noopener"
+>blog&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://arxiv.org/pdf/2501.16352v1" target="_blank" rel="noopener"
+>MoE a big data perspective&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://huggingface.co/blog/moe" target="_blank" rel="noopener"
+>Mixture of Experts Explained&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://www.cerebras.ai/blog/moe-guide-why-moe" target="_blank" rel="noopener"
+>MoE Fundamentals: Sparse Models Are the Future&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://www.cerebras.ai/blog/moe-guide-router" target="_blank" rel="noopener"
+>MoE router&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2507.17702" target="_blank" rel="noopener"
+>Ling-Mini-beta&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

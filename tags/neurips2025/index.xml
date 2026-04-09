@@ -1,0 +1,352 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>NeurIPS2025 on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/neurips2025/</link><description>Recent content in NeurIPS2025 on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/neurips2025/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on Gated Attention</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-gated-attention/</link><pubDate>Tue, 20 Jan 2026 15:41:52 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-gated-attention/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>现有的大部分模型都基于 Transformer 提出的 softmax attention (SDPA), 虽然也有相关的改进工作，但是主要集中于降低 attention 计算复杂度，提高 attention 在推理时的内存使用效率等。之前的工作提出了关于 attention 的两个问题：&lt;/p>
+&lt;ol>
+&lt;li>attention sink, 即模型的注意力会放在初始几个 token 上, 这限制了模型的上下文扩展能力&lt;/li>
+&lt;li>massive activation, 少部分 token 的 hidden states 会非常大，这限制了模型的训练稳定性&lt;/li>
+&lt;/ol>
+&lt;p>在本文中，作者通过在 attention 中加入 gating 机制来探索 gating 对模型表现和训练稳定性的影响。尽管 gating 并没有降低 attention 计算复杂度，但是 gating 提出了一个新的视角，即 sparity 与 attention sink 和 massive activation 息息相关，这为后面 sparse attention 的研究提供了 Insight.&lt;/p>
+&lt;p>作者发现，对 Multi head attention 的输出进行 head-specific gating 的效果最好，并且这种方式还可以提高训练稳定性，模型的表达能力和长上下文能力。作者还进一步分析了这种 gating 方式更好的原因，发现有两点：&lt;/p>
+&lt;ol>
+&lt;li>non-linearity: 通过 gating 可以有效提高 output projection layer 输入的秩，进而提高表达能力&lt;/li>
+&lt;li>sparsity: gating 可以降低 massive activation 和 attention sink 的影响&lt;/li>
+&lt;/ol>
+&lt;p>作者最终推荐使用 element-wise SDPA gating 方式来进行训练&lt;/p>
+&lt;h2 id="related-work">&lt;a href="#related-work" class="header-anchor">&lt;/a>Related Work
+&lt;/h2>&lt;p>作者主要介绍了 gating 和 attention sink 这两部分的工作。&lt;/p>
+&lt;p>gating 早在 LSTM 和 GRU 使其就得到了广泛的运用，在 transformer 之后，相关的现行注意力也有应用，比如 &lt;a class="link" href="https://maosong.website/p/notes-on-minimax-01/" target="_blank" rel="noopener"
+>MiniMax-01&lt;/a> 所使用的 Lightning Attention 等，但是这些工作没有系统性探究 gating 背后的机制。&lt;/p>
+&lt;p>第二部分是 attention sink, attention sink 现象由 &lt;a class="link" href="https://maosong.website/p/notes-on-streamingllm/" target="_blank" rel="noopener"
+>StreamingLLM&lt;/a> 提出， 即模型会将相当一部分注意力权重方开始开始的几个 token 上。而本文提出的 gating 机制可以缓解 attention sink 现象。&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;p>首先是标准 MHA 定义：&lt;/p>
+$$
+\begin{aligned}
+Q &amp;= XW_Q, K=XW_K, V=XW_V\\
+\mathrm{Attn}_i(Q,K,V) &amp;= \mathrm{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V, i=1,\dots,h\\
+\mathrm{MHA}(Q, K, V) &amp;= \mathrm{Concat}([\mathrm{Attn}_1,\dots,\mathrm{Attn}_h])\\
+O &amp;= \mathrm{MHA}(Q, K, V) W_O
+\end{aligned}
+$$&lt;p>这里 $X\in\mathbb{R}^{n\times d}$ 是 transformer layer pre-normalization 的输出（或者 attention block 的输入）, $n$ 是 sequence length, $d$ 是 hidden size, $h$ 是 number of heads, $d_k$ 是 head dimension.&lt;/p>
+&lt;p>接下来，作者介绍了不同的 gating 策略。这里作者用同一的公式来进行表示&lt;/p>
+$$
+Y' = g(Y,X,W_\theta, \sigma) = Y\odot \sigma(XW_\theta)
+$$&lt;p>这里 $Y$ 是输入， $X$ 是 attention 的输入，$W_\theta$ 是可学习权重&lt;/p>
+&lt;p>&lt;strong>Position&lt;/strong>
+首先是位置，作者考虑了如下几种变体：&lt;/p>
+$$
+\begin{align}
+\mathrm{MHA}(Q, K, V)' &amp;= \mathrm{MHA}(Q, K, V)\odot \sigma\left(X W_\theta)\right) \tag{G1}\\
+Q' &amp;= Q\odot \sigma\left(XW_\theta\right) \tag{G2}\\
+K' &amp;= K\odot \sigma\left(XW_\theta\right) \tag{G3}\\
+V' &amp;= V\odot \sigma\left(XW_\theta\right) \tag{G4}\\
+O' &amp;= O\odot \sigma\left(XW_\theta\right) \tag{G5}\\
+\end{align}
+$$&lt;p>这里 $\sigma$ 是激活函数，$W_\theta$ 是激活函数的可学习参数，我们可以将其理解为一个 linear layer, 即当前模块的输出取决于输入 hidden sates 经过一个线性层和激活层之后的结果，相似的做法还有 &lt;a class="link" href="https://maosong.website/p/moe-tutorial/" target="_blank" rel="noopener"
+>MoE&lt;/a> 中的 gating layer, &lt;a class="link" href="https://maosong.website/p/notes-on-nsa/" target="_blank" rel="noopener"
+>NSA&lt;/a> 中的 gating layer 等。对应的示意图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gated-attention/Gated-attention-position.png"
+width="517"
+height="565"
+loading="lazy"
+alt="Positions of different gating methods"
+class="gallery-image"
+data-flex-grow="91"
+data-flex-basis="219px"
+>&lt;/p>
+&lt;p>&lt;strong>granularity&lt;/strong>
+作者设计了不同粒度的 gating（假设输入为 $X\in\mathbb{R}^{n\times h\times d_k}$）：&lt;/p>
+&lt;ol>
+&lt;li>head-shared: 不同 head 共享 gating score, &lt;code>Y'[i,h,k]=gate[i,k]*Y[i,h,k]&lt;/code>&lt;/li>
+&lt;li>head-wise: 同一个 head 共享 gating score, &lt;code>Y'[i,h,:]=gate[i,h]*Y[i,h,:]&lt;/code>&lt;/li>
+&lt;li>element-wise: 不同元素不共享 gating score, &lt;code>Y'[i,h,k]=gate[i,h,k]*Y[i,h,k]&lt;/code>&lt;/li>
+&lt;/ol>
+&lt;p>从 attention 的角度看，不同 head 本身就承担不同的语义子空间，如果强行共享 gating，会破坏这种分工。&lt;/p>
+&lt;p>&lt;strong>format&lt;/strong>
+作者还构建了 multiplication 和 addition 两种形式：&lt;/p>
+&lt;ol>
+&lt;li>multiplication: $Y'=Y\odot \sigma(XW_\theta)$&lt;/li>
+&lt;li>addition: $Y'=Y+\sigma(XW_\theta)$&lt;/li>
+&lt;/ol>
+&lt;p>&lt;strong>activation function&lt;/strong>
+本文中作者使用了 SiLU 和 sigmoid 两种形式，即&lt;/p>
+$$
+\sigma_{\mathrm{sigmoid}}(x) = \frac{1}{1+e^{-x}},\quad \sigma_{\mathrm{SiLU}} = x*\sigma_{\mathrm{sigmoid}}(x)=\frac{x}{1+e^{-x}}
+$$&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>作者构建了三个模型进行实验，模型配置如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>1.7B-28 layers&lt;/th>
+&lt;th>1.7B-48 layers&lt;/th>
+&lt;th>15B-A2.4B MoE&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Layers&lt;/td>
+&lt;td>28&lt;/td>
+&lt;td>48&lt;/td>
+&lt;td>24&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>query heads&lt;/td>
+&lt;td>16&lt;/td>
+&lt;td>16&lt;/td>
+&lt;td>32&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>key/value heads&lt;/td>
+&lt;td>8&lt;/td>
+&lt;td>8&lt;/td>
+&lt;td>4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>head dim&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>128&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>tie embedding&lt;/td>
+&lt;td>yes&lt;/td>
+&lt;td>yes&lt;/td>
+&lt;td>no&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>QK normalization&lt;/td>
+&lt;td>yes&lt;/td>
+&lt;td>yes&lt;/td>
+&lt;td>yes&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>hidden size&lt;/td>
+&lt;td>2048&lt;/td>
+&lt;td>1536&lt;/td>
+&lt;td>2048&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>ffn hidden size&lt;/td>
+&lt;td>6144&lt;/td>
+&lt;td>4608&lt;/td>
+&lt;td>768&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>experts&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>128&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>top-K&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>8&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>首先是不同 gating 方法对 MoE model 影响，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gated-attention/Gated-attention-gating-variant-performance.png"
+width="1292"
+height="847"
+loading="lazy"
+alt="Performance of different gating variants"
+class="gallery-image"
+data-flex-grow="152"
+data-flex-basis="366px"
+>&lt;/p>
+&lt;p>结论如下：&lt;/p>
+&lt;ol>
+&lt;li>对 SDPA 的输出 (G1) 或者 value (G2) 进行 gating 效果最好&lt;/li>
+&lt;li>head-specific gating 效果更好&lt;/li>
+&lt;li>multiplication 效果比 addition 效果更好&lt;/li>
+&lt;li>sigmoid 效果比 SiLU 效果更好&lt;/li>
+&lt;/ol>
+&lt;p>总的来说，position 对最终结果提升最明显，其次是 granularity 和 activation function.&lt;/p>
+&lt;p>接下来是不同 gating 方法对 dense model 的影响，作者构建了两个 dense 模型，参数都是 1.7B, 这两个模型的 layers 和 FFN hidden size 不同（通过调整保持总参数一致）。作者对比了 G1 和 baseline 的表现， 结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gated-attention/Gated-attention-dense-model-performance.png"
+width="1290"
+height="750"
+loading="lazy"
+alt="Performance of dense models with Gated attention"
+class="gallery-image"
+data-flex-grow="172"
+data-flex-basis="412px"
+>&lt;/p>
+&lt;p>结论验证了 gating 机制可以有效提高模型的表现。作者还发现使用 gating 之后，模型的训练也更加稳定，训练的损失变化曲线如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gated-attention/Gated-attention-training-loss-curve.png"
+width="387"
+height="515"
+loading="lazy"
+alt="training loss curve of gated attention"
+class="gallery-image"
+data-flex-grow="75"
+data-flex-basis="180px"
+>&lt;/p>
+&lt;h2 id="analysis">&lt;a href="#analysis" class="header-anchor">&lt;/a>Analysis
+&lt;/h2>&lt;p>首先，作者对 multi head attention 进行了重写，得到如下形式&lt;/p>
+$$
+o_i^k = \sum_{j=1}^i\left(S_{ij}^k X_jW_V^k\right)W_O^k = \sum_{j=1}^i S_{ij}^k X_j(W_V^kW_O^k)
+$$&lt;p>也就是说，$W_K$ 和 $W_O$ 可以吸收到一起，由于 $W_V^j\in\mathbb{R}^{d\times d_k}$, $W_O^k\in\mathbb{R}^{d_k\times d}$, 从而 $\mathrm{rank}(W_V^jW_O^k)\leq \max(\mathrm{rank}(W_V^j), \mathrm{rank}(W_O^k))\leq d_k$. 对于 &lt;a class="link" href="https://maosong.website/p/notes-on-gqa/" target="_blank" rel="noopener"
+>GQA&lt;/a> 和 &lt;a class="link" href="https://maosong.website/p/notes-on-mqa/" target="_blank" rel="noopener"
+>MQA&lt;/a>, 最终的有效秩会进一步降低。&lt;/p>
+&lt;p>而使用本文提到的 G1 和 G2 gating 策略之后，我们相当于是通过非线性机制提高了上面的秩，进而解决了 softmax attention 表达能力不足的问题, 实际上，StepFun 的 &lt;a class="link" href="https://maosong.website/p/notes-on-mfa/" target="_blank" rel="noopener"
+>MFA&lt;/a> 也是类似的思想。下面是 G1 和 G2 做的改进：&lt;/p>
+$$
+\begin{align}
+o_i^k &amp;= \sum_{j=1}^i\left(S_{ij}^k \mathrm{gating}(X_jW_V^k)\right)W_O^k\tag{G1}\\
+o_i^k &amp;= \mathrm{gating}\left(\sum_{j=1}^iS_{ij}^k X_jW_V^k\right)W_O^k \tag{G2}
+\end{align}
+$$&lt;p>通过 gating 的非线性机制，我们提高的矩阵的秩，进而提高了模型的表达能力，而 G5 提升有限的原因也在于此。实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gated-attention/Gated-attention-non-linearity-performance.png"
+width="957"
+height="261"
+loading="lazy"
+alt="Performance of different non-linearity variants"
+class="gallery-image"
+data-flex-grow="366"
+data-flex-basis="880px"
+>&lt;/p>
+&lt;p>可以看到，不同的 non-linearity 方法对模型表现都有提升，这验证了矩阵秩会影响模型表达能力的分析。&lt;/p>
+&lt;p>接下来，作者探究了 gating 机制对 attention score distribution 的影响，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gated-attention/Gated-attention-score-distribution.png"
+width="1283"
+height="408"
+loading="lazy"
+alt="attention score distribution of different methods"
+class="gallery-image"
+data-flex-grow="314"
+data-flex-basis="754px"
+>&lt;/p>
+&lt;p>实验结果说明：&lt;/p>
+&lt;ol>
+&lt;li>有效的 gating 机制对应的 attention score 是非常稀疏的&lt;/li>
+&lt;li>head-specific sparsity 非常重要，当在不同的 head 共享 gating 时，模型表现会有所下降&lt;/li>
+&lt;li>gating 必须与 query 相关，与 G2 先比，G1 的表现更好，这说明 gating score 更依赖于 query. 作者认为基于当前 query token 构建 gating, 可以有效过滤历史 token 的噪音信息&lt;/li>
+&lt;li>non-sparse gating 效果比较差，作者构建了一个 non-sparse 版本的 sigmoid, 结果发现模型表现非常差，这说明了 attention score 应该是一个稀疏形式&lt;/li>
+&lt;/ol>
+&lt;p>通过前面的分析和实验结果，作者认为 gating 机制还可以缓解 attention sink 现象，作者对 baseline 以及 G1 两种方法的 attention 分布进行了可视化，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gated-attention/Gated-attention-sink-visualization.png"
+width="1263"
+height="721"
+loading="lazy"
+alt="Visualization of attention sink"
+class="gallery-image"
+data-flex-grow="175"
+data-flex-basis="420px"
+>&lt;/p>
+&lt;p>实验结果整理如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>method&lt;/th>
+&lt;th>massive activation&lt;/th>
+&lt;th>attention sink&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>baseline&lt;/td>
+&lt;td>high&lt;/td>
+&lt;td>high&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>input-independence&lt;/td>
+&lt;td>high&lt;/td>
+&lt;td>high&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>head-shared gating&lt;/td>
+&lt;td>low&lt;/td>
+&lt;td>high&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>head-specific gating&lt;/td>
+&lt;td>low&lt;/td>
+&lt;td>low&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>因此，作者的结论为，input-dependent, head-specific gating 可以提高 attention score distribution 的 sparsity, 进而减缓 attention sink. 并且引入 spaisity 之后，我们还可以避免 massive activation, 进而使用更低的精度进行训练。&lt;/p>
+&lt;p>最后，作者探究了以下 gating 机制的上下文扩展能力，作者在已有的模型上基于 32k 上下文长度使用了 80B token 进行 continue pre-training, 然后使用 &lt;a class="link" href="https://maosong.website/p/notes-on-yarn/" target="_blank" rel="noopener"
+>YARN&lt;/a> 将模型上下文长度扩展到了 128K。 测试的结果如下图所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Method&lt;/th>
+&lt;th>4k&lt;/th>
+&lt;th>8k&lt;/th>
+&lt;th>16k&lt;/th>
+&lt;th>32k&lt;/th>
+&lt;th>64k&lt;/th>
+&lt;th>128k&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Baseline&lt;/td>
+&lt;td>88.89&lt;/td>
+&lt;td>85.88&lt;/td>
+&lt;td>83.15&lt;/td>
+&lt;td>79.50&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>SDPA-Gate&lt;/td>
+&lt;td>90.56&lt;/td>
+&lt;td>87.11&lt;/td>
+&lt;td>84.61&lt;/td>
+&lt;td>79.77&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>YaRN Extended&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Baseline&lt;/td>
+&lt;td>82.90 (-6.0)&lt;/td>
+&lt;td>71.52 (-14.4)&lt;/td>
+&lt;td>61.23 (-21.9)&lt;/td>
+&lt;td>37.94 (-41.56)&lt;/td>
+&lt;td>37.51&lt;/td>
+&lt;td>31.65&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>SDPA-Gate&lt;/td>
+&lt;td>88.13 (-2.4)&lt;/td>
+&lt;td>80.01 (-7.1)&lt;/td>
+&lt;td>76.74 (-7.87)&lt;/td>
+&lt;td>72.88 (-6.89)&lt;/td>
+&lt;td>66.60&lt;/td>
+&lt;td>58.82&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>可以看到，对于短上下文，虽然两者表现都有所下降，但是本文提出的 gating 表现下降程度较小。而对于长上下文，本文提出的 gating 机制效果明显更好。作者分析原因认为这是由于 softmax attention 倾向于退化为对少数 token 的依赖， 而 gating 通过引入 token-level sparsity，避免了这种路径依赖。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>在本文中，作者系统性探究了 attention 中的 gating 机制，包括 gating 对模型表现，训练稳定性以及训练动态的影响。作者发现，通过提高 non-linearity 和 sparsity 我们可以有效提高模型的上下文能力以及减缓 attention sink 现象。&lt;/p>
+&lt;p>从更高层次看，本文的结果可以总结为一点：&lt;/p>
+&lt;blockquote>
+&lt;p>attention 的问题不在于 softmax 本身，而在于线性 aggregation 的表达上限与缺乏选择性。而 gating 提供了一种几乎零成本、却极其有效的方式来引入非线性与稀疏性。&lt;/p>
+&lt;/blockquote>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://openreview.net/forum?id=1b7whO4SfY" target="_blank" rel="noopener"
+>Gated Attention for Large Language Models: Non-linearity, Sparsity, and Attention-Sink-Free&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;h2 id="appendix">&lt;a href="#appendix" class="header-anchor">&lt;/a>Appendix
+&lt;/h2>&lt;p>作者在附录中还进一步分析了 massive activation 以及 attention sink.&lt;/p>
+&lt;ol>
+&lt;li>massive activation 并不是 attention sink 产生的必要原因，并且 sparsity 可以减缓这一现象&lt;/li>
+&lt;li>head-specific gating 会提升 gating score 的值，因此不同的 head 需要安排不同的 sparsity&lt;/li>
+&lt;li>并不能通过 clipping 的方式来提高训练稳定性&lt;/li>
+&lt;li>在 continue pre-training 阶段加入 gating 机制并不能提高模型的表现&lt;/li>
+&lt;/ol></description></item></channel></rss>

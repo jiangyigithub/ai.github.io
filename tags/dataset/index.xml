@@ -1,0 +1,320 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Dataset on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/dataset/</link><description>Recent content in Dataset on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/dataset/index.xml" rel="self" type="application/rss+xml"/><item><title>Data mixture in MLLM</title><link>https://github.com/jiangyigithub/ai.github.io/p/data-mixture-in-mllm/</link><pubDate>Fri, 25 Apr 2025 10:25:48 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/data-mixture-in-mllm/</guid><description>&lt;h1 id="介绍">&lt;a href="#%e4%bb%8b%e7%bb%8d" class="header-anchor">&lt;/a>介绍
+&lt;/h1>&lt;p>简单总结一下已有的介绍了训练数据配比的多模态大模型，方便后续使用。
+根据之前看的一些论文进行总结，如有缺漏，欢迎批评指正。&lt;/p>
+&lt;h1 id="相关工作">&lt;a href="#%e7%9b%b8%e5%85%b3%e5%b7%a5%e4%bd%9c" class="header-anchor">&lt;/a>相关工作
+&lt;/h1>&lt;h2 id="llava">&lt;a href="#llava" class="header-anchor">&lt;/a>LLaVA
+&lt;/h2>&lt;p>&lt;a class="link" href="https://arxiv.org/abs/2310.03744" target="_blank" rel="noopener"
+>LLaVA 1.5&lt;/a> SFT数据配比如下：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/data-mixture-in-mllm/llava_v1_5_sft_mixture.png"
+width="693"
+height="569"
+loading="lazy"
+alt="LLaVA 1.5 SFT data mixture"
+class="gallery-image"
+data-flex-grow="121"
+data-flex-basis="292px"
+>&lt;/p>
+&lt;h2 id="llava-onevision">&lt;a href="#llava-onevision" class="header-anchor">&lt;/a>LLaVA-OneVision
+&lt;/h2>&lt;p>&lt;a class="link" href="http://arxiv.org/abs/2408.03326" target="_blank" rel="noopener"
+>LLaVA OneVision&lt;/a> 的数据集统计在表16里，这里总结一下数据配比(总量为3.15M)&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th style="text-align: left">Category&lt;/th>
+&lt;th style="text-align: right">Ratio&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td style="text-align: left">general vqa&lt;/td>
+&lt;td style="text-align: right">36.1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">Doc/Chart/Screen&lt;/td>
+&lt;td style="text-align: right">20.6&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">Math/Reasoning&lt;/td>
+&lt;td style="text-align: right">20.1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">general OCR&lt;/td>
+&lt;td style="text-align: right">8.9&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">text only&lt;/td>
+&lt;td style="text-align: right">14.3&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="apollo">&lt;a href="#apollo" class="header-anchor">&lt;/a>Apollo
+&lt;/h2>&lt;p>&lt;a class="link" href="http://arxiv.org/abs/2412.10360" target="_blank" rel="noopener"
+>Apollo&lt;/a> 是Meta发布的一个视频理解多模态大模型，其数据集没有开源，论文中给出了其训练数据配比
+&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/data-mixture-in-mllm/apollo.png"
+width="1389"
+height="589"
+loading="lazy"
+alt="apollo data mixture"
+class="gallery-image"
+data-flex-grow="235"
+data-flex-basis="565px"
+>&lt;/p>
+&lt;h2 id="cambiran-1">&lt;a href="#cambiran-1" class="header-anchor">&lt;/a>Cambiran-1
+&lt;/h2>&lt;p>&lt;a class="link" href="http://arxiv.org/abs/2406.16860" target="_blank" rel="noopener"
+>Cambiran-1&lt;/a> 是纽约大学提出了一个多模态大模型系列，论文发表在了 NeurIPS 2024(Oral) 上，作者给出了 Cambrain-10M 和 Cambrain-7M 两个数据集，Cambrain-7M 的数据分布如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/data-mixture-in-mllm/cambrain-7M.png"
+width="1294"
+height="513"
+loading="lazy"
+alt="Cambrain-7M"
+class="gallery-image"
+data-flex-grow="252"
+data-flex-basis="605px"
+>&lt;/p>
+&lt;h2 id="idefics">&lt;a href="#idefics" class="header-anchor">&lt;/a>Idefics
+&lt;/h2>&lt;p>Idefics系列(1/2/3)是huggingface提出的视觉多模态大模型系列，在 &lt;a class="link" href="https://arxiv.org/abs/2405.02246" target="_blank" rel="noopener"
+>Idefics2&lt;/a> 中，作者构建了The Cauldron数据集，其数据配比在表14里面。总结如下：&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th style="text-align: left">Category&lt;/th>
+&lt;th style="text-align: right">Ratio&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td style="text-align: left">general vqa&lt;/td>
+&lt;td style="text-align: right">11.02&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">captioning&lt;/td>
+&lt;td style="text-align: right">5.14&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">OCR&lt;/td>
+&lt;td style="text-align: right">17.47&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">chart/figures&lt;/td>
+&lt;td style="text-align: right">14.05&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">table&lt;/td>
+&lt;td style="text-align: right">11.3&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">reasoning&lt;/td>
+&lt;td style="text-align: right">10.32&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">textbook&lt;/td>
+&lt;td style="text-align: right">1.58&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">difference&lt;/td>
+&lt;td style="text-align: right">2.38&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">screenshot2code&lt;/td>
+&lt;td style="text-align: right">0.31&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">text only&lt;/td>
+&lt;td style="text-align: right">26.41&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>在 &lt;a class="link" href="http://arxiv.org/abs/2408.12637" target="_blank" rel="noopener"
+>Idefics3&lt;/a> 中，作者基于The Cauldron进行了扩展，最终数据集的比例如下：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/data-mixture-in-mllm/mixture_the_cauldron.png"
+width="3430"
+height="886"
+loading="lazy"
+alt="data mixture of SmolVLM blog"
+class="gallery-image"
+data-flex-grow="387"
+data-flex-basis="929px"
+>&lt;/p>
+&lt;h2 id="molmo">&lt;a href="#molmo" class="header-anchor">&lt;/a>Molmo
+&lt;/h2>&lt;p>&lt;a class="link" href="http://arxiv.org/abs/2409.17146" target="_blank" rel="noopener"
+>Molmo&lt;/a> 是Allen AI发布的一个多模态大模型，其SFT数据配比如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/data-mixture-in-mllm/molmo_sft_data_mixture.png"
+width="693"
+height="785"
+loading="lazy"
+alt="SFT data mixture of Molmo"
+class="gallery-image"
+data-flex-grow="88"
+data-flex-basis="211px"
+>&lt;/p>
+&lt;h2 id="eagle-225">&lt;a href="#eagle-225" class="header-anchor">&lt;/a>Eagle 2/2.5
+&lt;/h2>&lt;p>Eagle (1/2/2.5) 是NVLab提出了系列多模态大模型，&lt;a class="link" href="http://arxiv.org/abs/2501.14818" target="_blank" rel="noopener"
+>Eagle 2&lt;/a> 给出了 stage 1.5 和 stage 2的数据配比&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/data-mixture-in-mllm/eagle2_data_mixture.png"
+width="693"
+height="400"
+loading="lazy"
+alt="Eagle 2 data mixture"
+class="gallery-image"
+data-flex-grow="173"
+data-flex-basis="415px"
+>&lt;/p>
+&lt;p>&lt;a class="link" href="http://arxiv.org/abs/2504.15271" target="_blank" rel="noopener"
+>Eagle 2.5&lt;/a> 在 Eagle 2的基础上加入了一些 long context 数据，其数据列表在表11里&lt;/p>
+&lt;h2 id="smolvlm">&lt;a href="#smolvlm" class="header-anchor">&lt;/a>SmolVLM
+&lt;/h2>&lt;p>&lt;a class="link" href="http://arxiv.org/abs/2504.05299" target="_blank" rel="noopener"
+>SmolVLM&lt;/a> 是huggingface开发的一款轻量化视觉多模态大模型，论文中的数据配比如下：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/data-mixture-in-mllm/smol_vlm_data_mixture.png"
+width="1382"
+height="560"
+loading="lazy"
+alt="data mixture of SmolVLM paper"
+class="gallery-image"
+data-flex-grow="246"
+data-flex-basis="592px"
+>&lt;/p>
+&lt;h2 id="mm115">&lt;a href="#mm115" class="header-anchor">&lt;/a>MM1/1.5
+&lt;/h2>&lt;p>&lt;a class="link" href="http://arxiv.org/abs/2403.09611" target="_blank" rel="noopener"
+>MM1&lt;/a> 通过实验确定了训练数据的配比：&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th style="text-align: left">Category&lt;/th>
+&lt;th style="text-align: right">Ratio&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td style="text-align: left">interleaved image-text&lt;/td>
+&lt;td style="text-align: right">45&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">imagetext&lt;/td>
+&lt;td style="text-align: right">45&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">text only&lt;/td>
+&lt;td style="text-align: right">10&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>&lt;a class="link" href="http://arxiv.org/abs/2409.20566" target="_blank" rel="noopener"
+>MM1.5&lt;/a> 的SFT数据配比如下：
+&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/data-mixture-in-mllm/MM1_5_data_mixture.png"
+width="1183"
+height="845"
+loading="lazy"
+alt="MM1.5 SFT data mixture"
+class="gallery-image"
+data-flex-grow="140"
+data-flex-basis="336px"
+>&lt;/p>
+&lt;h2 id="internvl">&lt;a href="#internvl" class="header-anchor">&lt;/a>InternVL
+&lt;/h2>&lt;p>&lt;a class="link" href="http://arxiv.org/abs/2412.05271" target="_blank" rel="noopener"
+>InternVL2.5&lt;/a> 在论文里总结了其使用的pretraining数据和SFT数据，但是没有具体的数据配比，请参考论文的表4和表5&lt;/p>
+&lt;p>SFT数据配比&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th style="text-align: left">Category&lt;/th>
+&lt;th style="text-align: left">Ratio&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td style="text-align: left">single-image&lt;/td>
+&lt;td style="text-align: left">45.92%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">multi-image&lt;/td>
+&lt;td style="text-align: left">9.37%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">video&lt;/td>
+&lt;td style="text-align: left">39.79%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">pure-text&lt;/td>
+&lt;td style="text-align: left">4.92%&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="minicpm-v">&lt;a href="#minicpm-v" class="header-anchor">&lt;/a>MiniCPM V
+&lt;/h2>&lt;p>&lt;a class="link" href="http://arxiv.org/abs/2408.01800" target="_blank" rel="noopener"
+>MiniCPM V&lt;/a> 是 OpenBMB发布的轻量化多模态大模型，其在表1和表2列出了ptraining和SFT数据的具体量级和类别。&lt;/p>
+&lt;h2 id="flash-vl">&lt;a href="#flash-vl" class="header-anchor">&lt;/a>Flash-VL
+&lt;/h2>&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th style="text-align: left">Category&lt;/th>
+&lt;th style="text-align: right">Ratio&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td style="text-align: left">Special Enhancement&lt;/td>
+&lt;td style="text-align: right">4%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">Text&lt;/td>
+&lt;td style="text-align: right">21%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">Caption&lt;/td>
+&lt;td style="text-align: right">4%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">Chart&lt;/td>
+&lt;td style="text-align: right">16%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">Math&lt;/td>
+&lt;td style="text-align: right">11%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">OCR&lt;/td>
+&lt;td style="text-align: right">3%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">Code&lt;/td>
+&lt;td style="text-align: right">8%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">General&lt;/td>
+&lt;td style="text-align: right">33%&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>具体数据参见&lt;a class="link" href="http://arxiv.org/abs/2505.09498" target="_blank" rel="noopener"
+>原论文&lt;/a>&lt;/p>
+&lt;h1 id="参考文献">&lt;a href="#%e5%8f%82%e8%80%83%e6%96%87%e7%8c%ae" class="header-anchor">&lt;/a>参考文献
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="https://arxiv.org/abs/2310.03744" target="_blank" rel="noopener"
+>LLaVA 1.5&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2408.03326" target="_blank" rel="noopener"
+>LLaVA OneVision&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2412.10360" target="_blank" rel="noopener"
+>Apollo&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2406.16860" target="_blank" rel="noopener"
+>Cambiran-1&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://arxiv.org/abs/2405.02246" target="_blank" rel="noopener"
+>Idefics2&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2408.12637" target="_blank" rel="noopener"
+>Idefics3&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2409.17146" target="_blank" rel="noopener"
+>Molmo&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2501.14818" target="_blank" rel="noopener"
+>Eagle 2&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2504.15271" target="_blank" rel="noopener"
+>Eagle 2.5&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2504.05299" target="_blank" rel="noopener"
+>SmolVLM&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2403.09611" target="_blank" rel="noopener"
+>MM1&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2409.20566" target="_blank" rel="noopener"
+>MM1.5&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2412.05271" target="_blank" rel="noopener"
+>InternVL2.5&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2408.01800" target="_blank" rel="noopener"
+>MiniCPM V&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

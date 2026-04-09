@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Dimension Reduction on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/dimension-reduction/</link><description>Recent content in Dimension Reduction on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/dimension-reduction/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on t-SNE</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-t-sne/</link><pubDate>Thu, 02 May 2024 13:13:12 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-t-sne/</guid><description>&lt;p>This post introduces how to understand t-SNE.&lt;/p>
+&lt;h1 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h1>&lt;p>t-SNE an dimension reduction algorithm, which projects high-dimensional data into low-dimensional space. Thus the algorithm can be used to visualize the data distribution.&lt;/p>
+&lt;p>To understand how t-SNE works, we first review the SNE algorithms, then we introduce the t-SNE algorithm.&lt;/p>
+&lt;h1 id="sne">&lt;a href="#sne" class="header-anchor">&lt;/a>SNE
+&lt;/h1>&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;p>Stochastic Neighbor Embedding, or SNE, is the previous version of t-SNE.&lt;/p>
+&lt;p>The basic idea behind SNE is that: &lt;em>data points that are close in high-dimensional space should be close in lower-dimensional space too&lt;/em>.&lt;/p>
+&lt;p>Formally speaking, given a data set $X\in\mathbb{R}^{D\times N}$ consisting of $N$ data points, with each data point lies in $D$ dimensional space. Our goal is to reduce the data points into $d&lt;&lt; D$ dimensional space $Y\in\mathbb{R}^{d\times N}$, that is, we seek to find a map $f:\mathbb{R}^{D\times N}\to \mathbb{R}^{d\times N}$ such that $f(X)=Y$. Usually, $d=2$ or $d=3$ for visualization use.&lt;/p>
+&lt;p>SNE measures &amp;ldquo;close&amp;rdquo; in a probabilistic way. The similarity is represented by converting Euclidean distance between data points to condition probabilities:&lt;/p>
+$$ p_{j\mid i} = \frac{\exp\left(-\Vert\bm{x}_i-\bm{x}_j\Vert^2/(2\sigma_i^2)\right)}{\sum_{k\neq i}\exp\left(-\Vert\bm{x}_i-\bm{x}_k\Vert^2/(2\sigma_i^2)\right)} $$&lt;p>the above equation can be interpreted as &lt;em>the probability of point $\bm{x}_j$ being a neighbor of point $\bm{i}$ is proportional to the distance between them&lt;/em>. $\sigma_i$ is the variance of the Gaussian distribution that is centered on data point $\bm{x}_i$. We introduce the method for determining $\sigma_i$ later.&lt;/p>
+&lt;p>Similarly, we can construct a probability distribution $q$ based on $Y$.&lt;/p>
+$$ q_{j\mid i} = \frac{\exp\left(-\Vert\bm{x}_i-\bm{x}_j\Vert^2\right)}{\sum_{k\neq i}\exp\left(-\Vert\bm{x}_i-\bm{x}_k\Vert^2\right)} $$&lt;p>where we set the variance as $1/\sqrt{2}$ following the original paper.&lt;/p>
+&lt;p>$p_{i\mid i}$ and $q_{i\mid i}$ are set $0$ since we are only interested in modeling pairwise similarities.&lt;/p>
+&lt;p>Now we want $q_{j\mid i}$ are as close as $p_{j\mid i}$, that is, we want two distributions are as close as to each other. This can be measured by &lt;strong>Kullback- Leibler divergence&lt;/strong>, which is written as:&lt;/p>
+$$ C(P, Q) = \sum_{i=1}^N\mathrm{KL}(P_i\Vert Q_i)=\sum_{i=1}^N\sum_{j=1}^N p_{j\mid i}\log \frac{p_{i\mid j}}{q_{i\mid j}} $$&lt;p>where $P_i=[p_{1\mid i},\dots,p_{N\mid i}]\in\mathbb{R}^N$ and $Q_i=[q_{1\mid i},\dots,q_{N\mid i}]\in\mathbb{R}^N$.&lt;/p>
+&lt;h2 id="choosing-sigma">&lt;a href="#choosing-sigma" class="header-anchor">&lt;/a>Choosing $\sigma$
+&lt;/h2>&lt;p>Now we introduce how to choose $\sigma$. Note that $\sigma$ determines the distribution of data points, larger $\sigma$ indicates sparser distribution of data points. The original paper uses &lt;em>perplexity&lt;/em> to measure such sparsity. It is defined as&lt;/p>
+$$ \mathrm{Perp}(P_i) = 2^{H(P_i)} $$&lt;p>where $H(P_i)$ is the &lt;em>Shannon entropy&lt;/em> of $P_i$ measured in bits:&lt;/p>
+$$ H(P_i) = -\sum_{i=1}^N p_{j\mid i}\log p_{j\mid i} $$&lt;p>The perplexity can be interpreted as a smooth measure of the effective number of neighbors. The performance of SNE is fairly robust to changes in the perplexity, and typical values are between 5 and 50.&lt;/p>
+&lt;p>Notice that $p_{j\mid i}$, by setting different value on $\mathrm{Perp}(P_i)$, we can obtain different $\sigma_i$ via binary search.&lt;/p>
+&lt;h2 id="optimization">&lt;a href="#optimization" class="header-anchor">&lt;/a>Optimization
+&lt;/h2>&lt;p>Our goal now becomes minimizing $C(p, q)$ over variables $\bm{y}_1,\dots,\bm{y}_N\in\mathbb{R}^d$, given $p$ and hyperparameter $\sigma_i, i=1,\dots,N$. This can be done via gradient descent methods. The gradient is now given by&lt;/p>
+$$ \frac{d C}{d\bm{y}_i}=2\sum_{j=1}^N\left(p_{j\mid i} - q_{j\mid i} + p_{i\mid j}- q_{i\mid j} \right)(\bm{y}_i-\bm{y}_j)\in\mathbb{R}^d, \ i=1,\dots,N $$&lt;p>We can write it in matrix form and add a momentum term:&lt;/p>
+$$ Y^{t+1} = Y^t + \beta\frac{dC}{dY} + \alpha_t\left(Y^{t-1}-Y^{t-2}\right) $$&lt;p>where $\beta$ is the step size and $\alpha_t$ is momentum parameter,&lt;/p>
+$$ Y^t = [\bm{y}_1^t,\dots, \bm{y}_N^t]\in\mathbb{R}^{d\times N} ,\ \frac{dC}{dY} = \left[\frac{d C}{d\bm{y}_1},\dots,\frac{d C}{d\bm{y}_N}\right]\in\mathbb{R}^{d\times N} $$&lt;h1 id="t-sne">&lt;a href="#t-sne" class="header-anchor">&lt;/a>t-SNE
+&lt;/h1>&lt;h2 id="symmetric-sne">&lt;a href="#symmetric-sne" class="header-anchor">&lt;/a>Symmetric SNE
+&lt;/h2>&lt;p>The first difference between t-SNE and SNE is the probability, t-SNE uses symmetric version of SNE to simplify computations.&lt;/p>
+&lt;p>Different from SNE, symmetric SNE uses a joint probability instead of a condition probability:&lt;/p>
+$$ C(P, Q) = \sum_{i=1}^N\mathrm{KL}(P\Vert Q)=\sum_{i=1}^N\sum_{j=1}^N p_{ij}\log \frac{p_{ij}}{q_{ij}} $$&lt;p>where $p_{ij}$ and $q_{ij}$ are defined as&lt;/p>
+$$ p_{ij} = \frac{\exp\left(-\Vert\bm{x}_i-\bm{x}_j\Vert^2/(2\sigma^2)\right)}{\sum_{k\neq r}\exp\left(-\Vert\bm{x}_r-\bm{x}_k\Vert^2/(2\sigma^2)\right)},q_{ij} = \frac{\exp\left(-\Vert\bm{x}_i-\bm{x}_j\Vert^2\right)}{\sum_{k\neq r}\exp\left(-\Vert\bm{x}_r-\bm{x}_k\Vert^2\right)} $$&lt;p>the problem if joint probability $p_{ij}$ is that if there is an outlier $\bm{x}_i$, then $p_{ij}$ will be extremely small for all $j$. This problem can be solved by defining $p_{ij}$ from the conditional probability $p_{i\mid j}$ and $p_{j\mid i}$&lt;/p>
+$$ p_{ij} = \frac{p_{j\mid i}+p_{i\mid j}}{2N} $$&lt;p>This ensures that&lt;/p>
+$$ \sum_{j=1}^N p_{ij} > \frac{1}{2N} $$&lt;p>for all $\bm{x}_i$, in result, each data point makes a significant contribution to the cost function.&lt;/p>
+&lt;p>In this case, the gradient of the cost function is now given by&lt;/p>
+$$ \frac{d C}{d\bm{y}_i}=4\sum_{j=1}^N\left(p_{ij} - q_{ij}\right)(\bm{y}_i-\bm{y}_j)\in\mathbb{R}^d, \ i=1,\dots,N $$&lt;h2 id="t-sne-1">&lt;a href="#t-sne-1" class="header-anchor">&lt;/a>t-SNE
+&lt;/h2>&lt;p>Experiments show that symmetric SNE seems to produce maps that are just as good as asymmetric SNE, and sometimes even a little better.&lt;/p>
+&lt;p>However, there is a problem with SNE, that is, the &lt;em>crowding problem&lt;/em>, which manifests as a tendency for points in the low-dimensional space to be clustered too closely together, particularly in high-density regions of the data.&lt;/p>
+&lt;p>The causes of the crowding problems are:&lt;/p>
+&lt;ol>
+&lt;li>Data points in high dimensional space tend to far from each other, which makes the distance information less useful.&lt;/li>
+&lt;li>SNE aims to preserve the local structure of the data points, but it can struggle with non-linear relationships. The projected data points will be closed to each other due to this reason.&lt;/li>
+&lt;li>The optimization algorithm used by SNE can get stuck in local minimum.&lt;/li>
+&lt;/ol>
+&lt;p>To alleviate the crowding problem, t-SNE is introduced in the following way:
+&lt;em>In the high-dimensional space, we convert distances into probabilities using a Gaussian distribution. In the low-dimensional map, we can use a probability distribution that has much heavier tails than a Gaussian to convert distances into probabilities.&lt;/em>
+This allows a moderate distance in the high-dimensional space to be faithfully modeled by a much larger distance in the map and, as a result, it eliminates the unwanted attractive forces between map points that represent moderately dissimilar data points.&lt;/p>
+&lt;p>t-SNE uses student t-distribution in low-dimensional map:&lt;/p>
+$$ q_{ij} = \frac{\left(1+\Vert\bm{y}_i-\bm{y}_j\Vert^2\right)^{-1}}{\sum_{k\neq r}\left(1+\Vert\bm{y}_i-\bm{y}_j\Vert^2\right)^{-1}} $$&lt;p>A Student t-distribution with a single degree of freedom is used, because it has the particularly nice property that $\left(1+\Vert\bm{y}_i-\bm{y}_j\Vert^2\right)^{-1}$ approaches an inverse square law for large pairwise distances $\Vert\bm{y}_i-\bm{y}_j\Vert$ in the low-dimensional map.&lt;/p>
+&lt;p>Compared to Gaussian distribution, t-distribution is heavily tailed。&lt;/p>
+&lt;p>A computationally convenient property of t-SNE is that it is much faster to evaluate the density of a point under a Student t-distribution than under a Gaussian because it does not involve an exponential, even though the Student t-distribution is equivalent to an infinite mixture of Gaussians with different variances.&lt;/p>
+&lt;p>The gradient of t-SNE is given by&lt;/p>
+$$ \frac{d C}{d\bm{y}_i}=4\sum_{j=1}^N\left(p_{ij} - q_{ij}\right)(\bm{y}_i-\bm{y}_j)\left(1+\Vert\bm{y}_i-\bm{y}_j\Vert^2\right)^{-1}\in\mathbb{R}^d, \ i=1,\dots,N $$&lt;p>The advantages of t-SNE gradients over SNE are given by:&lt;/p>
+&lt;ol>
+&lt;li>The t-SNE gradient strongly repels dissimilar data points that are modeled by a small pairwise distance in the low-dimensional representation.&lt;/li>
+&lt;li>Second, although t-SNE introduces strong repulsions between dissimilar data points that are modeled by small pairwise distances, these repulsions do not go to infinity.&lt;/li>
+&lt;/ol>
+&lt;p>The algorithm is given as follows:&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-t-sne/t-SNE-algorithm.png"
+width="1910"
+height="1096"
+loading="lazy"
+alt="algorithm"
+class="gallery-image"
+data-flex-grow="174"
+data-flex-basis="418px"
+>&lt;/p>
+&lt;h2 id="optimization-1">&lt;a href="#optimization-1" class="header-anchor">&lt;/a>Optimization
+&lt;/h2>&lt;p>There are some optimizations that can be used to improve performance of t-SNE:&lt;/p>
+&lt;ol>
+&lt;li>Early compression, which is used to force the map points to stay close together at the start of the optimization&lt;/li>
+&lt;li>Early exaggeration, which is used to multiply all of the pi j’s by, for example, 4, in the initial stages of the optimization&lt;/li>
+&lt;/ol>
+&lt;h1 id="implementation">&lt;a href="#implementation" class="header-anchor">&lt;/a>Implementation
+&lt;/h1>&lt;h1 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="http://jmlr.org/papers/v9/vandermaaten08a.html" target="_blank" rel="noopener"
+>Visualizing Data using t-SNE&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

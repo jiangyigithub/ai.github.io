@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Loss on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/loss/</link><description>Recent content in Loss on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/loss/index.xml" rel="self" type="application/rss+xml"/><item><title>Understanding Sigmoid Loss in SigLip</title><link>https://github.com/jiangyigithub/ai.github.io/p/understanding-sigmoid-loss-in-siglip/</link><pubDate>Fri, 28 Mar 2025 14:55:50 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/understanding-sigmoid-loss-in-siglip/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>A simple note to understand Sigmoid Loss in SigLip &lt;sup id="fnref:1">&lt;a href="#fn:1" class="footnote-ref" role="doc-noteref">1&lt;/a>&lt;/sup>. Supported by DeepSeek&lt;sup id="fnref:2">&lt;a href="#fn:2" class="footnote-ref" role="doc-noteref">2&lt;/a>&lt;/sup>&lt;/p>
+&lt;h2 id="binary-cross-entropy-loss">&lt;a href="#binary-cross-entropy-loss" class="header-anchor">&lt;/a>Binary cross entropy loss
+&lt;/h2>&lt;p>Suppose we want to solve the binary classification problem, with label $y\in\{0, 1\}$, a common option is to use binary cross entropy loss:&lt;/p>
+$$\mathcal{L}(x, y) = -[y\log (\sigma(z)) + (1-y)\log (1-\sigma(z))]$$&lt;p>where $z=f_\theta(x)$ is the logits predicted by our model $f_\theta$, and $\sigma$ is the sigmoid function:&lt;/p>
+$$\sigma(z) := \frac{1}{1 + e^{-z}}$$&lt;p>Let $\sigma(\cdot)$ be the sigmoid function, then we have:&lt;/p>
+$$
+\sigma(-z) = \frac{1}{1 + e^{z}} = \frac{e^{-z}}{1 + e^{-z}} = 1 - \frac{1}{1 + e^{-z}} = 1- \sigma(z)
+$$&lt;p>Now we substitute $\sigma(-z)=1-\sigma(z)$ into the loss function, we obtain:&lt;/p>
+$$\mathcal{L}(x, y) = -[y\log (\sigma(z)) + (1-y)\log (\sigma(-z))]$$&lt;p>Note that $y\in\{0, 1\}$ thus for each instance, there are two cases:&lt;/p>
+&lt;ul>
+&lt;li>If $y=0$, then $\mathcal{L}(x, y) =-\log (\sigma(-z))$&lt;/li>
+&lt;li>If $y=1$, then $\mathcal{L}(x, y) =-\log (\sigma(z))$&lt;/li>
+&lt;/ul>
+&lt;p>Now we want to use a unified expression to express these two cases. Note that this requires fitting a curve that passes two points $(0, -1)$ and $(1, 1)$. The simplest curve is a straight line $y=2x-1$. So, we can further simplify the loss expression into:&lt;/p>
+$$\mathcal{L}(x, y) = -\log\left[\sigma((2y-1)z)\right]$$&lt;h2 id="sigmoid-loss-in-siglip">&lt;a href="#sigmoid-loss-in-siglip" class="header-anchor">&lt;/a>Sigmoid Loss in SigLip
+&lt;/h2>&lt;p>Now we recall the sigmoid loss in SigLip:&lt;/p>
+$$\mathcal{L}(\{\bm{x}, \bm{y}\}_{i=1}^N)=-\frac{1}{N}\sum_{i=1}^N\sum_{j=1}^N\log \frac{1}{1+\exp\left[z_{ij}(-t\bm{x}_i\cdot \bm{y_j}+b)\right]}$$&lt;p>where $t, b$ are learnable parameters, and $z_{ij}=1$ if $i=j$ and $z_{ij}=-1$ otherwise.&lt;/p>
+&lt;p>To understand Sigmoid loss, notice that $z_{ij}=2\mathbb{I}_{i=j}-1$, which exactly matches the form we derived earlier.&lt;/p>
+&lt;h2 id="why-use-sigmoid-loss">&lt;a href="#why-use-sigmoid-loss" class="header-anchor">&lt;/a>Why Use Sigmoid Loss?
+&lt;/h2>&lt;ol>
+&lt;li>More stable: avoids $\log 0$.&lt;/li>
+&lt;li>More efficient: Compute Sigmoid once.&lt;/li>
+&lt;li>More Precise: one line of code without condition checking.&lt;/li>
+&lt;/ol>
+&lt;h1 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h1>&lt;div class="footnotes" role="doc-endnotes">
+&lt;hr>
+&lt;ol>
+&lt;li id="fn:1">
+&lt;p>&lt;a class="link" href="https://openaccess.thecvf.com/content/ICCV2023/papers/Zhai_Sigmoid_Loss_for_Language_Image_Pre-Training_ICCV_2023_paper.pdf" target="_blank" rel="noopener"
+>SigLip&lt;/a>&amp;#160;&lt;a href="#fnref:1" class="footnote-backref" role="doc-backlink">&amp;#x21a9;&amp;#xfe0e;&lt;/a>&lt;/p>
+&lt;/li>
+&lt;li id="fn:2">
+&lt;p>&lt;a class="link" href="https://chat.deepseek.com/" target="_blank" rel="noopener"
+>DeepSeek&lt;/a>&amp;#160;&lt;a href="#fnref:2" class="footnote-backref" role="doc-backlink">&amp;#x21a9;&amp;#xfe0e;&lt;/a>&lt;/p>
+&lt;/li>
+&lt;/ol>
+&lt;/div></description></item></channel></rss>

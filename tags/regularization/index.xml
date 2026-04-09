@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Regularization on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/regularization/</link><description>Recent content in Regularization on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/regularization/index.xml" rel="self" type="application/rss+xml"/><item><title>Regularization methods in deep learning</title><link>https://github.com/jiangyigithub/ai.github.io/p/regularization-methods-in-deep-learning/</link><pubDate>Sat, 27 Apr 2024 18:02:02 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/regularization-methods-in-deep-learning/</guid><description>&lt;p>To reduce the gap of the performance of the model on the training dataset and the test dataset, we need use regularization methods.&lt;/p>
+&lt;h1 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h1>&lt;p>Possible reasons for the discrepancy that the model performs worse on the test dataset than on the training dataset are:&lt;/p>
+&lt;ol>
+&lt;li>the model describes statistical peculiarities of the training dataset that are not representative of the true mapping from the input to the output, that is, overfitting.&lt;/li>
+&lt;li>the model is unconstrained in areas with no training areas, leading to suboptimal predictions&lt;/li>
+&lt;/ol>
+&lt;h1 id="explicit-regularization-methods">&lt;a href="#explicit-regularization-methods" class="header-anchor">&lt;/a>Explicit Regularization Methods
+&lt;/h1>&lt;p>Consider fitting a model $f(\bm{x}; \phi)$ with parameter $\phi$ using a training dataset $\{\bm{x}_i,y_i\}$, we seek to minimize the loss function $L(\phi)$:&lt;/p>
+$$ \hat{\phi} = \arg\min_{\phi}L(\phi;\{\bm{x}_i,y_i\}) $$&lt;p>Now, to bias the minimization towards certain solutions, we add an additional term:&lt;/p>
+$$ \hat{\phi} = \arg\min_{\phi}[L(\phi;\{\bm{x}_i,y_i\}) + \lambda g(\phi)] $$&lt;p>where $g(\phi)$ is called the regularization term and $\lambda>0$ is a hyperparameter.&lt;/p>
+&lt;p>In the probabilistic perspective, we can construct the loss function from &lt;em>maximum likelihood estimation&lt;/em>, or MLE, that is&lt;/p>
+$$ \hat{\phi} = \arg\max_{\phi}\left[ \prod_{i}\mathrm{Pr}(y_i\mid \bm{x}_i,\phi) \right] $$&lt;p>The regularization term can be considered as a &lt;em>prior&lt;/em> $\mathrm{Pr}(\phi)$， in this way, we are now using &lt;em>maximum a posteriori&lt;/em> criterion:&lt;/p>
+$$ \hat{\phi} = \arg\max_{\phi}\left[ \prod_{i}\mathrm{Pr}(y_i\mid \bm{x}_i,\phi)\mathrm{Pr}(\phi) \right] $$&lt;h1 id="implicit-regularization-methods">&lt;a href="#implicit-regularization-methods" class="header-anchor">&lt;/a>Implicit Regularization Methods
+&lt;/h1>&lt;p>Gradient descent and stochastic gradient descent are commonly used to minimize the loss functions, however, neither of them moves neutrally to the minimum of the loss function, thus the implicit regularization method is proposed to solve the problem.&lt;/p>
+&lt;h2 id="implicit-regularization-in-gradient-descent">&lt;a href="#implicit-regularization-in-gradient-descent" class="header-anchor">&lt;/a>Implicit Regularization in gradient descent
+&lt;/h2>&lt;p>The change of the parameters $\phi$ is defined by the differential equation:&lt;/p>
+$$ \frac{d{\phi}}{d t} = -\frac{dL}{d\phi} $$&lt;p>gradient descent uses &lt;a class="link" href="https://en.wikipedia.org/wiki/Difference_quotient" target="_blank" rel="noopener"
+>difference quotient&lt;/a> with increment (or learning rate) $\alpha$ to approximate the change of $\phi$:&lt;/p>
+$$ \frac{\phi_{t+1}-\phi_{t}}{\alpha}=-\frac{dL}{d\phi} \Rightarrow \phi_{t+1} = \phi_{t} - \alpha\frac{dL}{d\phi} $$&lt;p>However, this discretization causes deviation from the continuous path.&lt;/p>
+&lt;p>To fix the problem, and extra item is added to the loss to avoid the deviation caused by discretization:&lt;/p>
+$$ \tilde{L}(\phi) = L(\phi) + \frac{\alpha}{4}\left\Vert \frac{dL}{d\phi}\right\Vert^2 $$&lt;h2 id="implicit-regularization-in-stochastic-gradient-descent">&lt;a href="#implicit-regularization-in-stochastic-gradient-descent" class="header-anchor">&lt;/a>Implicit Regularization in stochastic gradient descent
+&lt;/h2>&lt;p>A similar approach can be applied to stochastic gradient descent, which reads as&lt;/p>
+$$ \tilde{L}(\phi) = L(\phi) + \frac{\alpha}{4|B|}\sum_{i\in B}\left\Vert \frac{dL_{i}}{d\phi}-\frac{dL}{d\phi}\right\Vert^2 $$&lt;p>
+where $L_{B}$ is the loss on the batch $B$.&lt;/p>
+&lt;h1 id="heuristic-methods">&lt;a href="#heuristic-methods" class="header-anchor">&lt;/a>Heuristic Methods
+&lt;/h1>&lt;h2 id="early-stopping">&lt;a href="#early-stopping" class="header-anchor">&lt;/a>Early stopping
+&lt;/h2>&lt;p>Early stopping means that we stop the training procedure before the model becomes overfitting. By stopping early, we prevent the model captures the corner features of the training dataset.&lt;/p>
+&lt;p>Early stopping has a single hyperparameter, the number of steps after which the training is stopped, this is chosen usually with the help of the validation dataset.&lt;/p>
+&lt;h2 id="ensembling">&lt;a href="#ensembling" class="header-anchor">&lt;/a>Ensembling
+&lt;/h2>&lt;p>Ensembling means we train multiple models on the training dataset, and during the inference time, we take the average inference result of each model. The technique improves the test performance with the sacrifices of training and storing multiple models.&lt;/p>
+&lt;p>There are some ensembling methods:&lt;/p>
+&lt;ol>
+&lt;li>Use different random initializations. This leads the model reaches different local minimum and may help reduce the overfitting.&lt;/li>
+&lt;li>Generate several different datasets by re-sampling the training dataset and train model on each of them.This is also known as &lt;em>bootstrap aggregating&lt;/em> or &lt;em>bagging&lt;/em>, this division can smooth out the data, since each model tries to predict the distribution of data that is not included in its training dataset.&lt;/li>
+&lt;/ol>
+&lt;h2 id="dropout">&lt;a href="#dropout" class="header-anchor">&lt;/a>Dropout
+&lt;/h2>&lt;p>Drop out randomly clamps a subset of hidden units of the layer at each iteration of SGD. This makes the model depends on general feature instead of some specific feature, since the specific feature may be masked.&lt;/p>
+&lt;p>At test time, we can run the network as usual with all the hidden units active; however, the network now has more hidden units than it was trained with at any given iteration, so we multiply the weights by one minus the dropout probability to compensate. This is known as the &lt;em>weight scaling inference rule&lt;/em>.&lt;/p>
+&lt;h2 id="applying-noise">&lt;a href="#applying-noise" class="header-anchor">&lt;/a>Applying noise
+&lt;/h2>&lt;p>Dropout can be interpreted as applying multiplicative Bernoulli noise to the network activations. We can apply noise to other parts of the model during training.&lt;/p>
+&lt;ol>
+&lt;li>We can add noise to the input data, this smooth out the learned function.&lt;/li>
+&lt;li>We can also add noise to model parameters, this encourages the model to be robust to small perturbations of the weights.&lt;/li>
+&lt;li>We can also perturb the labels. We can change the label of a portion of the training dataset, this can prevent the model from being overconfident.&lt;/li>
+&lt;/ol>
+&lt;h2 id="bayesian-inference">&lt;a href="#bayesian-inference" class="header-anchor">&lt;/a>Bayesian inference
+&lt;/h2>&lt;p>The MLE approach tries to find a function $f(\bm{x};\phi)$ that fit the dataset $\{\bm{x}_i,y_i\}$, this approach may be overconfident about the task since the bias of the training data construction.&lt;/p>
+&lt;p>To overcome such bias, we treats the parameters $\phi$ as unknown variables instead of scalars. Then we find a distribution over the parameters $\phi$ conditioned on the training data $\{\bm{x}_i,y_i\}$, using &lt;a class="link" href="https://en.wikipedia.org/wiki/Bayes%27_theorem" target="_blank" rel="noopener"
+>Bayesian theorem&lt;/a>:&lt;/p>
+$$ \mathrm{Pr}(\phi\mid \{\bm{x}_i,y_i\}) = \frac{\prod_{i}\mathrm{Pr}(y_i\mid \bm{x}_i,\phi)\mathrm{Pr}(\phi)}{\int\prod_{i}\mathrm{Pr}(y_i\mid \bm{x}_i,\phi)\mathrm{Pr}(\phi)d\phi} $$&lt;p>where $\mathrm{Pr}(\phi)$ us the prior probability of the parameters, and the denominator is a normalizing term.&lt;/p>
+&lt;p>Then the prediction for unseen item $\{\bm{x},y\}$ is given by the following infinite weighted sum:&lt;/p>
+$$ \mathrm{Pr}(y\mid x, \{\bm{x}_i,y_i\}) = \int \mathrm{Pr}(y\mid \bm{x},\phi)\mathrm{Pr}(\phi\mid \{\bm{x}_i,y_i\})d\phi $$&lt;p>This is an infinite weighted ensemble, where the weights depend on&lt;/p>
+&lt;ol>
+&lt;li>the prior probability of the parameters&lt;/li>
+&lt;li>the agreement with the data&lt;/li>
+&lt;/ol>
+&lt;p>Though Bayesian approach is capable of representing the data more robust, it is hard to implement since there is no way to represent an distribution.
+Current implementation simplifies the distribution as Gaussian distribution and each parameter is replaced with the mean $\mu$ and standard deviation $\sigma$ of the Gaussian distribution.&lt;/p>
+&lt;h2 id="transfer-learning-and-multi-task-learning">&lt;a href="#transfer-learning-and-multi-task-learning" class="header-anchor">&lt;/a>Transfer learning and multi-task learning
+&lt;/h2>&lt;p>In transfer learning, the model is first pre-trained before training or fine-tuning on the task we are interested in. The idea is that the model may learn some good representation of the data from the main task. Alternatively, we can think transfer learning as initializing the model parameters in a reasonable area such that the minimum is better compared to the random initialization.&lt;/p>
+&lt;p>Multi-task learning is a related technique that the model is trained on multiple related tasks concurrently. In this way, the model can learn from multiple datasets and multiple objectives, this encourages the model to learn the essential part of the tasks.&lt;/p>
+&lt;h2 id="self-supervised-learning">&lt;a href="#self-supervised-learning" class="header-anchor">&lt;/a>Self-supervised learning
+&lt;/h2>&lt;p>In some cases, we do not have multiple datasets for pre-training or for multi-tasks. To solve this problem, we can use self-supervised learning to generate large amounts of label-free data. There are two families of self-supervised learning: generative and contrastive.&lt;/p>
+&lt;p>In generative self-supervised learning, part of each data example is masked, and the task is to predict the masked part. For example, given a sentence, we can mask the verb and ask for the model to predict the correct verb, the helps the model to learning semantic meaning of a sentence.&lt;/p>
+&lt;p>In contrastive self-supervised learning, we try to group related data and separated unrelated data. For example, a cat is more similar to another cat compared with a dog. In this way, the model can learn more robust representations and can be adapted to new tasks easily.&lt;/p>
+&lt;h2 id="augmentation">&lt;a href="#augmentation" class="header-anchor">&lt;/a>Augmentation
+&lt;/h2>&lt;p>Augmentation aims to expand the training dataset, we can perform transformation to each training data without changing the labels, for example we can rotate, flip a image of cat. The augmentation is to teach the model to be invariant to these irrelevant data transformations.&lt;/p>
+&lt;h1 id="summary">&lt;a href="#summary" class="header-anchor">&lt;/a>Summary
+&lt;/h1>&lt;p>To summarize the regularization methods, we use the following picture to depict the mechanisms.
+&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/regularization-methods-in-deep-learning/regularization_overview.png"
+width="1210"
+height="718"
+loading="lazy"
+alt="Regularization methods"
+class="gallery-image"
+data-flex-grow="168"
+data-flex-basis="404px"
+>&lt;/p>
+&lt;h1 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="https://udlbook.github.io/udlbook/" target="_blank" rel="noopener"
+>Understanding Deep Learning Chapter 9&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

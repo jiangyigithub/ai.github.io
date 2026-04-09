@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>ICLR2022 on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/iclr2022/</link><description>Recent content in ICLR2022 on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/iclr2022/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on ALiBi</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-alibi/</link><pubDate>Wed, 24 Dec 2025 15:10:55 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-alibi/</guid><description>&lt;p>meta 等提出了 ALiBi, 一个通过 linear biases 来实现位置编码的方法来提高 LLM 在推理阶段的外推能力。&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>当下，有若干种位置编码的方式：&lt;/p>
+&lt;ol>
+&lt;li>Sinusoidal position embeddings: Transformer 提出的正弦位置编码&lt;/li>
+&lt;li>RoPE: &lt;a class="link" href="https://maosong.website/p/notes-on-position-encoding/" target="_blank" rel="noopener"
+>RoPE&lt;/a> 提出的旋转位置编码&lt;/li>
+&lt;li>T5 bias: &lt;a class="link" href="https://maosong.website/p/notes-on-t5/" target="_blank" rel="noopener"
+>T5&lt;/a> 提出的相对位置编码&lt;/li>
+&lt;/ol>
+&lt;p>作者通过实验对比了不同的位置编码方法，发现这些方法在推理阶段的外推能力都比较差。&lt;/p>
+&lt;p>为了解决这个问题，作者提出了 ALiBi (attention with linear biases), 一个几乎不增加计算和内存开销的位置编码方法，来提高 LLM 在推理阶段的外推能力。&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;p>作者将外推能力定义为&lt;/p>
+&lt;blockquote>
+&lt;p>a model’s ability to continue performing well as the number of input tokens during validation increases beyond the number of tokens on which the the model was trained.&lt;/p>
+&lt;/blockquote>
+&lt;p>计 $L$ 为训练阶段的上下文长度， $L_{valid}$ 为推理阶段的上下文长度。&lt;/p>
+&lt;p>作者首先对比了不同的位置编码方法的外推能力，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-alibi/ALiBi-comparison-different-position-embedding.png"
+width="1155"
+height="448"
+loading="lazy"
+alt="Comparison of different position embeddings"
+class="gallery-image"
+data-flex-grow="257"
+data-flex-basis="618px"
+>&lt;/p>
+&lt;p>结果显示，不同位置编码在推理阶段扩展模型的上下文能力均有限。&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Context Length&lt;/th>
+&lt;th>$L$&lt;/th>
+&lt;th>$L_{valid}$&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Sinusoidal&lt;/td>
+&lt;td>512&lt;/td>
+&lt;td>50&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>1024&lt;/td>
+&lt;td>50&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>RoPE&lt;/td>
+&lt;td>512&lt;/td>
+&lt;td>200&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>1024&lt;/td>
+&lt;td>100&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>T5 bias&lt;/td>
+&lt;td>512&lt;/td>
+&lt;td>600&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>1024&lt;/td>
+&lt;td>800&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>ALiBi&lt;/td>
+&lt;td>512&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>1024&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>为了解决这个问题，作者提出了 AliBi, 其表达式为&lt;/p>
+$$
+\mathrm{softmax}(q_iK^T+m\cdot [-(i-1),\dots,-2,-1,0])
+$$&lt;p>其中 $m$ 是一个和 heads 相关的超参数。如果我们有 8 个 heads, 则对应的 scaling 值分别为 $[1/2^1,1/2^2,\dots,1/2^8]$, 如果我们有 16 个 heads, 则我们对 8 个 heads 的结果进行插值，得到 $[1/2^{0.5},1/2^1,\dots,1/2^8]$. ALiBi 的示意图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-alibi/ALiBi-illustration.png"
+width="559"
+height="245"
+loading="lazy"
+alt="illustration of ALiBi"
+class="gallery-image"
+data-flex-grow="228"
+data-flex-basis="547px"
+>&lt;/p>
+&lt;p>ALiBi 通过 bias 惩罚了较远的 query-key pairs, 并且不同的 heads 的惩罚项也不同，从而每个 head 对距离的信息敏感度也不尽相同。&lt;/p>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>ALiBi 在 WikiText-103 上的实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-alibi/ALiBi-performance.png"
+width="747"
+height="347"
+loading="lazy"
+alt="Performance of ALiBi"
+class="gallery-image"
+data-flex-grow="215"
+data-flex-basis="516px"
+>&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者分析了已有的 position embedding 方法，发现已有的方法在推理阶段均不能有效扩展模型的上下文长度。因此，作者提出了 AliBi, 一个通过 linear bias 来增加位置信息的方法，作者通过实验验证了 ALiBi 的有效性。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://openreview.net/forum?id=R8sQPpGCv0" target="_blank" rel="noopener"
+>Train Short, Test Long: Attention with Linear Biases Enables Input Length Extrapolation&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

@@ -1,0 +1,1539 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Distributed Training on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/distributed-training/</link><description>Recent content in Distributed Training on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/distributed-training/index.xml" rel="self" type="application/rss+xml"/><item><title>LLM Parameter Computation</title><link>https://github.com/jiangyigithub/ai.github.io/p/llm-parameter-computation/</link><pubDate>Tue, 22 Jul 2025 10:50:47 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/llm-parameter-computation/</guid><description>&lt;p>本文中，我们介绍一下如何计算 LLM 的参数量。我们将基于 &lt;a class="link" href="https://maosong.website/p/notes-on-qwen3/" target="_blank" rel="noopener"
+>Qwen3&lt;/a> 模型架构出发，对模型架构进行拆解，然后给出 LLM 参数量计算公式。&lt;/p>
+&lt;h2 id="dense-model">&lt;a href="#dense-model" class="header-anchor">&lt;/a>Dense Model
+&lt;/h2>&lt;p>我们首先来看一下 Qwen3 的架构，如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/llm-parameter-computation/transformer_architecture.png"
+width="1210"
+height="1364"
+loading="lazy"
+alt="Architecture of Qwen3"
+class="gallery-image"
+data-flex-grow="88"
+data-flex-basis="212px"
+>&lt;/p>
+&lt;p>这里，&lt;code>Qwen3ForCausalLM&lt;/code> 就是我们的的 LLM, 其关键代码如下&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">class&lt;/span> &lt;span class="nc">Qwen3ForCausalLM&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">model&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">Qwen3Model&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">lm_head&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Linear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hidden_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">vocab_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">bias&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="kc">False&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>我们假设 &lt;code>vocab_size&lt;/code>, 也就是词表大小为 $|V|$ (我们用 $V$ 表示词表), &lt;code>hidden_size&lt;/code> 为 $d$, 则总参数量为&lt;/p>
+$$
+\mathrm{parameter}(\texttt{Qwen3ForCausalLM}) =d|V| + \mathrm{parameter}(\texttt{Qwen3Model})
+$$&lt;p>&lt;code>Qwen3Model&lt;/code> 包含三个（含参数的）模块，分别是 &lt;code>nn.Embedding&lt;/code>, &lt;code>Qwen3DecodeLayer&lt;/code> 以及 &lt;code>Qwen3RMSNorm&lt;/code>, 分别代表了输入 token 的 embedding layer, Transformer block 和对输出的 normalization. 其关键代码如下：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">class&lt;/span> &lt;span class="nc">Qwen3Model&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">Qwen3Config&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">embed_tokens&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Embedding&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">vocab_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hidden_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">padding_idx&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">layers&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">ModuleList&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="p">[&lt;/span>&lt;span class="n">Qwen3DecoderLayer&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">layer_idx&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">layer_idx&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_hidden_layers&lt;/span>&lt;span class="p">)]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">norm&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">Qwen3RMSNorm&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hidden_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">eps&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">rms_norm_eps&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>其中，&lt;code>nn.Embedding&lt;/code> 参数量与 &lt;code>lm_head&lt;/code> 一样，都是 $d|V|$.&lt;/p>
+&lt;p>对于 normalization, 现在大部分 LLM 用的都是 &lt;code>RMSNorm&lt;/code>, 其定义如下：&lt;/p>
+$$
+\mathrm{RMSNorm}(x) = \frac{x}{\sqrt{\|x\|_2^2+\epsilon}}\odot \gamma
+$$&lt;p>其参数量为：$d$.&lt;/p>
+&lt;p>如果说我们使用的是 &lt;code>LayerNorm&lt;/code>, 则其定义如下：&lt;/p>
+$$
+\mathrm{LayerNorm}(x) = \frac{x-\mathbb{E}[x]}{\sqrt{\mathrm{var}[x]+\epsilon}}\odot \beta + \gamma
+$$&lt;p>其参数量为： $2d$.&lt;/p>
+&lt;p>因此，&lt;code>Qwen3Model&lt;/code> 的参数量为&lt;/p>
+$$
+\mathrm{parameter}(\texttt{Qwen3Model})=d|V| + N*\mathrm{parameter}(\texttt{Qwen3DecoderLayer}) + d
+$$&lt;p>这里第一项为 &lt;code>nn.Embedding&lt;/code>, 第三项为 &lt;code>Qwen3RMSNorm&lt;/code>， 第二项里，$N$ 代表 decode layer 的个数，也就是 &lt;code>config.num_hidden_layers&lt;/code>.&lt;/p>
+&lt;p>&lt;code>Qwen3DecoderLayer&lt;/code> 包含了四个模块，其关键代码如下&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">class&lt;/span> &lt;span class="nc">Qwen3DecoderLayer&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">Qwen3Config&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">self_attn&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">Qwen3Attention&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">layer_idx&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">layer_idx&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">mlp&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">Qwen3MLP&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">input_layernorm&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">Qwen3RMSNorm&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hidden_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">eps&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">rms_norm_eps&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">post_attention_layernorm&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">Qwen3RMSNorm&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hidden_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">eps&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">rms_norm_eps&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>因此，&lt;code>Qwen3DecoderLayer&lt;/code> 的参数量为&lt;/p>
+$$
+\mathrm{parameter}(\texttt{Qwen3DecoderLayer}) = 2d + \mathrm{parameter}(\texttt{Qwen3MLP}) + \mathrm{parameter}(\texttt{Qwen3Attention})
+$$&lt;p>其中，第一项是两个 &lt;code>Qwen3RMSNorm&lt;/code> 的参数。&lt;/p>
+&lt;p>对于 &lt;code>Qwen3MLP&lt;/code>, 其定义如下：&lt;/p>
+$$
+y = W_2(W_3x\odot \mathrm{SwiGLU}(W_1x))
+$$&lt;p>这里 $W_3,W_1\in\mathbb{R}^{d_{ff}\times d}$, $W_2\in\mathbb{R}^{d\times d_{ff}}$, $d_{ff}$ 是 MLP 的 hidden size, 代码中用 &lt;code>intermediate_size&lt;/code> 来表示，因此&lt;/p>
+$$
+\mathrm{parameter}(\texttt{Qwen3MLP}) = dd_{ff} + dd_{ff} + d_{ff}d=3dd_{ff}
+$$&lt;p>这里三项分别代表 $W_1,W_3,W_2$ 的参数量。&lt;/p>
+&lt;p>如果说，我们使用原始 transformer 的 MLP, 也就是&lt;/p>
+$$
+y = W_2\max(0,W_1x+b_1)+b_2
+$$&lt;p>其中 $W_1\in\mathbb{R}^{d_{ff}\times d}$, $W_2\in\mathbb{R}^{d\times d_{ff}}$, $b_1\in\mathbb{R}^{d_{ff}}$, $b_2\in\mathbb{R}^d$, 则总参数为&lt;/p>
+$$
+\mathrm{parameter}(\texttt{TransformerMLP}) = d_{ff}d + dd_{ff} + d_{ff} +d = 2d_{ff}d + d_{ff} + d
+$$&lt;p>这里的四项分别代表了 $W_1,W_2,b_1,b_2$.&lt;/p>
+&lt;h3 id="qwen3attention">&lt;a href="#qwen3attention" class="header-anchor">&lt;/a>Qwen3Attention
+&lt;/h3>&lt;p>接下来，就是 Attention 部分的参数，&lt;code>Qwen3Attention&lt;/code> 的关键代码如下：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">class&lt;/span> &lt;span class="nc">Qwen3Attention&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">Qwen3Config&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">layer_idx&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">q_proj&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Linear&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hidden_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_attention_heads&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">head_dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">bias&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">attention_bias&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">k_proj&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Linear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hidden_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_key_value_heads&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">head_dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">bias&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">attention_bias&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">v_proj&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Linear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hidden_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_key_value_heads&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">head_dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">bias&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">attention_bias&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">o_proj&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Linear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_attention_heads&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">head_dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hidden_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">bias&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">attention_bias&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">q_norm&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">Qwen3RMSNorm&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">head_dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">eps&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">rms_norm_eps&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">k_norm&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">Qwen3RMSNorm&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">head_dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">eps&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">rms_norm_eps&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>这里，我们先定义几个量：&lt;/p>
+&lt;ul>
+&lt;li>我们将 head 的个数记为 $h$, 即 &lt;code>num_attention_heads&lt;/code>&lt;/li>
+&lt;li>我们将每个 head 的 hidden size 记为 $h_d$, 即 &lt;code>head_dim&lt;/code>&lt;/li>
+&lt;li>我们将 key 和 value head 的个数记为 $h_{kv}$ , 即 &lt;code>num_key_value_heads&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;p>&lt;code>Qwen3Attention&lt;/code> 的参数由以下几个部分组成：&lt;/p>
+&lt;ul>
+&lt;li>Query projection: $W_{Q}\in\mathbb{R}^{hh_d\times d}$, $b_Q\in\mathbb{R}^{hh_d}$&lt;/li>
+&lt;li>Key projection: $W_K\in\mathbb{R}^{h_{kv}h_d\times d}$, $b_K\in\mathbb{R}^{h_{kv}h_d}$&lt;/li>
+&lt;li>Value projection: $W_V\in\mathbb{R}^{h_{kv}h_d\times d}$, $b_V\in\mathbb{R}^{h_{kv}h_d}$&lt;/li>
+&lt;li>output projection: $W_O\in\mathbb{R}^{d\times hh_d}$&lt;/li>
+&lt;li>RMSNorm：前文已经提到过，两个 normalization (query norm 以及 key norm) 的总参数量为 $2h_d$.&lt;/li>
+&lt;/ul>
+&lt;p>因此， &lt;code>Qwen3Attention&lt;/code> 部分的总参数量为&lt;/p>
+$$
+\mathrm{parameter}(\texttt{Qwen3Attention}) = hh_{d}d + 2h_{kv}h_dd +dhh_d + 2h_d = 2hh_dd + 2h_{kv}h_dd + 2h_d
+$$&lt;p>分别代表 $W_Q, W_O, W_K,W_V$ 和 两个 normalization layer 的参数量。&lt;/p>
+&lt;p>注意，这里我们没有加入 bias, 这是因为 QKV bias 在 Qwen3 中被取消，取而代之的是两个 normalization.&lt;/p>
+&lt;p>如果我们查看 &lt;code>Qwen2Attention&lt;/code> 的代码，我们可以得到 &lt;code>Qwen2Attention&lt;/code> 的总参数量为&lt;/p>
+$$
+\mathrm{parameter}(\texttt{Qwen2Attention}) = 2hh_{d}d + 2h_{kv}h_dd +h_{kv}h_d+hh_d+h_{kv}h_d
+$$&lt;p>分别代表 $W_Q, W_K, W_V,W_O$ 和 $b_Q,b_K, b_V$ 的参数量。&lt;/p>
+&lt;p>我们将计算结果汇总在一起就得到：&lt;/p>
+$$
+\begin{aligned}
+\mathrm{parameter}(\texttt{Qwen3ForCausalLM}) &amp;=d|V| + \mathrm{parameter}(\texttt{Qwen3Model})\\
+&amp;=2d|V| + N*\mathrm{parameter}(\texttt{Qwen3DecoderLayer}) + d\\
+&amp;= N*(2d + \mathrm{parameter}(\texttt{Qwen3MLP}) + \mathrm{parameter}(\texttt{Qwen3Attention})) + d(2|V|+1)\\
+&amp;= N*(2d+3dd_{ff}+2hh_{d}d + 2h_{kv}h_dd + 2h_d) + d(2|V|+1)\\
+\end{aligned}
+$$&lt;p>这是针对 &lt;code>Qwen3ForCausalLM&lt;/code> 的参数量计算。这里的变量定义如下：&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Math Variable&lt;/th>
+&lt;th>Code Variable&lt;/th>
+&lt;th>Description&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$N$&lt;/td>
+&lt;td>&lt;code>num_hidden_layers&lt;/code>&lt;/td>
+&lt;td>Transformer block 个数&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\vert V\vert$&lt;/td>
+&lt;td>&lt;code>vocab_size&lt;/code>&lt;/td>
+&lt;td>词表大小&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$d$&lt;/td>
+&lt;td>&lt;code>hidden_size&lt;/code>&lt;/td>
+&lt;td>token embedding 的维度&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$d_{ff}$&lt;/td>
+&lt;td>&lt;code>intermediate_size&lt;/code>&lt;/td>
+&lt;td>MLP 的中间层的维度&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$h_d$&lt;/td>
+&lt;td>&lt;code>head_dim&lt;/code>&lt;/td>
+&lt;td>每个 head 的维度&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$h$&lt;/td>
+&lt;td>&lt;code>num_attention_heads&lt;/code>&lt;/td>
+&lt;td>query head 的个数&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$h_{kv}$&lt;/td>
+&lt;td>&lt;code>num_key_value_heads&lt;/code>&lt;/td>
+&lt;td>key 和 value head 的个数&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="verification">&lt;a href="#verification" class="header-anchor">&lt;/a>Verification
+&lt;/h3>&lt;p>接下来，我们就可以基于 Qwen3 的模型来验证了，比如，&lt;code>Qwen3-32B&lt;/code> 的配置如下:&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Field&lt;/th>
+&lt;th>Value&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$N$&lt;/td>
+&lt;td>64&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\vert V\vert$&lt;/td>
+&lt;td>151936&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$d$&lt;/td>
+&lt;td>5120&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$d_{ff}$&lt;/td>
+&lt;td>25600&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$h_d$&lt;/td>
+&lt;td>128&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$h$&lt;/td>
+&lt;td>64&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$h_{kv}$&lt;/td>
+&lt;td>8&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>根据上式，最终的参数量为&lt;/p>
+$$
+\mathrm{parameter}(\texttt{Qwen3-32B}) = 32.762123264*10^9\approx 32.8B
+$$&lt;p>我们使用 &lt;code>Qwen3-32B&lt;/code> 的 &lt;code>index.json&lt;/code> 可以得到其真实的参数量为&lt;/p>
+$$
+\texttt{total\_size}/\texttt{precision} = 65524246528/2 = 32762123264
+$$&lt;p>与我们计算的结果一致（这里除以 2 的原因是其表示模型权重文件的总大小，以 bytes 为单位，一般模型都是 &lt;code>bfloat16&lt;/code>, 大小为 2 个 bytes, 因此总参数量为总大小除以权重的精度）&lt;/p>
+&lt;h2 id="moe-model">&lt;a href="#moe-model" class="header-anchor">&lt;/a>MoE Model
+&lt;/h2>&lt;p>MoE model 与 Dense model 不同的地方在于每一层的 FFN, 因此，其总参数计算方式为：&lt;/p>
+$$
+\mathrm{parameter}(\texttt{Qwen3MoeForCausalLM})=N*(2d+\mathrm{parameter}(\texttt{Qwen3MoE})+hh_{d}d + 2h_{kv}h_dd +dhh_d + 2d) + d(2|V|+1)
+$$&lt;p>对于 MoE layer, 其关键代码为：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">class&lt;/span> &lt;span class="nc">Qwen3MoeSparseMoeBlock&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_experts&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_experts&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">top_k&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_experts_per_tok&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">gate&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Linear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hidden_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_experts&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">bias&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="kc">False&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">experts&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">ModuleList&lt;/span>&lt;span class="p">([&lt;/span>&lt;span class="n">Qwen3MoeMLP&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">intermediate_size&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">moe_intermediate_size&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">_&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_experts&lt;/span>&lt;span class="p">)])&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>我们记 $n$ 为总专家个数，即 &lt;code>num_experts&lt;/code>， 记 $k$ 为激活专家个数，即 &lt;code>num_experts_per_tok&lt;/code> 或者 &lt;code>top_k&lt;/code>,&lt;/p>
+&lt;p>首先 &lt;code>gate&lt;/code> 的参数量为 $dn$, 接下来每个 expert 都是一个 &lt;code>Qwen3MLP&lt;/code>, 因此 &lt;code>experts&lt;/code> 总参数量为 $n * 3dd_{ff}$. 这样 MoE layer 的总参数量为&lt;/p>
+$$
+\mathrm{parameter}(\texttt{Qwen3MoE}) = nd + 3ndd_{ff}
+$$&lt;p>在推理时，只有一部分专家，也就是 $k$ 个专家会参与计算，此时激活参数量为&lt;/p>
+$$
+\mathrm{parameter\_activated}(\texttt{Qwen3MoE}) = nd + 3kdd_{ff}
+$$&lt;p>我们带入到 &lt;code>Qwen3MoeForCausalLM&lt;/code> 中就得到：&lt;/p>
+&lt;p>模型总参数量为：&lt;/p>
+$$
+\mathrm{parameter}(\texttt{Qwen3MoeForCausalLM})=N*(2d+nd + 3ndd_{ff}+hh_{d}d + 2h_{kv}h_dd +dhh_d + 2h_d) + d(2|V|+1)
+$$&lt;p>模型激活参数量为：&lt;/p>
+$$
+\mathrm{parameter\_activated}(\texttt{Qwen3MoeForCausalLM})=N*(2d+nd + 3kdd_{ff} + 2h_{kv}h_dd +dhh_d + 2h_d) + d(2|V|+1)
+$$&lt;p>这里的变量定义如下：&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Math Variable&lt;/th>
+&lt;th>Code Variable&lt;/th>
+&lt;th>Description&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$N$&lt;/td>
+&lt;td>&lt;code>num_hidden_layers&lt;/code>&lt;/td>
+&lt;td>Transformer block 个数&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\vert V\vert$&lt;/td>
+&lt;td>&lt;code>vocab_size&lt;/code>&lt;/td>
+&lt;td>词表大小&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$d$&lt;/td>
+&lt;td>&lt;code>hidden_size&lt;/code>&lt;/td>
+&lt;td>token embedding 的维度&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$d_{ff}$&lt;/td>
+&lt;td>&lt;code>intermediate_size&lt;/code>&lt;/td>
+&lt;td>MLP 的中间层的维度&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$h_d$&lt;/td>
+&lt;td>&lt;code>head_dim&lt;/code>&lt;/td>
+&lt;td>每个 head 的维度&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$h$&lt;/td>
+&lt;td>&lt;code>num_attention_heads&lt;/code>&lt;/td>
+&lt;td>query head 的个数&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$h_{kv}$&lt;/td>
+&lt;td>&lt;code>num_key_value_heads&lt;/code>&lt;/td>
+&lt;td>key 和 value head 的个数&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$n$&lt;/td>
+&lt;td>&lt;code>num_experts&lt;/code>&lt;/td>
+&lt;td>总专家个数&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$k$&lt;/td>
+&lt;td>&lt;code>top_k&lt;/code> (&lt;code>num_experts_per_tok&lt;/code>)&lt;/td>
+&lt;td>激活专家个数&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="moe-verification">&lt;a href="#moe-verification" class="header-anchor">&lt;/a>MoE Verification
+&lt;/h3>&lt;p>我们用 &lt;code>Qwen3-235B-A22B&lt;/code> 来验证，其配置如下：&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Field&lt;/th>
+&lt;th>Value&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$N$&lt;/td>
+&lt;td>94&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\vert V\vert$&lt;/td>
+&lt;td>151936&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$d$&lt;/td>
+&lt;td>4096&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$d_{ff}$&lt;/td>
+&lt;td>1536&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$h_d$&lt;/td>
+&lt;td>128&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$h$&lt;/td>
+&lt;td>64&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$h_{kv}$&lt;/td>
+&lt;td>4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$n$&lt;/td>
+&lt;td>128&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$k$&lt;/td>
+&lt;td>8&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>计算得到总参数量为&lt;/p>
+$$
+\mathrm{parameter}(\texttt{Qwen3-235B-A22B}) = 235.09363456*10^9\approx 235B
+$$&lt;p>计算得到激活参数量为&lt;/p>
+$$
+\mathrm{parameter\_activated}(\texttt{Qwen3-235B-A22B}) = 22.14456064 * 10^9
+$$&lt;p>实际总参数量为&lt;/p>
+$$
+470187269120/2 = 235093634560.0\approx 235B
+$$&lt;p>可以看到，计算结果与实际相符。&lt;/p>
+&lt;h2 id="extension">&lt;a href="#extension" class="header-anchor">&lt;/a>Extension
+&lt;/h2>&lt;p>通过以上计算过程，我们可以很轻松将上述公式扩展到混合架构或者是 MLA 上，对于混合架构，我们分别计算不同 attention 的 layer 个数，然后分别计算。对于 MLA, 我们可以替换 Attention 的计算逻辑。&lt;/p>
+&lt;p>对于小语言模型系列，比如 0.6B 和 1.7B, 模型的大部分参数集中在 embedding 上，因此 Qwen3 采取了 tie embedding 的方式来减少参数量，具体做法就是 &lt;code>nn.Embedding&lt;/code> 和 &lt;code>lm_head&lt;/code> 共享参数。&lt;/p>
+&lt;h2 id="visualization">&lt;a href="#visualization" class="header-anchor">&lt;/a>Visualization
+&lt;/h2>&lt;p>接下来，我们来可视化一下不同大小模型不同模块的参数量占比。计算的代码如下：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;span class="lnt">38
+&lt;/span>&lt;span class="lnt">39
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">compute_param_distribution&lt;/span>&lt;span class="p">(&lt;/span> &lt;span class="n">N&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">V&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">d&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">d_ff&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">h_d&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">h&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">h_kv&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">tie_word_embeddings&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">bool&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="nb">dict&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> Compute parameter distribution across different components of the model.
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2">
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> Args:
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> N: Number of layers
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> V: Vocabulary size
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> d: Hidden dimension
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> d_ff: Feed-forward dimension
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> h_d: Head dimension
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> h: Number of attention heads
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> h_kv: Number of key/value heads
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> tie_word_embeddings: Whether input and output embeddings are tied
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2">
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> Returns:
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> dict: Parameter counts for each component
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># Embedding parameters&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">embedding&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">V&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">d&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="n">tie_word_embeddings&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">embedding&lt;/span> &lt;span class="o">*=&lt;/span> &lt;span class="mi">2&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># Attention parameters per layer&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">attention_per_layer&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">h&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">h_d&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">2&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">h_kv&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">h_d&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">h&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">h_d&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">2&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">h_d&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">attention_total&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">attention_per_layer&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">N&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># FFN parameters per layer&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">ffn_per_layer&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">3&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">d_ff&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">ffn_total&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">ffn_per_layer&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">N&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># RMSNorm (2d), QK-Norm (2d), output normalization (d)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">others&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">N&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="mi">4&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">d&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">d&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;Embedding&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">embedding&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;Attention&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">attention_total&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;FFN&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">ffn_total&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;Others&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">others&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="p">}&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>对于 dense 模型，每部分的参数量可视化如下：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/llm-parameter-computation/Qwen3_param_distribution.png"
+width="1200"
+height="600"
+loading="lazy"
+alt="Parameter distribution across model components"
+class="gallery-image"
+data-flex-grow="200"
+data-flex-basis="480px"
+>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/llm-parameter-computation/Qwen3_param_percentage.png"
+width="1200"
+height="600"
+loading="lazy"
+alt="Parameter percentage across model components"
+class="gallery-image"
+data-flex-grow="200"
+data-flex-basis="480px"
+>&lt;/p>
+&lt;p>可以看到，随着模型 size 增加，模型大部分参数量都集中在 FFN 上。&lt;/p>
+&lt;p>接下来，我们可视化一下 MoE 模型的参数分布，核心计算代码如下：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;span class="lnt">38
+&lt;/span>&lt;span class="lnt">39
+&lt;/span>&lt;span class="lnt">40
+&lt;/span>&lt;span class="lnt">41
+&lt;/span>&lt;span class="lnt">42
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">compute_moe_param_distribution&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">N&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">V&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">d&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">d_ff&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">h_d&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">h&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">h_kv&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">n&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">k&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">activate&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="kc">False&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="nb">dict&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> Compute parameter distribution across different components of the MoE model.
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2">
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> Args:
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> N: Number of layers
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> V: Vocabulary size
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> d: Hidden dimension
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> d_ff: Feed-forward dimension
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> h_d: Head dimension
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> h: Number of attention heads
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> h_kv: Number of key/value heads
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> n: Number of experts
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> k: Number of experts per token
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> activate: Whether to compute activated parameters
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2">
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> Returns:
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> dict: Parameter counts for each component
+&lt;/span>&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="s2"> &amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># Embedding parameters&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">embedding&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">2&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">V&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">d&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># Attention parameters per layer&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">attention_per_layer&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">h&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">h_d&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">2&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">h_kv&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">h_d&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">h&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">h_d&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">2&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">h_d&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">attention_total&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">attention_per_layer&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">N&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># FFN parameters per layer&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">activate&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">moe_per_layer&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">n&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">3&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">k&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">d_ff&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">else&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">moe_per_layer&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">n&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">3&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">n&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">d_ff&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">ffn_total&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">moe_per_layer&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">N&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># RMSNorm (2d), QK-Norm (2d), output normalization (d)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">others&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">N&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="mi">2&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">d&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">2&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">h_d&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">d&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;Embedding&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">embedding&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;Attention&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">attention_total&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;MoE&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">ffn_total&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;Others&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">others&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="p">}&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>结果如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/llm-parameter-computation/Qwen3_moe_param_distribution.png"
+width="1189"
+height="589"
+loading="lazy"
+alt="Parameter distribution across MoE model components"
+class="gallery-image"
+data-flex-grow="201"
+data-flex-basis="484px"
+>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/llm-parameter-computation/Qwen3_moe_param_percentage.png"
+width="1188"
+height="589"
+loading="lazy"
+alt="Parameter percentage across MoE model components"
+class="gallery-image"
+data-flex-grow="201"
+data-flex-basis="484px"
+>&lt;/p>
+&lt;p>可以看到，MoE 模型的大部分参数还是集中在 MoE 模块上，但是由于其稀疏机制，在激活的参数里，MoE 占比从 95% 以上降低到了 60% 左右。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>在本文中，我们基于 Qwen3 大语言模型系列，介绍了如何计算 dense 模型和 MoE 模型的参数量。模型的参数量计算为后面的显存占用以及优化提供了基础。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://huggingface.co/collections/Qwen/qwen3-67dd247413f0e2e4f653967f" target="_blank" rel="noopener"
+>Qwen3 Collection&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>分布式训练：参数量与计算量分析</title><link>https://github.com/jiangyigithub/ai.github.io/p/%E5%88%86%E5%B8%83%E5%BC%8F%E8%AE%AD%E7%BB%83%E5%8F%82%E6%95%B0%E9%87%8F%E4%B8%8E%E8%AE%A1%E7%AE%97%E9%87%8F%E5%88%86%E6%9E%90/</link><pubDate>Tue, 13 May 2025 11:26:36 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/%E5%88%86%E5%B8%83%E5%BC%8F%E8%AE%AD%E7%BB%83%E5%8F%82%E6%95%B0%E9%87%8F%E4%B8%8E%E8%AE%A1%E7%AE%97%E9%87%8F%E5%88%86%E6%9E%90/</guid><description>&lt;p>在本文中，我们将要分析与大语言模型相关的参数量和计算量。在计算之前，我们会首先回顾一下大语言模型的架构&lt;/p>
+&lt;h1 id="大语言模型架构">&lt;a href="#%e5%a4%a7%e8%af%ad%e8%a8%80%e6%a8%a1%e5%9e%8b%e6%9e%b6%e6%9e%84" class="header-anchor">&lt;/a>大语言模型架构
+&lt;/h1>&lt;h1 id="大语言模型参数计算">&lt;a href="#%e5%a4%a7%e8%af%ad%e8%a8%80%e6%a8%a1%e5%9e%8b%e5%8f%82%e6%95%b0%e8%ae%a1%e7%ae%97" class="header-anchor">&lt;/a>大语言模型参数计算
+&lt;/h1>&lt;h1 id="计算量估计">&lt;a href="#%e8%ae%a1%e7%ae%97%e9%87%8f%e4%bc%b0%e8%ae%a1" class="header-anchor">&lt;/a>计算量估计
+&lt;/h1>&lt;h1 id="checkpointing">&lt;a href="#checkpointing" class="header-anchor">&lt;/a>checkpointing
+&lt;/h1>&lt;h1 id="kv-cache">&lt;a href="#kv-cache" class="header-anchor">&lt;/a>KV cache
+&lt;/h1>&lt;h1 id="参考文献">&lt;a href="#%e5%8f%82%e8%80%83%e6%96%87%e7%8c%ae" class="header-anchor">&lt;/a>参考文献
+&lt;/h1>&lt;ol>
+&lt;li>&lt;a class="link" href="https://zhuanlan.zhihu.com/p/624740065" target="_blank" rel="noopener"
+>回旋托马斯x 文章&lt;/a>&lt;/li>
+&lt;/ol></description></item><item><title>分布式训练：如何训练一个模型</title><link>https://github.com/jiangyigithub/ai.github.io/p/%E5%88%86%E5%B8%83%E5%BC%8F%E8%AE%AD%E7%BB%83%E5%A6%82%E4%BD%95%E8%AE%AD%E7%BB%83%E4%B8%80%E4%B8%AA%E6%A8%A1%E5%9E%8B/</link><pubDate>Tue, 13 May 2025 11:26:36 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/%E5%88%86%E5%B8%83%E5%BC%8F%E8%AE%AD%E7%BB%83%E5%A6%82%E4%BD%95%E8%AE%AD%E7%BB%83%E4%B8%80%E4%B8%AA%E6%A8%A1%E5%9E%8B/</guid><description>&lt;p>本节中，我们将介绍模型训练的基本数学原理，以及在分布式训练中我们需要考虑的精度，优化器等问题。&lt;/p>
+&lt;h1 id="训练的数学原理">&lt;a href="#%e8%ae%ad%e7%bb%83%e7%9a%84%e6%95%b0%e5%ad%a6%e5%8e%9f%e7%90%86" class="header-anchor">&lt;/a>训练的数学原理
+&lt;/h1>&lt;p>在最优化里面，我们需要解决的问题一般有如下形式：&lt;/p>
+$$
+\min_x\ f(x)
+$$&lt;p>
+这里 $f$是我们的目标函数, $x$是我们的变量。一个比较简单的例子就是求一个给定函数的最小值。&lt;/p>
+&lt;p>如果说，我们想要基于数据来训练一个模型，这个时候，我们目标函数的输入就包括两部分，一部分是模型参数，另一部分是数据，为了方便起见，我们使用$\theta$来代表模型的参数，用 $\{x_i,y_i\}_{i=1}^N$ 来表示模型的训练集。上述的优化问题改写如下：&lt;/p>
+$$
+\min_{\theta}\ \frac{1}{N}\sum_{i=1}^Nf(x_i,y_i\;\theta)
+$$&lt;p>比如我们训练 resnet 作为分类器，那么 resnet 的模型参数就是这里的 $\theta$, 训练集就是我们的图片和对应的标签，比如ImageNet等，对应的$f$可以设定为 cross entropy loss.&lt;/p>
+&lt;p>现在有了优化问题之后，我们就需要设计算法求解这个优化问题。一个最简单的优化算法就是梯度下降算法：&lt;/p>
+$$
+\theta^{k+1} = \theta^k - \alpha_k\frac{1}{N}\sum_{i=1}^N\nabla_{\theta}f(x_i,y_i;\theta^k)
+$$&lt;p>
+这里 $\nabla_{\theta}f(x;\theta^k)$ 是 $f$ 相对于 $\theta$ 在 $\theta^k$ 处的梯度。&lt;/p>
+&lt;p>但是，当我们模型过于复杂的时候，梯度往往计算起来非常复杂。为了简化模型的训练，现在的框架如tensorflow和pytorch都支持自动微分。因此，我们只需要定义如何从输入 $(x_i,y_i)$计算得到 $f(x_i,y_i;\theta)$ 就可以了，框架会帮我们计算参数的梯度。&lt;/p>
+&lt;h1 id="自动微分">&lt;a href="#%e8%87%aa%e5%8a%a8%e5%be%ae%e5%88%86" class="header-anchor">&lt;/a>自动微分
+&lt;/h1>&lt;p>自动微分的目的是将求导的过程交给框架，从而让用户专注于模型的开发（也就是设计&lt;code>forward&lt;/code>函数）。&lt;/p>
+&lt;p>自动微分的核心思想就是链式法则.&lt;/p>
+$$
+\frac{dy}{dx} = \frac{dy}{df}\frac{df}{dg}\frac{dg}{dh}\frac{dh}{dx}
+$$&lt;p>
+如果我们的中间函数 $g$, $h$非常复杂的话，那么整个求导过程就会非常复杂。而链式法则则是将这样一个全局过程给分解成了若干个局部过程。我们将 $y$ 表示为：&lt;/p>
+$$
+\begin{aligned}
+y &amp;= f(y_1)\\
+y_1&amp;=g(y_2)\\
+y_2&amp;=h(y_3)\\
+y_3&amp;=x
+\end{aligned}
+$$&lt;p>接下来，&lt;/p>
+&lt;h1 id="总结">&lt;a href="#%e6%80%bb%e7%bb%93" class="header-anchor">&lt;/a>总结
+&lt;/h1>&lt;p>在本文中，我们简单介绍了一下如何训练一个模型，我们使用pytorch作为例子展示了现在训练框架的工作方式。在下一篇博客中，我们将会探究训练精度和优化器。训练精度和优化器是模型在训练过程中需要考虑的重点之一。&lt;/p>
+&lt;h1 id="训练">&lt;a href="#%e8%ae%ad%e7%bb%83" class="header-anchor">&lt;/a>训练
+&lt;/h1>&lt;h1 id="优化器">&lt;a href="#%e4%bc%98%e5%8c%96%e5%99%a8" class="header-anchor">&lt;/a>优化器
+&lt;/h1>&lt;h2 id="sgd">&lt;a href="#sgd" class="header-anchor">&lt;/a>SGD
+&lt;/h2>&lt;h2 id="adam">&lt;a href="#adam" class="header-anchor">&lt;/a>Adam
+&lt;/h2>&lt;h2 id="adamw">&lt;a href="#adamw" class="header-anchor">&lt;/a>AdamW
+&lt;/h2>&lt;h1 id="精度">&lt;a href="#%e7%b2%be%e5%ba%a6" class="header-anchor">&lt;/a>精度
+&lt;/h1></description></item><item><title>Distributed training--Basic</title><link>https://github.com/jiangyigithub/ai.github.io/p/distributed-training--basic/</link><pubDate>Mon, 12 May 2025 10:15:17 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/distributed-training--basic/</guid><description>&lt;blockquote>
+&lt;p>说明：本文参考了 &lt;a class="link" href="https://huggingface.co/spaces/nanotron/ultrascale-playbook" target="_blank" rel="noopener"
+>nanotron/ultrascale-playbook&lt;/a> 和 &lt;a class="link" href="https://colossalai.org/docs/concepts/distributed_training" target="_blank" rel="noopener"
+>Colossal-AI Concepts&lt;/a>&lt;/p>
+&lt;/blockquote>
+&lt;h1 id="什么是分布式系统">&lt;a href="#%e4%bb%80%e4%b9%88%e6%98%af%e5%88%86%e5%b8%83%e5%bc%8f%e7%b3%bb%e7%bb%9f" class="header-anchor">&lt;/a>什么是分布式系统
+&lt;/h1>&lt;p>分布式系统允许一个软件的多个组件运行在不同的机器上。与传统集中式系统不一样，分布式系统可以有效提高系统的稳健性。
+一个比较比较经典的分布式就是Git，Git允许我们把代码保存在多个remote上。这样当一个remote宕机时，其他remote也能提供服务。&lt;/p>
+&lt;p>评估一个分布式系统的重要标准就是规模效益(scalablity)，也就是说，我们希望使用8台设备应该要比4台设备快2倍。但是，由于通信带宽等原因，实际上加速比并不是和设备数量成线性关系。因此，我们需要设计分布式算法，来有效提高分布式系统的效率。&lt;/p>
+&lt;h1 id="为什么需要分布式训练">&lt;a href="#%e4%b8%ba%e4%bb%80%e4%b9%88%e9%9c%80%e8%a6%81%e5%88%86%e5%b8%83%e5%bc%8f%e8%ae%ad%e7%bb%83" class="header-anchor">&lt;/a>为什么需要分布式训练
+&lt;/h1>&lt;p>我们需要分布式训练的原因主要是以下几点：&lt;/p>
+&lt;ol>
+&lt;li>模型越来越大。当下（2025）领先模型如Qwen，LLaMA系列的最大模型都超过了100B [2][3]。LLaMA系列最大的模型甚至超过了1000B。Scaling law告诉我们模型表现与参数量，算力，数据量成正相关关系。&lt;/li>
+&lt;li>数据集越来越大。现在领先的模型需要的数据量基本都需要100M以上，而大语言模型训练需要的token数量也都超过了10T的量级 [2][3].&lt;/li>
+&lt;li>算力越来越强。现有最强的GPU H100其显存为80GB，拥有3.35TB/s 的带宽 (PcIe)，这让训练大规模模型成为可能。&lt;/li>
+&lt;/ol>
+&lt;p>超大的模型使得我们很难在一张GPU上进行训练，甚至我们都很难使用单张GPU进行部署。而10T级的数据也也需要几个月的时间才能训练完毕。因此，如何高效利用多张GPU在大规模数据上训练超大模型就是我们需要解决的问题。&lt;/p>
+&lt;h1 id="基本概念">&lt;a href="#%e5%9f%ba%e6%9c%ac%e6%a6%82%e5%bf%b5" class="header-anchor">&lt;/a>基本概念
+&lt;/h1>&lt;p>我们先来熟悉一下分布式训练中的一些基本概念：&lt;/p>
+&lt;ul>
+&lt;li>Host: host (master address)是分布式训练中通信网络的主设备(main device). 一般我们需要对其进行初始化&lt;/li>
+&lt;li>Node: 一个物理或虚拟的计算单元，可以是一台机器，一个容器或者一个虚拟机&lt;/li>
+&lt;li>Port: port (master port)主要是用于通信的master port&lt;/li>
+&lt;li>Rank: rank是通信网络中每个设备唯一的ID&lt;/li>
+&lt;li>world size: world size是通信网络中设备的数量&lt;/li>
+&lt;li>process group: 一个process group是通信网络中所有设备集合的一个子集。通过process group, 我们可以限制device只在group内部进行通信&lt;/li>
+&lt;/ul>
+&lt;p>我们以下图为例：
+&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/distributed-training--basic/basic_concepts.png"
+width="1893"
+height="1098"
+loading="lazy"
+alt="basic concepts"
+class="gallery-image"
+data-flex-grow="172"
+data-flex-basis="413px"
+>
+上图中一共包含2个node (2台机器)，每台机器包含4个GPU (device)，当我们初始化分布式环境时，我们一共启动了8个进程（每台机器4个进程），每个进程绑定一个GPU。&lt;/p>
+&lt;p>在初始化分布式环境之间，我们需要指定host和port。假设我们指定host为&lt;code>node 0&lt;/code>和port为 &lt;code>29500&lt;/code>，接下来，所有的进程都会基于这个host和port来与其他进程连接。默认的process group（包含所有device）的world size 为8. 其细节展示如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>process ID&lt;/th>
+&lt;th>rank&lt;/th>
+&lt;th>Node index&lt;/th>
+&lt;th>GPU index&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>0&lt;/td>
+&lt;td>0&lt;/td>
+&lt;td>0&lt;/td>
+&lt;td>0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>1&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>0&lt;/td>
+&lt;td>1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>2&lt;/td>
+&lt;td>2&lt;/td>
+&lt;td>0&lt;/td>
+&lt;td>2&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>3&lt;/td>
+&lt;td>3&lt;/td>
+&lt;td>0&lt;/td>
+&lt;td>3&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>4&lt;/td>
+&lt;td>4&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>5&lt;/td>
+&lt;td>5&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>6&lt;/td>
+&lt;td>6&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>2&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>7&lt;/td>
+&lt;td>7&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>3&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>我们可以创建一个新的process group，使其仅包含ID为偶数的process：&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>process ID&lt;/th>
+&lt;th>rank&lt;/th>
+&lt;th>Node index&lt;/th>
+&lt;th>GPU index&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>0&lt;/td>
+&lt;td>0&lt;/td>
+&lt;td>0&lt;/td>
+&lt;td>0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>2&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>0&lt;/td>
+&lt;td>2&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>4&lt;/td>
+&lt;td>2&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>6&lt;/td>
+&lt;td>3&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>2&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>&lt;strong>Remark&lt;/strong>: 注意，rank与process group相关，一个process在不同的process group里可能会有不同的rank.&lt;/p>
+&lt;h1 id="通信方式">&lt;a href="#%e9%80%9a%e4%bf%a1%e6%96%b9%e5%bc%8f" class="header-anchor">&lt;/a>通信方式
+&lt;/h1>&lt;p>接下来，我们需要介绍一下设备间的通信方式，这是我们后面分布式训练算法的基础。根据设备数量的不同，我们可以将设备间通信分为：&lt;/p>
+&lt;ol>
+&lt;li>one-to-one: 两个device之间互相进行通信&lt;/li>
+&lt;li>one-to-many: 一个device与多个device进行通信&lt;/li>
+&lt;li>many-to-one: 多个device与一个device之间进行通信&lt;/li>
+&lt;li>many-to-many: 多个device之间互相进行通信&lt;/li>
+&lt;/ol>
+&lt;h2 id="one-to-one">&lt;a href="#one-to-one" class="header-anchor">&lt;/a>One-to-one
+&lt;/h2>&lt;p>One-to-one的情况很简单，一个process与另一个process进行通信，通信通过 &lt;code>send&lt;/code> 和 &lt;code>recv&lt;/code> 完成。还有对应的 immediate版本，即 &lt;code>isend&lt;/code> 和 &lt;code>irecv&lt;/code>，示意图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/distributed-training--basic/send_recv.png"
+width="364"
+height="411"
+loading="lazy"
+alt="point to point communication"
+class="gallery-image"
+data-flex-grow="88"
+data-flex-basis="212px"
+>&lt;/p>
+&lt;p>测试代码如下：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># send_recv.py&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="kn">import&lt;/span> &lt;span class="nn">os&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="kn">import&lt;/span> &lt;span class="nn">torch&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="kn">import&lt;/span> &lt;span class="nn">torch.distributed&lt;/span> &lt;span class="k">as&lt;/span> &lt;span class="nn">dist&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">init_process&lt;/span>&lt;span class="p">():&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">init_process_group&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">backend&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="s1">&amp;#39;nccl&amp;#39;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cuda&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">set_device&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">example_send&lt;/span>&lt;span class="p">():&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">tensor&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="p">([&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">3&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">4&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">5&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">float32&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cuda&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">send&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dst&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">elif&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">tensor&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">zeros&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">5&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">float32&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cuda&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;Before send on rank &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">: &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">recv&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">src&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;After send on rank &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">: &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">init_process&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">example_send&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># run with&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># torchrun --nproc_per_node=2 send_recv.py&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>结果输出&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&lt;span class="line">&lt;span class="cl">Before send on rank 1: tensor([0., 0., 0., 0., 0.], device=&amp;#39;cuda:1&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After send on rank 1: tensor([1., 2., 3., 4., 5.], device=&amp;#39;cuda:1&amp;#39;)
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;blockquote>
+&lt;p>注：为了方便，后续代码仅定义函数和运行方式，&lt;code>init_process()&lt;/code>和import部分省略&lt;/p>
+&lt;/blockquote>
+&lt;p>&lt;code>send/recv&lt;/code>的特点是在完成通信之前，两个process是锁住的。与之相反，&lt;code>isend/irecv&lt;/code> 则不会加锁，代码会继续执行然后返回&lt;code>Work&lt;/code>对象，为了让通信顺利进行，我们可以在返回之前加入&lt;code>wait()&lt;/code>&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># isend_irecv.py&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">example_isend&lt;/span>&lt;span class="p">():&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">req&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="kc">None&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">tensor&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="p">([&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">3&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">4&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">5&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">float32&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cuda&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">req&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">isend&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dst&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;Rank 0 is sending&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">elif&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">tensor&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">zeros&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">5&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">float32&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cuda&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;Before irecv on rank &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">: &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">req&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">irecv&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">src&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;Rank 1 is receiving&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">req&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">wait&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;After isend on rank &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">: &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">init_process&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">example_isend&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># run with&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># torchrun --nproc_per_node=2 isend_irecv.py&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>结果输出&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&lt;span class="line">&lt;span class="cl">Before irecv on rank 1: tensor([0., 0., 0., 0., 0.], device=&amp;#39;cuda:1&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Rank 0 is sending
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Rank 1 is receiving
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After isend on rank 1: tensor([1., 2., 3., 4., 5.], device=&amp;#39;cuda:1&amp;#39;)
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>由于&lt;code>isend/irecv&lt;/code>这种不锁的特性，我们不应该&lt;/p>
+&lt;ol>
+&lt;li>在&lt;code>dist.isend()&lt;/code>之前修改发送的内容&lt;code>tensor&lt;/code>&lt;/li>
+&lt;li>在&lt;code>dist.irecv()&lt;/code>之后读取接受的内容&lt;code>tensor&lt;/code>&lt;/li>
+&lt;/ol>
+&lt;p>&lt;code>req.wait()&lt;/code> 可以保证这次通信顺利完成，因此我们可以在&lt;code>req.wait()&lt;/code>之后再进行修改和读取。&lt;/p>
+&lt;h2 id="one-to-many">&lt;a href="#one-to-many" class="header-anchor">&lt;/a>One-to-many
+&lt;/h2>&lt;p>One-to-many 情形下，可以分为两种：scatter 和 broadcast&lt;/p>
+&lt;p>scatter的作用是将一个process的数据均分并散布到其他process。broadcast的作用是将一个process的数据广播到其他process。两者不同的地方在于其他process获取到的是全量数据(copy)还是部分数据(slice)，其示意图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/distributed-training--basic/scatter_broadcast.png"
+width="1641"
+height="413"
+loading="lazy"
+alt="scatter and broadcast"
+class="gallery-image"
+data-flex-grow="397"
+data-flex-basis="953px"
+>&lt;/p>
+&lt;p>scatter 测试代码：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># scatter.py&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">example_scatter&lt;/span>&lt;span class="p">():&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">scatter_list&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="p">([&lt;/span>&lt;span class="n">i&lt;/span>&lt;span class="o">+&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">5&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">float32&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cuda&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">for&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_world_size&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;Rank 0 scatter list: &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">scatter_list&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">else&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">scatter_list&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="kc">None&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">tensor&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">zeros&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">5&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">float32&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cuda&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;Before scatter on rank &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">: &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">scatter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">scatter_list&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">src&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;After scatter on rank &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">: &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">init_process&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">example_broadcast&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># run with&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># torchrun --nproc_per_node=4 broadcast.py&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>结果输出以下内容（输出内容有优化，后续不再说明）：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&lt;span class="line">&lt;span class="cl">Rank 0 scatter list: [
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([1., 1., 1., 1., 1.], device=&amp;#39;cuda:0&amp;#39;),
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([2., 2., 2., 2., 2.], device=&amp;#39;cuda:0&amp;#39;),
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([3., 3., 3., 3., 3.], device=&amp;#39;cuda:0&amp;#39;),
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([4., 4., 4., 4., 4.], device=&amp;#39;cuda:0&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">]
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Before scatter on rank 2: tensor([0., 0., 0., 0., 0.], device=&amp;#39;cuda:2&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Before scatter on rank 1: tensor([0., 0., 0., 0., 0.], device=&amp;#39;cuda:1&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Before scatter on rank 3: tensor([0., 0., 0., 0., 0.], device=&amp;#39;cuda:3&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Before scatter on rank 0: tensor([0., 0., 0., 0., 0.], device=&amp;#39;cuda:0&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After scatter on rank 0: tensor([1., 1., 1., 1., 1.], device=&amp;#39;cuda:0&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After scatter on rank 2: tensor([3., 3., 3., 3., 3.], device=&amp;#39;cuda:2&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After scatter on rank 3: tensor([4., 4., 4., 4., 4.], device=&amp;#39;cuda:3&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After scatter on rank 1: tensor([2., 2., 2., 2., 2.], device=&amp;#39;cuda:1&amp;#39;)
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>broadcast 测试代码:&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># broadcast.py&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">example_broadcast&lt;/span>&lt;span class="p">():&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">tensor&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="p">([&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">3&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">4&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">5&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">float32&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cuda&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">else&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">tensor&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">zeros&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">5&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">float32&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cuda&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;Before broadcast on rank &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">: &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">broadcast&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">src&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;After broadcast on rank &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">: &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">init_process&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">example_broadcast&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># run with&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># torchrun --nproc_per_node=3 broadcast.py&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>结果输出：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&lt;span class="line">&lt;span class="cl">Before broadcast on rank 1: tensor([0., 0., 0., 0., 0.], device=&amp;#39;cuda:1&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Before broadcast on rank 2: tensor([0., 0., 0., 0., 0.], device=&amp;#39;cuda:2&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Before broadcast on rank 0: tensor([1., 2., 3., 4., 5.], device=&amp;#39;cuda:0&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After broadcast on rank 0: tensor([1., 2., 3., 4., 5.], device=&amp;#39;cuda:0&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After broadcast on rank 1: tensor([1., 2., 3., 4., 5.], device=&amp;#39;cuda:1&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After broadcast on rank 2: tensor([1., 2., 3., 4., 5.], device=&amp;#39;cuda:2&amp;#39;)
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h2 id="many-to-one">&lt;a href="#many-to-one" class="header-anchor">&lt;/a>Many-to-one
+&lt;/h2>&lt;p>Many-to-one 情形下，也可以分为两种：gather 和 reduce, Gather对应one-to-many的scatter操作，负责将多个process的内容汇聚到一起，形成一个完整的向量。而reduce的操作则是通过一个函数 $f(\cdot)$ 来把数据进行汇总，常见的函数有求和以及求平均，示意图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/distributed-training--basic/gather_reduce.png"
+width="1672"
+height="413"
+loading="lazy"
+alt="gather and reduce"
+class="gallery-image"
+data-flex-grow="404"
+data-flex-basis="971px"
+>&lt;/p>
+&lt;p>gather 测试代码：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># gather.py&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">example_gather&lt;/span>&lt;span class="p">():&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">tensor&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="p">([&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">5&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">float32&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cuda&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">gather_list&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">zeros&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">5&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">float32&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cuda&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">for&lt;/span> &lt;span class="n">_&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_world_size&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;Rank 0 gather list: &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">gather_list&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">else&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">gather_list&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="kc">None&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;Before gather on rank &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">: &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">gather&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">gather_list&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dst&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;After gather on rank &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">: &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">gather_list&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">init_process&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">example_gather&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># run with&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># torchrun --nproc_per_node=4 gather.py&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>结果输出：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&lt;span class="line">&lt;span class="cl">Before gather on rank 3: tensor([4., 4., 4., 4., 4.], device=&amp;#39;cuda:3&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Before gather on rank 2: tensor([3., 3., 3., 3., 3.], device=&amp;#39;cuda:2&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Before gather on rank 0: tensor([1., 1., 1., 1., 1.], device=&amp;#39;cuda:0&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Before gather on rank 1: tensor([2., 2., 2., 2., 2.], device=&amp;#39;cuda:1&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After gather on rank 0: [
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([1., 1., 1., 1., 1.], device=&amp;#39;cuda:0&amp;#39;),
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([2., 2., 2., 2., 2.], device=&amp;#39;cuda:0&amp;#39;),
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([3., 3., 3., 3., 3.], device=&amp;#39;cuda:0&amp;#39;),
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([4., 4., 4., 4., 4.], device=&amp;#39;cuda:0&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">]
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>reduce 测试代码:&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># example_reduce.py&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">example_reduce&lt;/span>&lt;span class="p">():&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">tensor&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="p">([&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">5&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">float32&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cuda&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;Before reduce on rank &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">: &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">reduce&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dst&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">op&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">ReduceOp&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">SUM&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;After reduce on rank &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">: &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">init_process&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">example_reduce&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># run with&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># torchrun --nproc_per_node=3 example_reduce.py&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>这里我们使用求和&lt;code>dist.ReduceOp.SUM&lt;/code>作为我们的汇总操作，Pytorch还支持其他的&lt;a class="link" href="https://docs.pytorch.org/docs/stable/distributed.html#torch.distributed.ReduceOp" target="_blank" rel="noopener"
+>reduce operations&lt;/a>. 结果输出以下内容：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&lt;span class="line">&lt;span class="cl">Before reduce on rank 2: tensor([3., 3., 3., 3., 3.], device=&amp;#39;cuda:2&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Before reduce on rank 3: tensor([4., 4., 4., 4., 4.], device=&amp;#39;cuda:3&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Before reduce on rank 0: tensor([1., 1., 1., 1., 1.], device=&amp;#39;cuda:0&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Before reduce on rank 1: tensor([2., 2., 2., 2., 2.], device=&amp;#39;cuda:1&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After reduce on rank 0: tensor([10., 10., 10., 10., 10.], device=&amp;#39;cuda:0&amp;#39;)
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h2 id="many-to-many">&lt;a href="#many-to-many" class="header-anchor">&lt;/a>Many-to-many
+&lt;/h2>&lt;p>Many-to-many 情形下的两种通信方式为：All-Reduce 和 All-Gather，分别是reduce和gather的升级版，all-reduce对所有process都执行一次reduce操作，而all-gather则对所有process执行一次gather操作，其示意图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/distributed-training--basic/all_gather_reduce.png"
+width="1713"
+height="411"
+loading="lazy"
+alt="all-gather and all-reduce"
+class="gallery-image"
+data-flex-grow="416"
+data-flex-basis="1000px"
+>&lt;/p>
+&lt;p>all-gather 测试代码：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># example_all_gather.py&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">example_all_gather&lt;/span>&lt;span class="p">():&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">tensor&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="p">([&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">5&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">float32&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cuda&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">gather_list&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">zeros&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">5&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">float32&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cuda&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">for&lt;/span> &lt;span class="n">_&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_world_size&lt;/span>&lt;span class="p">())&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;Before all gather on rank &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">: &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">all_gather&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">gather_list&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">tensor&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;After all gather on rank &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">: &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">gather_list&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">init_process&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">example_all_gather&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># run with&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># torchrun --nproc_per_node=3 example_all_gather.py&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>测试输出结果：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&lt;span class="line">&lt;span class="cl">Before all gather on rank 2: tensor([3., 3., 3., 3., 3.], device=&amp;#39;cuda:2&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Before all gather on rank 3: tensor([4., 4., 4., 4., 4.], device=&amp;#39;cuda:3&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Before all gather on rank 0: tensor([1., 1., 1., 1., 1.], device=&amp;#39;cuda:0&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Before all gather on rank 1: tensor([2., 2., 2., 2., 2.], device=&amp;#39;cuda:1&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After all gather on rank 0: [
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([1., 1., 1., 1., 1.], device=&amp;#39;cuda:0&amp;#39;),
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([2., 2., 2., 2., 2.], device=&amp;#39;cuda:0&amp;#39;),
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([3., 3., 3., 3., 3.], device=&amp;#39;cuda:0&amp;#39;),
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([4., 4., 4., 4., 4.], device=&amp;#39;cuda:0&amp;#39;)]
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After all gather on rank 2: [
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([1., 1., 1., 1., 1.], device=&amp;#39;cuda:2&amp;#39;),
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([2., 2., 2., 2., 2.], device=&amp;#39;cuda:2&amp;#39;),
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([3., 3., 3., 3., 3.], device=&amp;#39;cuda:2&amp;#39;),
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([4., 4., 4., 4., 4.], device=&amp;#39;cuda:2&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">]
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After all gather on rank 3: [
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([1., 1., 1., 1., 1.], device=&amp;#39;cuda:3&amp;#39;),
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([2., 2., 2., 2., 2.], device=&amp;#39;cuda:3&amp;#39;),
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([3., 3., 3., 3., 3.], device=&amp;#39;cuda:3&amp;#39;),
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([4., 4., 4., 4., 4.], device=&amp;#39;cuda:3&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">]
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After all gather on rank 1: [
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([1., 1., 1., 1., 1.], device=&amp;#39;cuda:1&amp;#39;),
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([2., 2., 2., 2., 2.], device=&amp;#39;cuda:1&amp;#39;),
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([3., 3., 3., 3., 3.], device=&amp;#39;cuda:1&amp;#39;),
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> tensor([4., 4., 4., 4., 4.], device=&amp;#39;cuda:1&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">]
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>all-reduce 测试代码：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># example_all_reduce.py&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">example_all_reduce&lt;/span>&lt;span class="p">():&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">tensor&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="p">([&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">5&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">float32&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cuda&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;Before all reduce on rank &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">: &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">all_reduce&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">op&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">ReduceOp&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">SUM&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;After all reduce on rank &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">: &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">init_process&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">example_all_reduce&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># run with&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># torchrun --nproc_per_node=3 example_all_reduce.py&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>测试输出结果&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;span class="lnt">8
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&lt;span class="line">&lt;span class="cl">Before all reduce on rank 1: tensor([2., 2., 2., 2., 2.], device=&amp;#39;cuda:1&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Before all reduce on rank 0: tensor([1., 1., 1., 1., 1.], device=&amp;#39;cuda:0&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Before all reduce on rank 2: tensor([3., 3., 3., 3., 3.], device=&amp;#39;cuda:2&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Before all reduce on rank 3: tensor([4., 4., 4., 4., 4.], device=&amp;#39;cuda:3&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After all reduce on rank 0: tensor([10., 10., 10., 10., 10.], device=&amp;#39;cuda:0&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After all reduce on rank 2: tensor([10., 10., 10., 10., 10.], device=&amp;#39;cuda:2&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After all reduce on rank 3: tensor([10., 10., 10., 10., 10.], device=&amp;#39;cuda:3&amp;#39;)
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">After all reduce on rank 1: tensor([10., 10., 10., 10., 10.], device=&amp;#39;cuda:1&amp;#39;)
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h2 id="barrier">&lt;a href="#barrier" class="header-anchor">&lt;/a>Barrier
+&lt;/h2>&lt;p>除了之前这些传输数据的方式之外，我们还有Barrier，用于在所有process之间进行同步。Barrier会确保所有的process在同一时间点完成某些操作。其流程为，先让每个process完成各自的任务，然后当process到达barrier时，process会通知系统自己已到达。最后当所有process都到达barrier之后，阻塞会解除，所有process继续执行下一步操作。&lt;/p>
+&lt;p>barrier 测试代码&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># example_barrier.py&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">example_barrier&lt;/span>&lt;span class="p">():&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="kn">import&lt;/span> &lt;span class="nn">time&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">rank&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">t_start&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">time&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">time&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;Rank &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">rank&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2"> sleeps &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">rank&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2"> seconds&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">time&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">sleep&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">rank&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">barrier&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">print&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;Rank &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">rank&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2"> is done at &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">time&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">time&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">t_start&lt;/span>&lt;span class="si">:&lt;/span>&lt;span class="s2">.4f&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2"> seconds&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">init_process&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">example_barrier&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># run with&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># torchrun --nproc_per_node=3 example_barrier.py&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>结果输出&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;span class="lnt">8
+&lt;/span>&lt;span class="lnt">9
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&lt;span class="line">&lt;span class="cl">Rank 2 sleeps 2 seconds
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Rank 0 sleeps 0 seconds
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Rank 1 sleeps 1 seconds
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Rank 3 sleeps 3 seconds
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Rank 3 is done at 3.3046 seconds
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Rank 1 is done at 3.3229 seconds
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Rank 2 is done at 3.8437 seconds
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Rank 0 is done at 3.6613 seconds
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>可以看到，四个process的到达时间都在3s左右，这是因为rank 3需要3s才能完成当前任务&lt;/p>
+&lt;h2 id="advanced">&lt;a href="#advanced" class="header-anchor">&lt;/a>Advanced
+&lt;/h2>&lt;p>除了前面的通信方式之外，还有 Reduce-Scatter和Ring All-Reduce，这两个通信方式等我们学习ZeRO的时候再一并讲解。&lt;/p>
+&lt;h1 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h1>&lt;ol>
+&lt;li>&lt;a class="link" href="https://colossalai.org/docs/concepts/distributed_training" target="_blank" rel="noopener"
+>Colossal-AI&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://ai.meta.com/blog/llama-4-multimodal-intelligence/" target="_blank" rel="noopener"
+>LLaMA 4 blog&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://qwenlm.github.io/blog/qwen3/" target="_blank" rel="noopener"
+>Qwen3 blog&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://docs.pytorch.org/tutorials/intermediate/dist_tuto.html" target="_blank" rel="noopener"
+>Pytorch tutorial&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://huggingface.co/spaces/nanotron/ultrascale-playbook" target="_blank" rel="noopener"
+>nanotron/ultrascale-playbook&lt;/a>&lt;/li>
+&lt;/ol></description></item></channel></rss>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Multilingual on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/multilingual/</link><description>Recent content in Multilingual on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/multilingual/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on Aya Vision</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-aya-vision/</link><pubDate>Mon, 17 Mar 2025 17:58:24 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-aya-vision/</guid><description>&lt;p>Aya Vision是一个多模态大语言模型，包含8B, 32B两个size，支持23种语言。Aya Vision基于 Aya Expanse大语言模型。&lt;/p>
+&lt;h2 id="模型架构">&lt;a href="#%e6%a8%a1%e5%9e%8b%e6%9e%b6%e6%9e%84" class="header-anchor">&lt;/a>模型架构
+&lt;/h2>&lt;p>Aya Vision的模型架构如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-aya-vision/architecture.png"
+width="3624"
+height="1316"
+loading="lazy"
+alt="Aya Vision模型架构"
+class="gallery-image"
+data-flex-grow="275"
+data-flex-basis="660px"
+>&lt;/p>
+&lt;ul>
+&lt;li>Vision Encoder: SigLip2-patch14-384&lt;/li>
+&lt;li>Vision-text connector: 2 layer MLP&lt;/li>
+&lt;li>LLM: Aya Expanse 8B/ 32B&lt;/li>
+&lt;/ul>
+&lt;h2 id="训练">&lt;a href="#%e8%ae%ad%e7%bb%83" class="header-anchor">&lt;/a>训练
+&lt;/h2>&lt;p>训练包含两个stage：&lt;/p>
+&lt;ol>
+&lt;li>Vision-language alignment: 仅训练vision-text connector，基于image-text pairs进行训练&lt;/li>
+&lt;li>SFT：训练connector和LLM，基于合成的多语种数据进行训练&lt;/li>
+&lt;/ol>
+&lt;h2 id="多语种数据">&lt;a href="#%e5%a4%9a%e8%af%ad%e7%a7%8d%e6%95%b0%e6%8d%ae" class="header-anchor">&lt;/a>多语种数据
+&lt;/h2>&lt;p>为了提高模型的多语种能力，作者先基于English的高质量数据集合成了annotation，然后作者讲这些数据转化为22中语言对应的文本&lt;/p>
+&lt;h2 id="model-merging">&lt;a href="#model-merging" class="header-anchor">&lt;/a>Model merging
+&lt;/h2>&lt;p>最后为了提高模型在纯文本任务上的表现，作者还使用了model merging的技巧。具体做法就是merge使用的base language model和SFT之后的vision-language model&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ol>
+&lt;li>&lt;a class="link" href="https://huggingface.co/blog/aya-vision" target="_blank" rel="noopener"
+>Aya Vision Blog&lt;/a>&lt;/li>
+&lt;/ol></description></item></channel></rss>

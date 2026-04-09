@@ -1,0 +1,539 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>LLaMA on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/llama/</link><description>Recent content in LLaMA on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/llama/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on LLaMA4 blog</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-llama4-blog/</link><pubDate>Wed, 30 Apr 2025 10:44:19 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-llama4-blog/</guid><description>&lt;h1 id="介绍">&lt;a href="#%e4%bb%8b%e7%bb%8d" class="header-anchor">&lt;/a>介绍
+&lt;/h1>&lt;p>Meta在2025年4月10号发布了LLaMA4系列，包含三个模型：Llama 4 Scout, Llama 4 Maverick 以及Llama 4 Behemoth, 三个模型都基于MoE架构，且支持多模态&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Layers&lt;/th>
+&lt;th>Heads (Q / KV)&lt;/th>
+&lt;th>Context Length&lt;/th>
+&lt;th>#Parameters (activated/total)&lt;/th>
+&lt;th>#Experts (activated/total)&lt;/th>
+&lt;th>#Tokens&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>LLaMA 4 Behemoth&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>288B / 2T&lt;/td>
+&lt;td>(1 shared + 1 routed) / 16&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LLaMA 4 Maverick&lt;/td>
+&lt;td>48&lt;/td>
+&lt;td>40/8&lt;/td>
+&lt;td>1M&lt;/td>
+&lt;td>17B / 109B&lt;/td>
+&lt;td>(1 shared + 1 routed) / 128&lt;/td>
+&lt;td>~22T&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LLaMA 4 Scout&lt;/td>
+&lt;td>48&lt;/td>
+&lt;td>40/8&lt;/td>
+&lt;td>10M&lt;/td>
+&lt;td>17B / 400B&lt;/td>
+&lt;td>(1 shared + 1 routed) / 16&lt;/td>
+&lt;td>~40T&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>训练数据截止到2024年8月。LLaMa4支持200多种语言，其中100多种语言的训练token数超过了1B&lt;/p>
+&lt;h1 id="亮点">&lt;a href="#%e4%ba%ae%e7%82%b9" class="header-anchor">&lt;/a>亮点
+&lt;/h1>&lt;ol>
+&lt;li>原生多模态
+LLaMA 4是一个原生多模态架构&lt;/li>
+&lt;li>超长上下文
+LLaMA 4的上下文超过了1M&lt;/li>
+&lt;li>iRoPE
+通过交替dense和MoE MLP来提高整体推理效率&lt;/li>
+&lt;li>基于MetaCLIP的vision encoder&lt;/li>
+&lt;li>MetaP
+使用MetaP来调整超参数&lt;/li>
+&lt;li>FP8精度训练&lt;/li>
+&lt;/ol>
+&lt;h1 id="pre-training">&lt;a href="#pre-training" class="header-anchor">&lt;/a>Pre-training
+&lt;/h1>&lt;p>LLaMA 4 仍然是一个基于transformer的架构，但是引入了MoE，其示意图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-llama4-blog/architecture.png"
+width="1920"
+height="1308"
+loading="lazy"
+alt="architecture of LLaMA 4"
+class="gallery-image"
+data-flex-grow="146"
+data-flex-basis="352px"
+>&lt;/p>
+&lt;p>MoE架构中包含1个shared expert以及1个routed expert. 并且，与其他LLM不同，LLaMA 4使用了一个交替MLP个MoE的架构，即iRoPE，即特定的transformer layer是MoE架构，其余的是MLP架构，其&lt;a class="link" href="https://github.com/huggingface/transformers/blob/5f8d17268ced2ca5f51b0216782356b16be0d6f4/src/transformers/models/llama4/modeling_llama4.py#L380" target="_blank" rel="noopener"
+>核心代码&lt;/a>如下：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">is_moe_layer&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">layer_idx&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">moe_layers&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">if&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">is_moe_layer&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="c1"># the 128E model interleaves dense / sparse&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">feed_forward&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">Llama4TextMoe&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">else&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">feed_forward&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">Llama4TextMLP&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">intermediate_size&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">intermediate_size_mlp&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>early fusion. LLaMA 4称其一个原生多模态大模型，但是其架构仍然是 Vision Encoder-MLP-LLM 的形式，其不同点在于patch embedding没有使用convolution, 而是使用 &lt;code>nn.Unfold&lt;/code>直接进行展平，然后使用一个线性层与vision encoder进行对齐。&lt;a class="link" href="https://github.com/huggingface/transformers/blob/5f8d17268ced2ca5f51b0216782356b16be0d6f4/src/transformers/models/llama4/modeling_llama4.py#L1409" target="_blank" rel="noopener"
+>代码&lt;/a>如下&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">class&lt;/span> &lt;span class="nc">Llama4UnfoldConvolution&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Module&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">super&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="fm">__init__&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">kernel_size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">patch_size&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="nb">isinstance&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">kernel_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">kernel_size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">kernel_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">kernel_size&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">unfold&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Unfold&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">kernel_size&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">kernel_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">stride&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">patch_size&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">linear&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Linear&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_channels&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">kernel_size&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">kernel_size&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">],&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hidden_size&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">bias&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="kc">False&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="nf">forward&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">hidden_states&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">hidden_states&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">unfold&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">hidden_states&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">hidden_states&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">hidden_states&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">permute&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">hidden_states&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">linear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">hidden_states&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">hidden_states&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>其他训练优化技巧如下：&lt;/p>
+&lt;ol>
+&lt;li>MetaP：用于选择超参数&lt;/li>
+&lt;li>FP8 precision：与 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v3/" target="_blank" rel="noopener"
+>DeepSeek-V3&lt;/a> 一样，使用FP8精度进行训练&lt;/li>
+&lt;li>mid-training：在预训练阶段之后，额外增加了一个训练阶段，来提高模型的长上下文等关键能力&lt;/li>
+&lt;/ol>
+&lt;h1 id="post-training">&lt;a href="#post-training" class="header-anchor">&lt;/a>Post-training
+&lt;/h1>&lt;p>post-training包括三个阶段：&lt;/p>
+&lt;ol>
+&lt;li>SFT&lt;/li>
+&lt;li>online RL&lt;/li>
+&lt;li>&lt;a class="link" href="https://maosong.website/p/notes-on-dpo/" target="_blank" rel="noopener"
+>DPO&lt;/a>&lt;/li>
+&lt;/ol>
+&lt;p>作者发现SFT和DPO会限制模型的探索能力，特别是在math, coding等domain。为了解决这个问题，作者使用LlaMA对问题进行难度分级，然后移除了50%的简单数据。&lt;/p>
+&lt;p>在online RL阶段，作者设计了一个continuous online RL策略，让模型在训练和筛选问题两种模式之间进行切换，以平衡效率和准确率。&lt;/p>
+&lt;p>DPO的目的是为了提升模型输出的质量&lt;/p>
+&lt;h1 id="评测">&lt;a href="#%e8%af%84%e6%b5%8b" class="header-anchor">&lt;/a>评测
+&lt;/h1>&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>benchmark&lt;/th>
+&lt;th>LLaMA 4 Maverick&lt;/th>
+&lt;th>LLaMA 4 Maverick&lt;/th>
+&lt;th>LLaMA 4 Scout&lt;/th>
+&lt;th>Gemeni 2.0 Flash&lt;/th>
+&lt;th>GPT-4o&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>MMMU&lt;/td>
+&lt;td>76.1&lt;/td>
+&lt;td>73.4&lt;/td>
+&lt;td>69.4&lt;/td>
+&lt;td>71.7&lt;/td>
+&lt;td>69.1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Math Vista&lt;/td>
+&lt;td>73.7&lt;/td>
+&lt;td>70.7&lt;/td>
+&lt;td>73.1&lt;/td>
+&lt;td>63.8&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>ChartQA&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>90.0&lt;/td>
+&lt;td>88.8&lt;/td>
+&lt;td>88.3&lt;/td>
+&lt;td>85.7&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>DocVQA&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>94.4&lt;/td>
+&lt;td>94.4&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>92.8&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LiveCodeBench&lt;/td>
+&lt;td>49.4&lt;/td>
+&lt;td>43.4&lt;/td>
+&lt;td>32.8&lt;/td>
+&lt;td>34.5&lt;/td>
+&lt;td>32.3&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MMLU Pro&lt;/td>
+&lt;td>82.2&lt;/td>
+&lt;td>80.5&lt;/td>
+&lt;td>74.3&lt;/td>
+&lt;td>77.6&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GPQA Diamond&lt;/td>
+&lt;td>73.7&lt;/td>
+&lt;td>69.8&lt;/td>
+&lt;td>57.2&lt;/td>
+&lt;td>60.1&lt;/td>
+&lt;td>53.6&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h1 id="结论">&lt;a href="#%e7%bb%93%e8%ae%ba" class="header-anchor">&lt;/a>结论
+&lt;/h1>&lt;p>LLaMA 4 采用了MoE架构，是一个原生的多模态大模型系列。在架构上，与DeepSeek-MoE, aria和OLMoE不同，LLaMA4并没有增加expert granularity，&lt;a class="link" href="https://maosong.website/p/notes-on-olmoe/" target="_blank" rel="noopener"
+>OLMoE&lt;/a>分析认为，增加granularity可以提高模型的flexibility，
+下面总结了一下相关模型的参数&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Layers&lt;/th>
+&lt;th>Heads (Q / KV)&lt;/th>
+&lt;th>Context Length&lt;/th>
+&lt;th>#Parameters (activated/total)&lt;/th>
+&lt;th>#Experts (activated/total)&lt;/th>
+&lt;th>#Tokens&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>DeepSeek-MoE(144.6B)&lt;/td>
+&lt;td>62&lt;/td>
+&lt;td>32/32&lt;/td>
+&lt;td>2048&lt;/td>
+&lt;td>22.2B/144.6B&lt;/td>
+&lt;td>(1 shared + 7 routed)/64&lt;/td>
+&lt;td>245B&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>DeepSeek-V3&lt;/td>
+&lt;td>61&lt;/td>
+&lt;td>128(MLA)&lt;/td>
+&lt;td>128K&lt;/td>
+&lt;td>37B/671B&lt;/td>
+&lt;td>(1 shared + 8 routed)/257&lt;/td>
+&lt;td>14.8T&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Aria&lt;/td>
+&lt;td>28&lt;/td>
+&lt;td>20/20&lt;/td>
+&lt;td>64K&lt;/td>
+&lt;td>3.5B/24.9B&lt;/td>
+&lt;td>(2 shared+ 6 routed)/66&lt;/td>
+&lt;td>6.4T(text)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>OLMoE&lt;/td>
+&lt;td>16&lt;/td>
+&lt;td>16/16&lt;/td>
+&lt;td>4096&lt;/td>
+&lt;td>1.3B/6.9B&lt;/td>
+&lt;td>8/64&lt;/td>
+&lt;td>5T&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LLaMA 4 Maverick&lt;/td>
+&lt;td>48&lt;/td>
+&lt;td>40/8&lt;/td>
+&lt;td>1M&lt;/td>
+&lt;td>17B / 109B&lt;/td>
+&lt;td>(1 shared + 1 routed) / 128&lt;/td>
+&lt;td>~22T&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LLaMA 4 Scout&lt;/td>
+&lt;td>48&lt;/td>
+&lt;td>40/8&lt;/td>
+&lt;td>10M&lt;/td>
+&lt;td>17B / 400B&lt;/td>
+&lt;td>(1 shared + 1 routed) / 16&lt;/td>
+&lt;td>~40T&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h1 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="https://github.com/meta-llama/llama-models/blob/main/models/llama4/MODEL_CARD.md" target="_blank" rel="noopener"
+>LLaMA 4 Model Card&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://ai.meta.com/blog/llama-4-multimodal-intelligence/" target="_blank" rel="noopener"
+>LLaMA 4 Blog&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on Llama3</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-llama3/</link><pubDate>Mon, 22 Apr 2024 16:22:19 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-llama3/</guid><description>&lt;p>Meta released Llama3 at April 18, which is evaluated on several benchmarks and achieves the SOTA on open-sourced LLMs.&lt;/p>
+&lt;h1 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h1>&lt;h2 id="instruct-model-performance">&lt;a href="#instruct-model-performance" class="header-anchor">&lt;/a>Instruct model performance
+&lt;/h2>&lt;p>The performance of Llama3 8B compared with Gemma and Mistral:&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Llama3 8B&lt;/th>
+&lt;th>Gemma 7B - It&lt;/th>
+&lt;th>Mistral &amp;amp;B Instruct&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;em>MMLU&lt;/em> (5 shot)&lt;/td>
+&lt;td>&lt;strong>68.4&lt;/strong>&lt;/td>
+&lt;td>53.3&lt;/td>
+&lt;td>58.4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;em>GPQA&lt;/em> (0 shot)&lt;/td>
+&lt;td>&lt;strong>34.2&lt;/strong>&lt;/td>
+&lt;td>21.4&lt;/td>
+&lt;td>26.3&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;em>HumanEval&lt;/em> (0 shot)&lt;/td>
+&lt;td>&lt;strong>62.2&lt;/strong>&lt;/td>
+&lt;td>30.5&lt;/td>
+&lt;td>36.6&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;em>GSM-8K&lt;/em> (8 shot, CoT)&lt;/td>
+&lt;td>&lt;strong>79.6&lt;/strong>&lt;/td>
+&lt;td>30.6&lt;/td>
+&lt;td>39.9&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;em>MATH&lt;/em> (4 shot, CoT)&lt;/td>
+&lt;td>&lt;strong>30.0&lt;/strong>&lt;/td>
+&lt;td>12.2&lt;/td>
+&lt;td>11.0&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>performance of Llama3 70B compared with Gemini Pro 1.5 and Claude Sonnet:&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Llama3 70B&lt;/th>
+&lt;th>Gemini Pro 1.5 (Published)&lt;/th>
+&lt;th>Claude 3 Sonnet (Published)&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;em>MMLU&lt;/em> (5 shot)&lt;/td>
+&lt;td>&lt;strong>82.0&lt;/strong>&lt;/td>
+&lt;td>81.9&lt;/td>
+&lt;td>79.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;em>GPQA&lt;/em> (0 shot)&lt;/td>
+&lt;td>39.5&lt;/td>
+&lt;td>&lt;strong>41.5&lt;/strong> (CoT)&lt;/td>
+&lt;td>38.5 (CoT)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;em>HumanEval&lt;/em> (0 shot)&lt;/td>
+&lt;td>&lt;strong>81.7&lt;/strong>&lt;/td>
+&lt;td>71.9&lt;/td>
+&lt;td>73.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;em>GSM-8K&lt;/em> (8 shot, CoT)&lt;/td>
+&lt;td>&lt;strong>93.0&lt;/strong>&lt;/td>
+&lt;td>91.7 (11 shot)&lt;/td>
+&lt;td>92.3 (0 shot)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;em>MATH&lt;/em> (4 shot, CoT)&lt;/td>
+&lt;td>50.4&lt;/td>
+&lt;td>&lt;strong>58.5&lt;/strong> (Minerva prompt)&lt;/td>
+&lt;td>40.5&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="pre-trained-model-performance">&lt;a href="#pre-trained-model-performance" class="header-anchor">&lt;/a>Pre-trained model performance
+&lt;/h2>&lt;p>The performance of Llama3 8B compared with Gemma and Mistral:&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Llama3 8B&lt;/th>
+&lt;th>Gemma 7B (Published)&lt;/th>
+&lt;th>Gemma 7B (Measured)&lt;/th>
+&lt;th>Mistral 7B (Published)&lt;/th>
+&lt;th>Mistral 7B (Measured)&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;em>MMLU&lt;/em> (5 shot)&lt;/td>
+&lt;td>&lt;strong>66.6&lt;/strong>&lt;/td>
+&lt;td>64.3&lt;/td>
+&lt;td>64.4&lt;/td>
+&lt;td>62.5&lt;/td>
+&lt;td>63.9&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;em>AGIEval English&lt;/em> (3-5 shot)&lt;/td>
+&lt;td>&lt;strong>45.9&lt;/strong>&lt;/td>
+&lt;td>41.7&lt;/td>
+&lt;td>44.9&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>44.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;em>BIG-Bench Hard&lt;/em> (3 shot, CoT)&lt;/td>
+&lt;td>&lt;strong>61.1&lt;/strong>&lt;/td>
+&lt;td>55.1&lt;/td>
+&lt;td>59.0&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>56.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;em>ARC-Challenge&lt;/em> (25 shot)&lt;/td>
+&lt;td>78.6&lt;/td>
+&lt;td>53.2(0 shot)&lt;/td>
+&lt;td>&lt;strong>79.1&lt;/strong>&lt;/td>
+&lt;td>78.1&lt;/td>
+&lt;td>78.7&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;em>DROP&lt;/em> (3 shot, F1)&lt;/td>
+&lt;td>&lt;strong>58.4&lt;/strong>&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>56.3&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>54.4&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>performance of Llama3 70B compared with Gemini Pro 1.5 and Claude Sonnet:&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Llama3 70B&lt;/th>
+&lt;th>Gemini Pro 1.0 (Published)&lt;/th>
+&lt;th>Mixtral 8 $\times$ 22B (Measured)&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;em>MMLU&lt;/em> (5-shot)&lt;/td>
+&lt;td>&lt;strong>79.5&lt;/strong>&lt;/td>
+&lt;td>71.8&lt;/td>
+&lt;td>77.7&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;em>AGIEval English&lt;/em> (3-5 shot)&lt;/td>
+&lt;td>&lt;strong>63.0&lt;/strong>&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>61.2&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;em>BIG-Bench Hard&lt;/em> (3 shot, CoT)&lt;/td>
+&lt;td>&lt;strong>81.3&lt;/strong>&lt;/td>
+&lt;td>75.0&lt;/td>
+&lt;td>79.2&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;em>ARC-Challenge&lt;/em> (25 shot)&lt;/td>
+&lt;td>&lt;strong>93.0&lt;/strong>&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>90.7&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;em>DROP&lt;/em> (3 shot, F1)&lt;/td>
+&lt;td>&lt;strong>79.7&lt;/strong>&lt;/td>
+&lt;td>74.1 (variable shot)&lt;/td>
+&lt;td>77.6&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h1 id="model-architecture">&lt;a href="#model-architecture" class="header-anchor">&lt;/a>Model Architecture
+&lt;/h1>&lt;p>Several improvements are made on Llama3 compared to llama2:&lt;/p>
+&lt;ol>
+&lt;li>Llama3 uses a tokenizer with a vocabulary of 128K tokens.&lt;/li>
+&lt;li>Llama3 adopts &lt;a class="link" href="https://maosong.website/p/notes-on-gqa/" target="_blank" rel="noopener"
+>grouped query attention (GQA)&lt;/a> across both the 8B and 70B sizes.&lt;/li>
+&lt;li>Llama3 uses to context window of size 8192 tokens&lt;/li>
+&lt;/ol>
+&lt;h1 id="traning">&lt;a href="#traning" class="header-anchor">&lt;/a>Traning
+&lt;/h1>&lt;p>Llama3 uses 15T tokens for pre-training. Compares to Llama2, it is seven times larger and includes four times more code.&lt;/p>
+&lt;p>5% data of the training dataset are non-English to support multi-lingual use cases.&lt;/p>
+&lt;p>Data processing includes:&lt;/p>
+&lt;ol>
+&lt;li>Heuristic filters&lt;/li>
+&lt;li>NSFW filters&lt;/li>
+&lt;li>Semantic deduplication approaches&lt;/li>
+&lt;li>Text classifiers to predict data quality. Llama2 is used to generate training data for the text classifiers.&lt;/li>
+&lt;/ol>
+&lt;p>Data mixing strategy is explored to improve the performance of Llama3.&lt;/p>
+&lt;h1 id="scaling-up-pretraining">&lt;a href="#scaling-up-pretraining" class="header-anchor">&lt;/a>Scaling up pretraining
+&lt;/h1>&lt;p>Llama3 developed a series of scaling laws for downstream benchmark evaluations.&lt;/p>
+&lt;p>Scaling laws help:&lt;/p>
+&lt;ol>
+&lt;li>Select an optimal data mix and to make informed decisions on how to best use training compute.&lt;/li>
+&lt;li>Scaling laws allow Llama3 to predict the performance of the largest models on key tasks without training the models.&lt;/li>
+&lt;/ol>
+&lt;p>The authors finds our that the performance of the model continues to improve log-linearly as the training tokens increase. It is seen that Larger models can match the performance of these smaller models with less training compute, but smaller models are generally preferred because they are much more efficient during inference.&lt;/p>
+&lt;p>The authors combine three types of parallelization:&lt;/p>
+&lt;ol>
+&lt;li>Data parallelization&lt;/li>
+&lt;li>Model parallelization&lt;/li>
+&lt;li>Pipeline parallelization&lt;/li>
+&lt;/ol>
+&lt;h1 id="instruction-fine-tuning">&lt;a href="#instruction-fine-tuning" class="header-anchor">&lt;/a>Instruction fine-tuning
+&lt;/h1>&lt;p>The fine-tuning of Llama3 contains:&lt;/p>
+&lt;ol>
+&lt;li>Supervised fine-tuning&lt;/li>
+&lt;li>Rejection sampling&lt;/li>
+&lt;li>Proximal Policy Optimization&lt;/li>
+&lt;li>Direct Preference Optimization&lt;/li>
+&lt;/ol>
+&lt;p>Learning from perference rankings via PPO and &lt;a class="link" href="https://maosong.website/p/notes-on-dpo/" target="_blank" rel="noopener"
+>DPO&lt;/a> also greatly improved the performance of LLma3 on reasoning and coding tasks. Since perference ranking helps the model to select answer when it is in a dilemma.&lt;/p>
+&lt;h1 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="https://ai.meta.com/blog/meta-llama-3/" target="_blank" rel="noopener"
+>Llam3 blog&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://github.com/meta-llama/llama3/blob/main/eval_details.md" target="_blank" rel="noopener"
+>Evaluation details&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://github.com/meta-llama/llama3/blob/main/MODEL_CARD.md" target="_blank" rel="noopener"
+>Model Card&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

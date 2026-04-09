@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>MDP on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/mdp/</link><description>Recent content in MDP on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/mdp/index.xml" rel="self" type="application/rss+xml"/><item><title>(RL series 1) Reinforcement Learning basic definitions</title><link>https://github.com/jiangyigithub/ai.github.io/p/rl-series-1-reinforcement-learning-basic-definitions/</link><pubDate>Wed, 18 Mar 2026 17:35:25 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/rl-series-1-reinforcement-learning-basic-definitions/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>RL 的基本思想是通过与环境进行交互，获取奖励来进行学习&lt;/p>
+&lt;p>RL 的定义如下&lt;/p>
+&lt;blockquote>
+&lt;p>强化学习是一个通过构建可以与环境进行交互的 agent 来解决控制和决策任务的学习框架，交互的方式为 agent 执行 action, 然后环境给予奖励&lt;/p>
+&lt;/blockquote>
+&lt;p>RL 的执行过程如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/rl-series-1-reinforcement-learning-basic-definitions/RL-process.png"
+width="1400"
+height="787"
+loading="lazy"
+alt="The RL process (source from sutton)"
+class="gallery-image"
+data-flex-grow="177"
+data-flex-basis="426px"
+>&lt;/p>
+&lt;h2 id="rl-basics">&lt;a href="#rl-basics" class="header-anchor">&lt;/a>RL Basics
+&lt;/h2>&lt;p>RL 的数学建模依赖于 Markov decision process, 下面我们先介绍相关概念&lt;/p>
+&lt;h3 id="definition">&lt;a href="#definition" class="header-anchor">&lt;/a>Definition
+&lt;/h3>&lt;blockquote>
+&lt;p>一个 Markov decision process (MDP) 包含如下模块：&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;ol>
+&lt;li>时间 $t=0,1,\dots,T$.&lt;/li>
+&lt;li>状态 $s_t\in\mathcal{S}\cup\{\langle term\rangle\}$, 其中 $\mathcal{S}$ 是状态空间 (state space)&lt;/li>
+&lt;li>动作 $a_t\in\mathcal{A}$ , 其中 $\mathcal{A}$ 是动作空间 (action space)&lt;/li>
+&lt;li>奖励 $r_t\in\mathbb{R}$, 环境对 agent 当前 action $a_t$ 给予的反馈&lt;/li>
+&lt;li>终止时间 $T$, 额外定义 $s_T=\langle term\rangle$ 为终止状态&lt;/li>
+&lt;li>初始状态分布 $s_o\sim p_0$.&lt;/li>
+&lt;li>转换概率 (transition probability): $r_t,s_{t+1}\sim p(\cdot,\cdot\mid s_t,a_t)$.&lt;/li>
+&lt;li>轨迹 $\tau=(s_0,a_0,r_0,s_1,a_1,r_1,\dots,s_{T-1},a_{T-1}, r_{T-1}, s_T)$.&lt;/li>
+&lt;li>&lt;strong>Markov property&lt;/strong>. $t+1$ 时刻的状态仅与 $t$ 时刻的状态与动作相关，即 $p(s_{t+1}\mid s_t,a_t,\dots,a_0,a_0)=p(s_{t+1}\mid s_t,a_t)$ 以及 $p(r_{t}\mid s_t,a_t,\dots,s_0,a_t)=p(r_t\mid s_t,a_t)$.&lt;/li>
+&lt;/ol>
+&lt;/blockquote>
+&lt;p>我们会对一些表达式进行简化：&lt;/p>
+&lt;ol>
+&lt;li>当 $r_t$ 完全由 $(s_t,a_t)$ 决定时，我们记为 $r_t=r(s_t,a_t)$&lt;/li>
+&lt;li>我们假设状态转移函数是平稳的 (stationary), 即 $p_t(r,s'\mid s,a)=p(r,s'\mid s,a)$。&lt;/li>
+&lt;li>$a_t$ 通常由一个策略 $\pi$ 决定， 当 $\pi$ 完全由 $s_t$ 决定时，我们记为 $a_t=\pi(s_t)$, 反之，$a_t$ 从 $\pi$ 中采样得到，即 $a_t\sim\pi(\cdot\mid s_t)$.&lt;/li>
+&lt;li>一般我们会使用一个神经网络来表示 $\pi$, 即 $\pi=\pi_\theta$, 这里 $\theta$ 就是神经网络的参数。&lt;/li>
+&lt;/ol>
+&lt;p>&lt;strong>state and observation&lt;/strong>&lt;/p>
+&lt;p>通常来说，state 包含了当前进行决策所需要的所有信息（环境信息，历史信息，agent 自身信息），这种情况下 MDP 的 Markov 性质成立。实际上 agent 获取的可能只是一部分信息，即 agent 获取的为 observation, 这种情况下 MDP 特化为 Partially Observable Markov Decision Process (POMDP), 此时我们的 Markov 性质就不再对 observation 成立，我们的问题也变的更加困难。&lt;/p>
+&lt;blockquote>
+&lt;p>Takeaway
+State 表示整个环境的完整表示，而 observation 则是环境的部分表示&lt;/p>
+&lt;/blockquote>
+&lt;p>对于 LLM 来说，我们可以获取历史状态的所有信息，因此我们可以将 RL for LLM 视作一个 MDP 问题。&lt;/p>
+&lt;p>&lt;strong>action space&lt;/strong>&lt;/p>
+&lt;p>action space $\mathcal{A}$ 可以是连续的，比如上下左右四个方向，也可以是连续的，比如方向盘的角度&lt;/p>
+&lt;p>&lt;strong>episodic and continuing&lt;/strong>&lt;/p>
+&lt;p>根据任务的终止时间 $T$，我们可以将任务分为 episodic task 和 continuing task, 当 $T=\infty$ 时， 我们的任务称为 continual task，比如游戏, 否则称之为 episodic task, 比如股票预测.&lt;/p>
+&lt;p>除了 POMDP 之外，MDP 也有一些其他的推广形式：&lt;/p>
+&lt;ol>
+&lt;li>non-stationary dynamics, 即不同时间步的状态转移函数不同&lt;/li>
+&lt;li>pre-determined terminal time $T$. 终止时间指定，因为 $p_{T-1}(\langle term\rangle\mid s_{T-1}, a_{T-1})=1$ 且 $p_{t+1}(\langle term\rangle\mid s_{t}, a_{t})=0$, $\forall t\in[T-2]$, 所以此时 MDP 为 non-stationary,&lt;/li>
+&lt;li>policy $\pi_t$ may be time-dependent, 一般来说仅在 non-stationary dynamics 中有必要&lt;/li>
+&lt;li>actions may depend on states, 即 $a_t\in\mathcal{A}(s_t)$.&lt;/li>
+&lt;/ol>
+&lt;p>由于 $T$ 也是一个随机变量，因此 $\mathbb{E}[\sum_{t=0}^T\cdot]\neq\sum_{t=0}^T\mathbb{E}[\cdot]$.&lt;/p>
+&lt;p>为了简化，我们一般会使用一个等价的，不会停止的 MDP:&lt;/p>
+&lt;ol>
+&lt;li>the MDP never stops, 即 $T=\infty$&lt;/li>
+&lt;li>$s_t\in\mathcal{S}\cup\{\langle term\rangle\}$, 这里 $\langle term\rangle$ 是一个 normal state.&lt;/li>
+&lt;li>absorbing state: 当 $s_t=\langle term\rangle$ 时， $r_t=0, s_{t+1}=\langle term\rangle$, 即状态不会离开 $\langle term\rangle$.&lt;/li>
+&lt;li>$\pi(\cdot\mid\langle term\rangle)$ 不产生任何影响&lt;/li>
+&lt;/ol>
+&lt;h3 id="rl-objective">&lt;a href="#rl-objective" class="header-anchor">&lt;/a>RL Objective
+&lt;/h3>&lt;p>RL 的最终目标为最大化累计奖励，称为 expected return, 这个目标基于&lt;strong>reward hypothesis&lt;/strong>, 即&lt;em>所有的目标都可以被描述为最大化 expected return&lt;/em>. 目标函数表达式如下&lt;/p>
+$$
+\max_{\pi}\quad \mathbb{E}_{s_0\sim p_0}^\pi\left[\sum_{t=0}^{T-1}r_t\right]
+$$&lt;p>由于未来存在不确定性，我们会对这种不确定性施加惩罚，即时间越远，其对于当前的 reward 就越低，这其实就是经济学中的现值 (present value, PV), 因此我们实际上优化的目标函数是 expected discounted return:&lt;/p>
+$$
+\max_{\pi}\quad \mathbb{E}_{s_0\sim p_0}^\pi\left[\sum_{t=0}^{T-1}\gamma^tr_t\right]
+$$&lt;p>这里 $\gamma\in(0, 1]$ 是一个超参数，我们定义&lt;/p>
+$$
+G_t = r_t +\gamma r_{t+1}+\cdots+\gamma^{T-1-t}r_{T-1}=\sum_{t'=t}^{T-1}\gamma^{t'-t}r_{t'}
+$$&lt;p>$G_t$ 被称为 &lt;strong>discounted return&lt;/strong>.&lt;/p></description></item></channel></rss>

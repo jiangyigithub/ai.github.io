@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>KL Divergence on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/kl-divergence/</link><description>Recent content in KL Divergence on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/kl-divergence/index.xml" rel="self" type="application/rss+xml"/><item><title>Relationship between MLE and KL divergence</title><link>https://github.com/jiangyigithub/ai.github.io/p/relationship-between-mle-and-kl-divergence/</link><pubDate>Fri, 27 Jun 2025 11:35:33 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/relationship-between-mle-and-kl-divergence/</guid><description>&lt;h1 id="mle">&lt;a href="#mle" class="header-anchor">&lt;/a>MLE
+&lt;/h1>&lt;p>最大似然估计，即MLE (maximum likelihood estimation), 是一个估计参数分布的方法，其核心思想是：模型的参数，应该让观察样本出现的概率最大。&lt;/p>
+&lt;p>假设我们有一个参数分布 $p(x\mid \theta)$, 其中 $\theta$ 是参数，如正态分布中的均值和方差。我们从$p(x\mid \theta)$进行采样得到 $i.i.d.$ 的数据 $X=\{x_1,\dots,x_n\}$.&lt;/p>
+&lt;p>似然函数 (likelihood function) 定义为给定数据 $X$ 的联合分布，即：&lt;/p>
+$$
+\mathcal{L}(\theta\mid X) = P(X\mid \theta)
+$$&lt;p>由于 $X=\{x_1,\dots,x_n\}$ 是 $i.i.d.$, 因此，我们可以将上式改写为：&lt;/p>
+$$
+\mathcal{L}(\theta\mid X) = \prod_{i=1}^n p(x_i\mid \theta)
+$$&lt;p>这样我们的优化目标就是&lt;/p>
+$$
+\begin{aligned}
+\theta_{MLE}^* &amp;= \arg\max_{\theta} \mathcal{L}(\theta\mid X)\\
+&amp;= \arg\max_{\theta} \prod_{i=1}^n p(x_i\mid \theta)\\
+&amp;= \arg\max_{\theta} \log\prod_{i=1}^n p(x_i\mid \theta)\\
+&amp;=\arg\max_{\theta} \sum_{i=1}^n \log p(x_i\mid \theta)\\
+\end{aligned}
+$$&lt;p>即&lt;/p>
+$$
+\theta_{MLE}^* = \arg\max_{\theta} \sum_{i=1}^n \log p(x_i\mid \theta)
+$$&lt;h1 id="kl-divergence">&lt;a href="#kl-divergence" class="header-anchor">&lt;/a>KL divergence
+&lt;/h1>&lt;p>KL divergence 用于衡量概率分布 $Q(x)$ 到概率分布 $P(x)$ 的不同程度，我们可以将其理解为：如果我们用 $Q(x)$来替换 $P(x)$, 会有多大的信息损失？&lt;/p>
+&lt;p>连续概率分布的KL divergence的定义如下&lt;/p>
+$$
+D_{KL}(P\mid\mid Q) =\int P(x)\log\left(\frac{P(x)}{Q(x)}\right)dx
+$$&lt;p>
+离散概率分布的KL divergence定义如下&lt;/p>
+$$
+D_{KL}(P\mid\mid Q) = \sum_{x} P(x)\log\left(\frac{P(x)}{Q(x)}\right)
+$$&lt;p>KL divergence有两个关键性质：&lt;/p>
+&lt;ol>
+&lt;li>非负性：$D_{KL}(P\mid\mid Q)\geq0$, 且 $D_{KL}(P\mid\mid Q)=0$ 当且仅当 $P(x)=Q(x)$ 对任意 $x$成立&lt;/li>
+&lt;li>非对称性： 一般情况下，$D_{KL}(P\mid\mid Q)\neq D_{KL}(Q\mid\mid P)$.&lt;/li>
+&lt;/ol>
+&lt;h1 id="mle和kl-divergence的等价性">&lt;a href="#mle%e5%92%8ckl-divergence%e7%9a%84%e7%ad%89%e4%bb%b7%e6%80%a7" class="header-anchor">&lt;/a>MLE和KL Divergence的等价性
+&lt;/h1>&lt;p>我们假设 $p_{data}(x)$ 是数据$X$的真实分布， 我们现在需要找到合适的参数 $\theta$ 以及其对应的分布 $p(x\mid \theta)$ 来近似 $p_{data}(x)$, 此时我们可以用KL Divergence作为我们的目标函数，即&lt;/p>
+$$
+\theta_{KL} = \arg\min_{\theta}D_{KL}(p_{data}(x)\mid\mid p(x\mid \theta))
+$$&lt;p>我们将上面的式子进行展开得到&lt;/p>
+$$
+\begin{aligned}
+\theta_{KL}^* &amp;= \arg\min_{\theta}D_{KL}(p_{data}(x)\mid\mid p(x\mid \theta))\\
+&amp;= \arg\min_{\theta} \int p_{data}(x)\frac{p_{data}(x)}{p(x\mid \theta)} dx\\
+&amp;= \arg\min_{\theta}\int p_{data}(x)\log p_{data}(x) dx - \int p_{data}(x)\log p(x\mid \theta)dx \\
+&amp;= \arg\min_{\theta} - \int p_{data}(x)\log p(x\mid \theta)dx \\
+&amp;= \arg\max_{\theta} \int p_{data}(x)\log p(x\mid \theta)dx
+\end{aligned}
+$$&lt;p>实际上，真实的数据分布 $p_{data}(x)$ 是未知的，我们只有从 $p_{data}(x)$ 采样得到的一批数据 $X=\{x_1,\dots,x_n\}\sim p_{data}(x)$.&lt;/p>
+&lt;p>基于大数定律，我们有&lt;/p>
+$$
+\frac{1}{n}\sum_{i=1}^n\log p(\theta_i\mid \theta)=\mathbb{E}_{x\sim p_{data}}[\log p(x\mid \theta)] = \int p_{data}(x)\log p(x\mid \theta)dx, n\to \infty
+$$&lt;p>这样，最大似然估计就与最小化KL divergence构建起了联系：&lt;/p>
+$$
+\begin{aligned}
+\theta_{MLE}^*&amp;=\arg\max_{\theta} \sum_{i=1}^n \log p(x_i\mid \theta)\\
+&amp;= \arg\max_{\theta} \int p_{data}(x)\log p(x\mid \theta)dx\\
+&amp;= \theta_{KL}^*, n\to\infty.
+\end{aligned}
+$$&lt;p>也就是说，当采样样本足够多的时候，最大似然估计和最小KL divergence是等价的。&lt;/p></description></item></channel></rss>

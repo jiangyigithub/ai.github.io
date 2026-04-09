@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Apple on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/apple/</link><description>Recent content in Apple on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/apple/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on AFM2025</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-afm2025/</link><pubDate>Tue, 29 Jul 2025 12:36:28 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-afm2025/</guid><description>&lt;p>Apple 在 7 月份发布了 AFM 技术报告，包括两个多语种多模态大模型，分别为 3B 和 xB, 一个面向 device, 另一个面向 server， 前者主要集中于效率，后者集中于表现。&lt;/p>
+&lt;h2 id="pre-training">&lt;a href="#pre-training" class="header-anchor">&lt;/a>Pre-training
+&lt;/h2>&lt;h3 id="architecture">&lt;a href="#architecture" class="header-anchor">&lt;/a>Architecture
+&lt;/h3>&lt;h4 id="on-device-model">&lt;a href="#on-device-model" class="header-anchor">&lt;/a>On-Device Model
+&lt;/h4>&lt;p>对于 on-device model, 作者将模型分为两个 block, Block1 占 $62.5\%$ 的 transformer layers, Block2 占 $37.5\%$ 的 transformer layers. 但是，对于 Block2, 作者移除了 key, value projection, 对应的 KV cache 则直接从 Block1 中获取。通过这种方式，作者将 KV cache memory usage 减少了 $37.5\%$. 并且，由于 Block2 不产生任何 key values, prefill stage 可以跳过这些计算，这样 TTFT 也可以减少 $37.5\%$.&lt;/p>
+&lt;h4 id="server-model">&lt;a href="#server-model" class="header-anchor">&lt;/a>Server Model
+&lt;/h4>&lt;p>对于 server model, 作者对架构进行了改进，来提高效率。架构如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-afm2025/AFM-2025-PT-MoE-architecture.png"
+width="1271"
+height="525"
+loading="lazy"
+alt="Diagram of the PT-MoE architecture"
+class="gallery-image"
+data-flex-grow="242"
+data-flex-basis="581px"
+>&lt;/p>
+&lt;p>&lt;strong>Parallel Track Transformer&lt;/strong>
+作者提出了 Parallel Track (PT) Transformer 架构，PT-Transformer 将 transformer 模型分割多个小的 transformer, 作者将这些小的 transformer 称之为 &lt;em>track&lt;/em>. 每个 track 包含多个 transformer block. 不同的 track 只会在输入和输出的时候进行交互，这样就能够减少同步的开销。作者讲这种模式称为 &lt;strong>track parallelism&lt;/strong>.&lt;/p>
+&lt;p>&lt;strong>PT-MoE&lt;/strong>
+为了进一步提高 server model 的效率，作者将 MoE 和 PT-transformer 结合在一起。具体的做法就是，每两个 transformer block 为一组，每组里包含一个 dense layer 和一个 MoE layer.&lt;/p>
+&lt;p>&lt;strong>Interleaving Global and Local Attention Layers&lt;/strong>
+作者还设计额 interleaved attention 机制，也就是，将 transformer block 按照四个为 1 组，前面 3 个 block 使用 window attention, window size 为 4096 和 RoPE. 最后一个 block 使用 global attention layer 以及 &lt;a class="link" href="https://maosong.website/p/notes-on-nope/" target="_blank" rel="noopener"
+>NoPE&lt;/a>. 作者认为，使用 NoPE 可以提高模型对长上下文的泛化性。&lt;/p>
+&lt;blockquote>
+&lt;p>Recall
+Qwen2.5-VL 的 ViT 使用的类似的做法，即 8 个 block 为一组，前面 7 个 block 使用 window attention, 最后一个 block 使用 full self attention.&lt;/p>
+&lt;/blockquote>
+&lt;h4 id="vision-encoder">&lt;a href="#vision-encoder" class="header-anchor">&lt;/a>Vision Encoder
+&lt;/h4>&lt;p>Vision encoder 包含 ViT 和 adapter 两个模块&lt;/p>
+&lt;p>对于 ViT 来说，作者使用了 ViT 架构：&lt;/p>
+&lt;ul>
+&lt;li>server model 使用了 1B 参数的 ViT-g&lt;/li>
+&lt;li>on-device model 使用了 300M 参数的 ViTDet-L backbone&lt;/li>
+&lt;/ul>
+&lt;p>作者在 ViTDet 的基础上加入了 Register-Window 机制，这个机制用于编码一个 global register token 来与不同的 loca windows 进行交互。&lt;/p>
+&lt;p>对于 adapter 来说，其包含了一个 transformer layer, 一个 linear projection layer, 一个 $3\times 3$ 的 convolutional layer. 其中， linear projection 用于将 visual token 映射到 LLM 的特征空间，pooling layer 用于压缩 visual token 个数。&lt;/p>
+&lt;h3 id="data">&lt;a href="#data" class="header-anchor">&lt;/a>Data
+&lt;/h3>&lt;p>主要包括 web data 和 image data 两部分&lt;/p>
+&lt;p>image data 部分：&lt;/p>
+&lt;ol>
+&lt;li>Image-Text Crawl Data: 包含 &lt;strong>175M&lt;/strong> 图文交错数据，包含 &lt;strong>550M&lt;/strong> images&lt;/li>
+&lt;li>Synthetic Image Caption data: &lt;strong>5B&lt;/strong> image caption 数据&lt;/li>
+&lt;li>Text-Rich Image Data&lt;/li>
+&lt;li>High-quality Domain-Specific Image-text Data: 包括 caption 数据， grounding 数据，table, chart, plots 数据以及 knowledge-required domains 的数据&lt;/li>
+&lt;/ol>
+&lt;h3 id="training-recipe">&lt;a href="#training-recipe" class="header-anchor">&lt;/a>Training Recipe
+&lt;/h3>&lt;p>text tokenizer 大小为 150K.&lt;/p>
+&lt;p>Vision encoder 的训练包含两个 stage:&lt;/p>
+&lt;ol>
+&lt;li>基于 CLIP 的方法，使用 &lt;strong>6B&lt;/strong>的 image-text pair 数据进行训练，图片精度为 448, 作者还使用了 FLIP 来提高训练效率&lt;/li>
+&lt;li>使用一个 compact LLM, 同时训练 vsion encoder, adapter 和 compact LLM. 加入了更高质量的数据，图片精度为 672.&lt;/li>
+&lt;/ol>
+&lt;p>LLM 的训练使用了 &lt;strong>13.4T&lt;/strong> token&lt;/p>
+&lt;h2 id="post-training">&lt;a href="#post-training" class="header-anchor">&lt;/a>Post-training
+&lt;/h2>&lt;h3 id="sft">&lt;a href="#sft" class="header-anchor">&lt;/a>SFT
+&lt;/h3>&lt;p>SFT 数据包括：&lt;/p>
+&lt;ol>
+&lt;li>General knowledge&lt;/li>
+&lt;li>Reasoning: 纯文本包括 math 和 reasoning, 多模态包括 STEM, math, CoT 数据&lt;/li>
+&lt;li>Text-Rich Image understanding: chart, table 数据&lt;/li>
+&lt;li>Multilingual OCR: OCR 相关数据&lt;/li>
+&lt;li>Text and visual grounding: grounding 数据&lt;/li>
+&lt;li>Multi-image reasoning: 多图推理数据&lt;/li>
+&lt;/ol>
+&lt;p>作者还基于 retrieval-based 方法来收集数据，具体做法就是给定一些 prompt, 然后通过一个 Image search pipeline 来进行检索。&lt;/p>
+&lt;p>训练的时候，作者将图片精度从 672 提升到 1344, 处理方式就是将图片切分为四个子图，然后作者还加入了一个总蓝图。这样，vision encoder 的输入包括四个子图和一个 thumbnail 图.&lt;/p>
+&lt;p>为了提高 on-device model 的效率，作者设置了三种模式：&lt;/p>
+&lt;ul>
+&lt;li>rapid mode: 图片精度为 224&lt;/li>
+&lt;li>balanced mode: 只有 thumbnail 图&lt;/li>
+&lt;li>high-resolution mode: 四个子图和一个 thumbnail 图&lt;/li>
+&lt;/ul>
+&lt;p>对于不同的 mode, 如果输入的是低精度图片，则 $50\%$ 概率为 rapid mode; 如果输入的是高精度图片，则 $1\%$ 的概率为 rapid mode. 对于其他数据，作者将 $20\%$ 的数据设置为 balanced mode.&lt;/p>
+&lt;h3 id="rlhf">&lt;a href="#rlhf" class="header-anchor">&lt;/a>RLHF
+&lt;/h3>&lt;p>作者使用 RLOO 作为 RLHF 的算法。&lt;/p>
+&lt;p>RL 的 infra 如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-afm2025/AFM-2025-RL-infra.png"
+width="1277"
+height="350"
+loading="lazy"
+alt="AFM2025 RL Infra"
+class="gallery-image"
+data-flex-grow="364"
+data-flex-basis="875px"
+>&lt;/p>
+&lt;p>infra 主要由两个部分组成：&lt;/p>
+&lt;ol>
+&lt;li>Trajectory Generators: 生成轨迹并提供反馈&lt;/li>
+&lt;li>Policy updater: 更新 policy&lt;/li>
+&lt;/ol>
+&lt;p>训练时，作者首先训练了一个 reward model, 与 AFM-2024 相似，作者使用了一个 preference loss function 以及一个 single-sided grading 作为 regularization.&lt;/p>
+&lt;p>数据包括以下类别:&lt;/p>
+&lt;ul>
+&lt;li>text-only prompts&lt;/li>
+&lt;li>Image-text prompts&lt;/li>
+&lt;li>Math prompts&lt;/li>
+&lt;li>Image-text STEM reasoning prompts&lt;/li>
+&lt;/ul>
+&lt;p>其中，前面两个使用 reward function 进行打分，后面两个基于 ruled-based verifier 进行打分&lt;/p>
+&lt;p>作者还发现，人类的打分和 reward model 的发奋可能会出现 $20\%\sim30\%$ 的偏差。为了解决这个问题，作者训练了一个单独的 reward model, 专门用于 prompt selection.&lt;/p>
+&lt;h2 id="tool-use">&lt;a href="#tool-use" class="header-anchor">&lt;/a>Tool Use
+&lt;/h2>&lt;p>工具调用数据由于 Multi-turn 和依赖软件工具，比较难以收集。为了解决这个问题，作者设计了一个交互式标注平台，包括一个 agent 和一个工具执行环境。环境包括了工具和数据库，能执行工具调用并反馈。&lt;/p>
+&lt;p>标注时，用户发起一个请求，然后 agent 自动执行工具调用，最后平台返回反正的轨迹。&lt;/p>
+&lt;h2 id="multilingual">&lt;a href="#multilingual" class="header-anchor">&lt;/a>Multilingual
+&lt;/h2>&lt;p>作者逐步增加模型对于新语言的理解能力。默认情形下，输入和输出的语种一致，但是包含 $0.4\%$ 的跨语种数据。在 SFT 和 RLHF 阶段，英语和多语种数据的比例为 $80\%:20\%$.&lt;/p>
+&lt;h2 id="optimization">&lt;a href="#optimization" class="header-anchor">&lt;/a>Optimization
+&lt;/h2>&lt;p>作者使用了 QAT 来将 on-device model 压缩到 2 bits-per-weight, 使用 Adaptive Scalable Texture Compression (ASTC) 来 post-training 3.56 bits-per-weight 版本的 server model.&lt;/p>
+&lt;h3 id="qat">&lt;a href="#qat" class="header-anchor">&lt;/a>QAT
+&lt;/h3>&lt;p>QAT 是一个在模型训练过程中模拟量化误差，从而提升模型量化后表现的方法。它解决了传统后量化方法精度损失较大的问题，是平衡模型性能用户效率的关键手段。&lt;/p>
+&lt;p>训练时，作者通过修改权重 $W$ 来模仿量化：&lt;/p>
+$$
+\tilde{W} = s\left(\mathrm{clamp}(\lfloor \frac{W}{s}+z\rceil, q_{\min}, q_{\max}) - z\right)
+$$&lt;p>其中, $s$ 是 scaling factor, $z$ 是 zero point, $q_{\min}$, $q_{\max}$ 是 quantization 的 range. 为了解决 rounding operation 不可微的问题，作者使用了 straight-through estimator 的方法来近似梯度。&lt;/p>
+&lt;p>作者还提出了一个可学习的 scaling factor $f$ 用于计算 quantization scale, 计算方法如下所示&lt;/p>
+$$
+s = \frac{f\cdot \max(|W|)}{q_{\max}}
+$$&lt;p>作者通过精细设计 $f$ 的初始化来保证模型训练的 robust.&lt;/p>
+&lt;h3 id="astc">&lt;a href="#astc" class="header-anchor">&lt;/a>ASTC
+&lt;/h3>&lt;p>对于 server model, 作者使用了 ASTC, 一个针对 GPU 图形纹理压缩的技术，来压缩模型权重。具体做法就是，模型训练好之后，作者对模型权重应用 ASTC, 然后对每个块进行预处理。存储时，每个块用 ASTC-HAR-ch 模式压缩为 128 位。最小值单独存储为 float16.&lt;/p>
+&lt;p>推理时，GPU 硬件自动解压缩 ASTC 块，然后解压的权重最小值相加参与矩阵计算&lt;/p>
+&lt;h3 id="quality-recovery-adapters">&lt;a href="#quality-recovery-adapters" class="header-anchor">&lt;/a>Quality Recovery Adapters
+&lt;/h3>&lt;p>作者还是用 LoRA 来恢复量化模型的精度，并通过选择性压缩策略优化 ASTC 过程，在极小的算力开销下实现了接近全量微调的性能。&lt;/p>
+&lt;h2 id="evaluation">&lt;a href="#evaluation" class="header-anchor">&lt;/a>Evaluation
+&lt;/h2>&lt;p>On-device model 表现如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>MMLU&lt;/th>
+&lt;th>MMMLU&lt;/th>
+&lt;th>MGSM&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>AFM On-Device&lt;/td>
+&lt;td>67.85&lt;/td>
+&lt;td>60.60&lt;/td>
+&lt;td>74.91&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Qwen-2.5-3B&lt;/td>
+&lt;td>66.37&lt;/td>
+&lt;td>56.53&lt;/td>
+&lt;td>64.80&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Qwen-3-4B&lt;/td>
+&lt;td>&lt;strong>75.10&lt;/strong>&lt;/td>
+&lt;td>&lt;strong>66.52&lt;/strong>&lt;/td>
+&lt;td>&lt;strong>82.97&lt;/strong>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Gemma-3-4B&lt;/td>
+&lt;td>62.81&lt;/td>
+&lt;td>56.71&lt;/td>
+&lt;td>74.74&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Gemma-3n-E4B&lt;/td>
+&lt;td>57.84&lt;/td>
+&lt;td>50.93&lt;/td>
+&lt;td>77.77&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>server model 表现如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>MMLU&lt;/th>
+&lt;th>MMMLU&lt;/th>
+&lt;th>MGSM&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>AFM Server&lt;/td>
+&lt;td>80.20&lt;/td>
+&lt;td>74.60&lt;/td>
+&lt;td>87.09&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LLaMA 4 Scout&lt;/td>
+&lt;td>84.88&lt;/td>
+&lt;td>80.24&lt;/td>
+&lt;td>90.34&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Qwen-3-235B&lt;/td>
+&lt;td>&lt;strong>87.52&lt;/strong>&lt;/td>
+&lt;td>&lt;strong>82.95&lt;/strong>&lt;/td>
+&lt;td>&lt;strong>92.00&lt;/strong>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GPT-4o&lt;/td>
+&lt;td>85.70&lt;/td>
+&lt;td>84.00&lt;/td>
+&lt;td>90.30&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者提出了 AFM-2025 多模态多语种大语言模型系列，包括 on-device 和 server 两个版本，作者介绍了模型的架构，训练数据和训练方式。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://machinelearning.apple.com/papers/apple_intelligence_foundation_language_models_tech_report_2025.pdf" target="_blank" rel="noopener"
+>Publication&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://machinelearning.apple.com/research/apple-foundation-models-tech-report-2025" target="_blank" rel="noopener"
+>blog&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

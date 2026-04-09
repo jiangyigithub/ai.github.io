@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>RAG on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/categories/rag/</link><description>Recent content in RAG on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/categories/rag/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on RAG</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-rag/</link><pubDate>Sun, 14 Apr 2024 12:38:04 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-rag/</guid><description>&lt;img src="https://github.com/jiangyigithub/ai.github.io/agent_performance.png" alt="Featured image of post Notes on RAG" />&lt;h1 id="problems-of-llm">&lt;a href="#problems-of-llm" class="header-anchor">&lt;/a>Problems of LLM
+&lt;/h1>&lt;ul>
+&lt;li>Out of date knowledge: the model cannot gain knowledge after training&lt;/li>
+&lt;li>Humiliation: the model may generate nonsense output&lt;/li>
+&lt;li>Specific domain: the generalized model is difficult to adapt to specific domain&lt;/li>
+&lt;li>Enthetic problems: the model may encounter&lt;/li>
+&lt;/ul>
+&lt;h1 id="fine-tuning">&lt;a href="#fine-tuning" class="header-anchor">&lt;/a>Fine-tuning
+&lt;/h1>&lt;p>Fine-tuning is used to improve performance of foundation model on specific tasks with the help with some supervised data&lt;/p>
+&lt;p>Fine-tuning methods can be classified into:&lt;/p>
+&lt;ol>
+&lt;li>Based on range of updated parameters:
+&lt;ul>
+&lt;li>Full Model fine-tuning: update the parameters of the whole model&lt;/li>
+&lt;li>Partial fine-tuning: freeze the top layer; freeze the bottom layer&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Based on special technology:
+&lt;ul>
+&lt;li>Adapter tuning&lt;/li>
+&lt;li>LoRA&lt;/li>
+&lt;li>Continual Learning fine-tuning&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Based on input:
+&lt;ul>
+&lt;li>Instruction tuning&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Based on objective
+&lt;ul>
+&lt;li>Multi-task fine-tuning&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ol>
+&lt;p>Problems of fine-tuning:&lt;/p>
+&lt;ol>
+&lt;li>Requires task-specific labeled data, may cause overfitting and catastrophic forgetting。&lt;/li>
+&lt;li>The generalization ability is limited, and fine-tuning are required when adapting to new tasks&lt;/li>
+&lt;li>The performance may be destroyed after fine-tuning, for example, safety.&lt;/li>
+&lt;/ol>
+&lt;h1 id="rag">&lt;a href="#rag" class="header-anchor">&lt;/a>RAG
+&lt;/h1>&lt;p>RAG consists of three major processes of &lt;em>retrieval&lt;/em>, &lt;em>augmentation&lt;/em>, and &lt;em>generation&lt;/em>. The framework of RAG in LLM can be described as follows:&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/RAG-framework.png"
+loading="lazy"
+alt="RAG-framework"
+>&lt;/p>
+&lt;h2 id="retrieval">&lt;a href="#retrieval" class="header-anchor">&lt;/a>Retrieval
+&lt;/h2>&lt;h3 id="retriever-type">&lt;a href="#retriever-type" class="header-anchor">&lt;/a>Retriever type
+&lt;/h3>&lt;p>Retrieval methods can be generally categorized into two types: sparse and dense, based on the information encoding methods.&lt;/p>
+&lt;ol>
+&lt;li>sparse retrieval usually relies on inverted index matching along with the raw data input, for example TF-IDF and BM25. The limitation of sparse retrieval in RAG is
+&lt;ol>
+&lt;li>its no-training nature, which makes the retrieval performance heavily rely on the quality of database construction and query generation.&lt;/li>
+&lt;li>Moreover, such fixed term-based methods only support similarity retrieval, while cannot be adapted for other retrieval considerations demanding in LLM applications, such as the diversity&lt;/li>
+&lt;/ol>
+&lt;/li>
+&lt;li>dense retrieval, on the contrary, embeds the query and documents into continuous vector space with certain criteria, for example, semantic similarity. Examples include BERT, Dense Passage Retriever (DPR), etc.&lt;/li>
+&lt;/ol>
+&lt;h3 id="retrieval-granularity">&lt;a href="#retrieval-granularity" class="header-anchor">&lt;/a>Retrieval Granularity
+&lt;/h3>&lt;p>Retrieval granularity denotes the retrieval unit in which the corpus is indexed, e.g., document, passage, token, or other levels like entity.&lt;/p>
+&lt;ol>
+&lt;li>Chunk retrieval.&lt;/li>
+&lt;li>Token retrieval.&lt;/li>
+&lt;li>Entity retrieval.&lt;/li>
+&lt;/ol>
+&lt;h3 id="pre-retrieval-and-post-retrieval-enhancement">&lt;a href="#pre-retrieval-and-post-retrieval-enhancement" class="header-anchor">&lt;/a>Pre-retrieval and Post-retrieval Enhancement
+&lt;/h3>&lt;p>Pre-retrieval and post retrieval strategies can be added to improve the quality of the retriever.&lt;/p>
+&lt;p>Pre-retrieval methods include:&lt;/p>
+&lt;ol>
+&lt;li>Query rewrite. This method aims to close the gaps between the input text and the needed knowledge in retrieval, to reformulate the original question into a more conducive version to retrieve.&lt;/li>
+&lt;li>Query augmentation. This method aims to combine the original query and the preliminary generated outputs as a new query, which is further used to retrieve relevant information from the external database&lt;/li>
+&lt;/ol>
+&lt;p>Post-retrieval enhancement denotes the procedure to process the extracted top-k documents from the retriever before feeding them to the generator for the sake of better alignment between the retrieval and generation stages.&lt;/p>
+&lt;h3 id="database">&lt;a href="#database" class="header-anchor">&lt;/a>Database
+&lt;/h3>&lt;ol>
+&lt;li>Wikipedia&lt;/li>
+&lt;li>Domain specific database&lt;/li>
+&lt;li>search engine&lt;/li>
+&lt;/ol>
+&lt;h2 id="generation">&lt;a href="#generation" class="header-anchor">&lt;/a>Generation
+&lt;/h2>&lt;ol>
+&lt;li>Parameter-Accessible Generators (White-box). Allow parameter optimization.&lt;/li>
+&lt;li>Parameter-Inaccessible Generators (Black-box). Focus more on retrieval and augmentation processes, trying to enhance the generator by augmenting the input with better knowledge, guidances or examples for the generation.&lt;/li>
+&lt;/ol>
+&lt;h2 id="augmentation">&lt;a href="#augmentation" class="header-anchor">&lt;/a>Augmentation
+&lt;/h2>&lt;ol>
+&lt;li>Input layer integration&lt;/li>
+&lt;li>Output layer integration&lt;/li>
+&lt;li>Intermediate layer integration&lt;/li>
+&lt;/ol>
+&lt;h2 id="retrieval-frequency">&lt;a href="#retrieval-frequency" class="header-anchor">&lt;/a>Retrieval Frequency
+&lt;/h2>&lt;p>If it is necessary to retrieve? Self-RAG&lt;/p>
+&lt;p>retrieval frequency:&lt;/p>
+&lt;ol>
+&lt;li>One-time.&lt;/li>
+&lt;li>Every-n-token&lt;/li>
+&lt;li>Every token&lt;/li>
+&lt;/ol>
+&lt;h1 id="rag-training">&lt;a href="#rag-training" class="header-anchor">&lt;/a>RAG training
+&lt;/h1>&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-rag/RAG-training.png"
+width="1585"
+height="957"
+loading="lazy"
+alt="RAG-training"
+class="gallery-image"
+data-flex-grow="165"
+data-flex-basis="397px"
+>&lt;/p>
+&lt;ol>
+&lt;li>Training Free&lt;/li>
+&lt;li>Independent training&lt;/li>
+&lt;li>Sequential training&lt;/li>
+&lt;li>Joint training&lt;/li>
+&lt;/ol>
+&lt;h1 id="advance-rag">&lt;a href="#advance-rag" class="header-anchor">&lt;/a>Advance RAG
+&lt;/h1>&lt;h1 id="module-rag">&lt;a href="#module-rag" class="header-anchor">&lt;/a>Module RAG
+&lt;/h1>&lt;h1 id="applications">&lt;a href="#applications" class="header-anchor">&lt;/a>Applications
+&lt;/h1>&lt;ol>
+&lt;li>NLP applications
+&lt;ul>
+&lt;li>QA systems: REALM&lt;/li>
+&lt;li>Chatbot:&lt;/li>
+&lt;li>Fact Verification: self-RAG&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Downstream tasks:
+&lt;ul>
+&lt;li>Recommendations&lt;/li>
+&lt;li>Software engineering&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Domain-specific Applications
+&lt;ul>
+&lt;li>AI for science&lt;/li>
+&lt;li>Finance: ChatDOC&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ol>
+&lt;h2 id="limitations-of-rag">&lt;a href="#limitations-of-rag" class="header-anchor">&lt;/a>Limitations of RAG
+&lt;/h2>&lt;h1 id="long-context-window">&lt;a href="#long-context-window" class="header-anchor">&lt;/a>Long Context Window
+&lt;/h1>&lt;p>Advantages of Long Context Window:&lt;/p>
+&lt;ol>
+&lt;li>Improve the understanding and relativity: long context window allows model to refer to more context information when generating answers.&lt;/li>
+&lt;li>Handling complex tasks: long context window makes handling complex tasks such as writing a long article, coding&lt;/li>
+&lt;li>Improve users&amp;rsquo; experience: the user expects the model remember the chat history and use them to interact with the user.&lt;/li>
+&lt;/ol>
+&lt;p>Disadvantages of long context window:&lt;/p>
+&lt;ol>
+&lt;li>Only uses context once, Requires refeeding the data to use long context window.&lt;/li>
+&lt;li>Cost expensive due to input price.&lt;/li>
+&lt;li>Time expensive due to limit of tokens per second.&lt;/li>
+&lt;li>Needle in HayStack experiment show that there are problems with long context window.&lt;/li>
+&lt;/ol>
+&lt;p>Advantages of RAG:&lt;/p>
+&lt;ol>
+&lt;li>Privacy projection.&lt;/li>
+&lt;li>Allow chunking the texts and retrieve the related information more accurately&lt;/li>
+&lt;li>Adaptive to the size of data.&lt;/li>
+&lt;li>Accepts multiple type of data source (multimodality).&lt;/li>
+&lt;li>Only uses a small part of the total data, which is cheaper compared with long context window .&lt;/li>
+&lt;/ol>
+&lt;p>problems of RAG&lt;/p>
+&lt;ol>
+&lt;li>The quality of retrieval
+&lt;ul>
+&lt;li>The retrieved text cannot be aligned with the queried text.&lt;/li>
+&lt;li>The queried text are not retrieved all.&lt;/li>
+&lt;li>Redundancy or out-dated data may cause inaccuracy.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>the quality of response generation
+&lt;ul>
+&lt;li>Model Humiliation&lt;/li>
+&lt;li>Irrelevance&lt;/li>
+&lt;li>Organize the output to make it reasonable&lt;/li>
+&lt;li>Depends on the external information&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ol>
+&lt;p>Futures:&lt;/p>
+&lt;ol>
+&lt;li>Trustworthy RA-LLMs&lt;/li>
+&lt;li>Multi-lingual RA-LLMs&lt;/li>
+&lt;li>Multi-modal RA-LLMs&lt;/li>
+&lt;li>Quality of External Knowledge&lt;/li>
+&lt;/ol>
+&lt;h1 id="other-technologies">&lt;a href="#other-technologies" class="header-anchor">&lt;/a>Other technologies
+&lt;/h1>&lt;ol>
+&lt;li>Query transformations&lt;/li>
+&lt;li>Sentence window retrieval&lt;/li>
+&lt;li>Fusion retrieval/ hybrid search&lt;/li>
+&lt;li>multi-document agents&lt;/li>
+&lt;/ol>
+&lt;h1 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="https://www.semanticscholar.org/paper/A-Survey-on-RAG-Meets-LLMs%3A-Towards-Large-Language-Ding-Fan/0576e9ab604ba4bf20cd5947f3c4a2c609ac2705" target="_blank" rel="noopener"
+>A Survey on RAG Meets LLMs: Towards Retrieval-Augmented Large Language Models&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

@@ -1,0 +1,454 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Position Embedding on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/position-embedding/</link><description>Recent content in Position Embedding on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/position-embedding/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on RNoPE-SWA</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-rnope-swa/</link><pubDate>Tue, 02 Sep 2025 11:24:10 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-rnope-swa/</guid><description>&lt;p>作者系统性分析了已有的 attention 机制，然后作者提出了混合的 attention 机制，来提高模型在长上下文的表现以及维持模型在短上下文场景下的表现。&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>作者首先强调了提升 LLM 上下文长度面临的问题：&lt;/p>
+&lt;ol>
+&lt;li>如何有效处理长上下文输入&lt;/li>
+&lt;li>如何训练长上下文 LLM&lt;/li>
+&lt;li>如何降低长上下文 LLM 在 inference 时的 latency 以及 memory usage&lt;/li>
+&lt;/ol>
+&lt;p>对于建模长上下文输入，我们可以从 attention 机制或者位置编码来入手。前者类似的工作有 Landmark Attention 和 Focused Transformer, 但是这些方法的问题在于训练不稳定。 &lt;a class="link" href="https://maosong.website/p/notes-on-qk-norm/" target="_blank" rel="noopener"
+>QK norm&lt;/a> 可以比较好解决 softmax 分布过于极端的问题，但是其问题在于训练时的数值不稳定性，并且可能会影响模型的长上下文能力。&lt;/p>
+&lt;p>另一方面，对于位置编码，已有的工作如 APE, AliBi, &lt;a class="link" href="https://maosong.website/p/notes-on-position-encoding/" target="_blank" rel="noopener"
+>RoPE&lt;/a> 等都可以提供位置信息。但是，这些方法很有可能回影响模型最终的 attention score 分布。另外，&lt;a class="link" href="https://maosong.website/p/notes-on-nope/" target="_blank" rel="noopener"
+>NoPE&lt;/a> 探究了移除 position encoding 的可能性。&lt;/p>
+&lt;p>还有一些工作目的是降低 softmax attention 的时间复杂度和空间复杂度。比如 sliding window attention, sparse attention, &lt;a class="link" href="https://maosong.website/p/notes-on-streamingllm/" target="_blank" rel="noopener"
+>attention sink&lt;/a> 等都可以降低整体的时间/空间复杂度。但是这些方法最终的表现都有所下降。&lt;/p>
+&lt;h2 id="observation">&lt;a href="#observation" class="header-anchor">&lt;/a>Observation
+&lt;/h2>&lt;p>作者首先对比了以下不同方法对模型长上下文能力的影响。&lt;/p>
+&lt;p>作者训练了一个 8B 的模型，然后分别对比了三种方法：&lt;/p>
+&lt;ol>
+&lt;li>RoPE: base frequency 设置为 10,000, SFT 阶段扩展到 2M&lt;/li>
+&lt;li>QK-Norm: 在 RoPE 的基础上，对 query 和 key 先进行 normalization 再进行 RoPE&lt;/li>
+&lt;li>NoPE: 移除 attention 中的位置编码信息&lt;/li>
+&lt;/ol>
+&lt;p>作者分别评估了三种方法的表现，实验结果如下表&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Val Loss&lt;/th>
+&lt;th>MMLU&lt;/th>
+&lt;th>HellaSwag&lt;/th>
+&lt;th>CommonsenseQA&lt;/th>
+&lt;th>ARC-E&lt;/th>
+&lt;th>ARC-C&lt;/th>
+&lt;th>Needles 65k&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>RoPE&lt;/td>
+&lt;td>1.52&lt;/td>
+&lt;td>48.55&lt;/td>
+&lt;td>73.74&lt;/td>
+&lt;td>68.30&lt;/td>
+&lt;td>81.05&lt;/td>
+&lt;td>39.13&lt;/td>
+&lt;td>9.82&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>QK-Norm&lt;/td>
+&lt;td>1.53&lt;/td>
+&lt;td>48.21&lt;/td>
+&lt;td>73.68&lt;/td>
+&lt;td>68.23&lt;/td>
+&lt;td>80.54&lt;/td>
+&lt;td>38.98&lt;/td>
+&lt;td>7.93&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>NoPE&lt;/td>
+&lt;td>1.58&lt;/td>
+&lt;td>47.61&lt;/td>
+&lt;td>72.16&lt;/td>
+&lt;td>66.42&lt;/td>
+&lt;td>76.94&lt;/td>
+&lt;td>37.12&lt;/td>
+&lt;td>9.03&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>实验结果显示，对于通用任务，RoPE 和 QK-Norm 的表现差不多，而 NoPE 的表现较差。对于长上下文任务，QK-Norm 的表现最差。&lt;/p>
+&lt;p>接下来，作者分析了三种方法的 attention 分布情况。作者将上下文分为四个 segments：&lt;/p>
+&lt;ul>
+&lt;li>begin: 开始的 10 个 token&lt;/li>
+&lt;li>needle: 与 needle 相关的 tokens&lt;/li>
+&lt;li>context: 通用的上下文 token&lt;/li>
+&lt;li>qc: question/completion token, 语文题答案相关的 token&lt;/li>
+&lt;/ul>
+&lt;p>作者将 needle 放置在 50% 深度的位置。评测的实验结果如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Context Length&lt;/th>
+&lt;th>Model Variants&lt;/th>
+&lt;th>begin&lt;/th>
+&lt;th>needle&lt;/th>
+&lt;th>context&lt;/th>
+&lt;th>qc&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>8k&lt;/td>
+&lt;td>RoPE&lt;/td>
+&lt;td>0.3863&lt;/td>
+&lt;td>0.0328&lt;/td>
+&lt;td>0.3809&lt;/td>
+&lt;td>0.2000&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>QK-Norm&lt;/td>
+&lt;td>0.0242&lt;/td>
+&lt;td>0.0173&lt;/td>
+&lt;td>0.8020&lt;/td>
+&lt;td>0.1565&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>NoPE&lt;/td>
+&lt;td>0.3058&lt;/td>
+&lt;td>0.0454&lt;/td>
+&lt;td>0.4501&lt;/td>
+&lt;td>0.1987&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>32k&lt;/td>
+&lt;td>RoPE&lt;/td>
+&lt;td>0.3541&lt;/td>
+&lt;td>0.0201&lt;/td>
+&lt;td>0.4343&lt;/td>
+&lt;td>0.1915&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>QK-Norm&lt;/td>
+&lt;td>0.0064&lt;/td>
+&lt;td>0.0056&lt;/td>
+&lt;td>0.8517&lt;/td>
+&lt;td>0.1364&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>NoPE&lt;/td>
+&lt;td>0.2807&lt;/td>
+&lt;td>0.0325&lt;/td>
+&lt;td>0.4981&lt;/td>
+&lt;td>0.1886&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>128k&lt;/td>
+&lt;td>RoPE&lt;/td>
+&lt;td>0.3463&lt;/td>
+&lt;td>0.0010&lt;/td>
+&lt;td>0.4751&lt;/td>
+&lt;td>0.1776&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>QK-Norm&lt;/td>
+&lt;td>0.0010&lt;/td>
+&lt;td>0.0004&lt;/td>
+&lt;td>0.8993&lt;/td>
+&lt;td>0.0994&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>NoPE&lt;/td>
+&lt;td>0.0846&lt;/td>
+&lt;td>0.0073&lt;/td>
+&lt;td>0.8156&lt;/td>
+&lt;td>0.0925&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>实验结果显示：&lt;/p>
+&lt;ol>
+&lt;li>NoPE 是最关注 needle token 信息的，RoPE 次之，QK-Norm 最差&lt;/li>
+&lt;li>QK-Norm 更关注上下文信息，对其他的信息关注度较少&lt;/li>
+&lt;/ol>
+&lt;p>作者发现 QK-Norm 对初始的 token 信息关注度较少，作者认为这是因为 normalization 会让模型更关注邻近的 token 信息。为了验证这个观点，作者在不同的上下文长度下，分别计算了不同方法的 attention 分布情况，为了避免噪声，作者将开始的 10 个 token 以及最后的 $3\%$ token 排除在外，实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-rnope-swa/RNoPE-SWA-8k-attention.png"
+width="700"
+height="496"
+loading="lazy"
+alt="Attention distribution on 8K context length"
+class="gallery-image"
+data-flex-grow="141"
+data-flex-basis="338px"
+>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-rnope-swa/RNoPE-SWA-32k-attention.png"
+width="692"
+height="482"
+loading="lazy"
+alt="Attention distribution on 32K context length"
+class="gallery-image"
+data-flex-grow="143"
+data-flex-basis="344px"
+>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-rnope-swa/RNoPE-SWA-128k-attention.png"
+width="693"
+height="564"
+loading="lazy"
+alt="Attention distribution on 128K context length"
+class="gallery-image"
+data-flex-grow="122"
+data-flex-basis="294px"
+>&lt;/p>
+&lt;p>实验结果说明，相比于 softmax attention, QK-Norm 的 attention score 分布更平滑，其对于 need token 的注意力不如 RoPE, 这也说明了为什么 QK-Norm 的长上下文能力比较差。并且，QK-Norm 的 recency bias 更严重。&lt;/p>
+&lt;p>作者通过计算 RoPE 和 QK-Norm 的 attention distribution 的 entropy 来进一步说明这一点，结果如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>8k&lt;/th>
+&lt;th>32k&lt;/th>
+&lt;th>128k&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>RoPE&lt;/td>
+&lt;td>6.02&lt;/td>
+&lt;td>6.95&lt;/td>
+&lt;td>7.62&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>QK-Norm&lt;/td>
+&lt;td>10.71&lt;/td>
+&lt;td>12.46&lt;/td>
+&lt;td>14.14&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>结果显示 QK-Norm 的熵更高，这意味着 QK-Norm 的 attention score 分布更分散，也就证明了 Qk-Norm retrieval 能力比较差。&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;p>考虑到 &lt;a class="link" href="https://maosong.website/p/notes-on-nope/" target="_blank" rel="noopener"
+>NoPE&lt;/a> 和 RopE 各自的优点，作者提出了一个混合架构，来结合 NoPE 与 RoPE. 具体做法就是 NoPE layer 和 RoPE layer 交替进行。作者将这个模型架构记为 RNoPE.&lt;/p>
+&lt;p>RNoPE 不同 layer 与不同 base frequency 产生的 attention score 分布如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>NoPE Layers - begin&lt;/th>
+&lt;th>NoPE Layers - needle&lt;/th>
+&lt;th>NoPE Layers - context&lt;/th>
+&lt;th>NoPE Layers - qc&lt;/th>
+&lt;th>RoPE Layers - begin&lt;/th>
+&lt;th>RoPE Layers - needle&lt;/th>
+&lt;th>RoPE Layers - context&lt;/th>
+&lt;th>RoPE Layers - qc&lt;/th>
+&lt;th>needles-128k&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>RoPE&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>0.3541&lt;/td>
+&lt;td>0.0201&lt;/td>
+&lt;td>0.4343&lt;/td>
+&lt;td>0.1915&lt;/td>
+&lt;td>7.395&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>RNoPE-10k&lt;/td>
+&lt;td>0.3275&lt;/td>
+&lt;td>0.0765&lt;/td>
+&lt;td>0.5672&lt;/td>
+&lt;td>0.0287&lt;/td>
+&lt;td>0.0049&lt;/td>
+&lt;td>0.0004&lt;/td>
+&lt;td>0.6805&lt;/td>
+&lt;td>0.3142&lt;/td>
+&lt;td>8.036&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>RNoPE-100k&lt;/td>
+&lt;td>0.3263&lt;/td>
+&lt;td>0.0778&lt;/td>
+&lt;td>0.5633&lt;/td>
+&lt;td>0.0327&lt;/td>
+&lt;td>0.0241&lt;/td>
+&lt;td>0.0005&lt;/td>
+&lt;td>0.6782&lt;/td>
+&lt;td>0.2972&lt;/td>
+&lt;td>7.461&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>RNoPE-2M&lt;/td>
+&lt;td>0.3250&lt;/td>
+&lt;td>0.0712&lt;/td>
+&lt;td>0.5735&lt;/td>
+&lt;td>0.0303&lt;/td>
+&lt;td>0.1111&lt;/td>
+&lt;td>0.0046&lt;/td>
+&lt;td>0.6233&lt;/td>
+&lt;td>0.2611&lt;/td>
+&lt;td>7.022&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>RNoPE-4M&lt;/td>
+&lt;td>0.3486&lt;/td>
+&lt;td>0.0369&lt;/td>
+&lt;td>0.5981&lt;/td>
+&lt;td>0.0165&lt;/td>
+&lt;td>0.0960&lt;/td>
+&lt;td>0.0039&lt;/td>
+&lt;td>0.6774&lt;/td>
+&lt;td>0.2227&lt;/td>
+&lt;td>6.203&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>RNoPE-10k-swa&lt;/td>
+&lt;td>0.3303&lt;/td>
+&lt;td>0.0742&lt;/td>
+&lt;td>0.5634&lt;/td>
+&lt;td>0.0321&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>9.562&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>实验结果显示，在 RNoPE 架构中，&lt;/p>
+&lt;ol>
+&lt;li>提升 base frequency 带来的增益逐渐递减&lt;/li>
+&lt;li>NoPE layer 的 retrieval 能力比较强，表现在 attention sink 现象以及对于 needle token 的 spike. 但是其 recency bias 比较弱&lt;/li>
+&lt;li>RoPE 的 retrieval 能力比较弱，但是其 attention sink 现象比较小&lt;/li>
+&lt;li>当 base frequency 增加止呕，RoPE 的 recency bias 会降低，表现在 qc token 的权重降低&lt;/li>
+&lt;/ol>
+&lt;p>作者发现，RoPE 的 receptive field 会影响 NoPE layer 的 retrieval 能力。作者总结得到两个 insight&lt;/p>
+&lt;ol>
+&lt;li>NoPE layer 对于 retrieval 任务比较擅长，而 RoPE layer 对于处理 local Information 比较擅长&lt;/li>
+&lt;li>限制 RoPE 的 receptive field 可以保证 NoPE layer 的 retrieval 能力&lt;/li>
+&lt;/ol>
+&lt;p>基于这两个 insight, 作者构建了 RNoPE-SWA 架构，RNoPE-SWA 相比于 RNoPE, 将 full attention 变成了 sliding window attention, 来避免 RoPE layer 对下游的 NoPE layer 产生影响。&lt;/p>
+&lt;p>最终，作者基于 Command R+ 构建了模型，作者去除了 QK-Norm, 对于 NoPE layer, 作者使用了 full attention, 对于 RoPE layer, 作者使用了 window size 为 4096 的 sliding window attention. 作者通过实验验证了 NoPE layer 和 RoPElayer 的比例，实验结果发现 $1:3$ 的比例是最优的。最终每 4 个 layer 为一组，前三组为 SWA, 最后一层为 full attention.&lt;/p>
+&lt;p>最终，在通用任务上评测的结果如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>MMLU&lt;/th>
+&lt;th>HellaSwag&lt;/th>
+&lt;th>ARC-E&lt;/th>
+&lt;th>ARC-C&lt;/th>
+&lt;th>SATEn&lt;/th>
+&lt;th>SATMath&lt;/th>
+&lt;th>GSM8K&lt;/th>
+&lt;th>Winogrande&lt;/th>
+&lt;th>MBPP&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Baseline&lt;/td>
+&lt;td>57.5&lt;/td>
+&lt;td>75.8&lt;/td>
+&lt;td>84.6&lt;/td>
+&lt;td>48.5&lt;/td>
+&lt;td>70.0&lt;/td>
+&lt;td>30.9&lt;/td>
+&lt;td>40.9&lt;/td>
+&lt;td>68.5&lt;/td>
+&lt;td>39.1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>RNope-SWA&lt;/td>
+&lt;td>59.5&lt;/td>
+&lt;td>76.2&lt;/td>
+&lt;td>82.5&lt;/td>
+&lt;td>48.8&lt;/td>
+&lt;td>71.9&lt;/td>
+&lt;td>30.5&lt;/td>
+&lt;td>42.7&lt;/td>
+&lt;td>69.5&lt;/td>
+&lt;td>39.3&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>在 Ruler retrieval 上评测的结果如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>8k&lt;/th>
+&lt;th>16k&lt;/th>
+&lt;th>32k&lt;/th>
+&lt;th>64k&lt;/th>
+&lt;th>128k&lt;/th>
+&lt;th>256k&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Baseline&lt;/td>
+&lt;td>96.6&lt;/td>
+&lt;td>94.4&lt;/td>
+&lt;td>95.1&lt;/td>
+&lt;td>89.1&lt;/td>
+&lt;td>83.0&lt;/td>
+&lt;td>57.1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>RNope-SWA&lt;/td>
+&lt;td>96.1&lt;/td>
+&lt;td>96.1&lt;/td>
+&lt;td>94.9&lt;/td>
+&lt;td>92.0&lt;/td>
+&lt;td>90.0&lt;/td>
+&lt;td>74.8&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>在 Ruler QA 上评测的结果如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>8k&lt;/th>
+&lt;th>16k&lt;/th>
+&lt;th>32k&lt;/th>
+&lt;th>64k&lt;/th>
+&lt;th>128k&lt;/th>
+&lt;th>256k&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Baseline&lt;/td>
+&lt;td>53.5&lt;/td>
+&lt;td>50.0&lt;/td>
+&lt;td>52.5&lt;/td>
+&lt;td>45.5&lt;/td>
+&lt;td>36.0&lt;/td>
+&lt;td>30.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>RNope-SWA&lt;/td>
+&lt;td>55.5&lt;/td>
+&lt;td>52.5&lt;/td>
+&lt;td>55.5&lt;/td>
+&lt;td>49.0&lt;/td>
+&lt;td>46.0&lt;/td>
+&lt;td>42.5&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>实验结果说明，模型在通用任务任务上与 baseline 模型表现差不多，且长上下文能力更强&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者提出了 RNope-SWA, 一个混合 NoPE, RoPE position embedding 和 sliding window attention 的 attention 机制。RNope-SWA 可以在保持模型表现的同时提高计算效率和降低 KV cache 占用。&lt;/p>
+&lt;p>尽管本文和已有的工作如 YoCo, Jamba-1.5 和 &lt;a class="link" href="https://maosong.website/p/notes-on-minimax-01/" target="_blank" rel="noopener"
+>MiniMax-01&lt;/a> 均证明了混合 attention 架构的有效性。但是，目前对于其工作机制尚缺乏一个比较系统性的理解。作者认为这是一个需要探究的方向。另外，作者还认为如何更好的汇总上下文信息与位置信息也是一个可以探究的方向。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://arxiv.org/pdf/2501.18795" target="_blank" rel="noopener"
+>arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

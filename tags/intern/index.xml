@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Intern on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/intern/</link><description>Recent content in Intern on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/intern/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on InternVL3.5</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-internvl3.5/</link><pubDate>Mon, 01 Sep 2025 11:30:50 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-internvl3.5/</guid><description>&lt;p>上海 AI LAB 提出了 InternVL 3.5 系列多模态大模型，InternVL 3.5 主要强调了模型的 reasoning 能力以及 inference 效率。&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>作者首先介绍了已有多模态大模型的进展，然后提到有两个未解决的问题：&lt;/p>
+&lt;ol>
+&lt;li>如何构建一个 stable, effective, scalable 的 RL 框架来训练 MLLM&lt;/li>
+&lt;li>如何降低 MLLM 在长上下文场景下的计算开销过高的问题&lt;/li>
+&lt;/ol>
+&lt;p>为了解决这两个问题，作者提出了 InternVL3.5 多模态大模型系列，相比于 InternVL3, 模型在 reasoning 能力和 efficiency 上均进行了提升。作者主要通过 Cascade RL 框架来提高模型的 reasoning 表现，以及使用 Visual Resolution Router (ViR) 和 Decoupled Vision Language Deployment (DvD) 来提高模型的推理效率。&lt;/p>
+&lt;p>总结起来，InternVL3.5 模型的贡献如下：&lt;/p>
+&lt;ol>
+&lt;li>开源了 InternVL3.5 系列多模态大模型，模型拥有先进的 reasoning 能力以及推理效率&lt;/li>
+&lt;li>提出了 Cascade RL, ViR 以及 DvD 等模块来提高模型的表现/推理效率&lt;/li>
+&lt;li>系统性评估了模型的表现&lt;/li>
+&lt;/ol>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;h3 id="architecture">&lt;a href="#architecture" class="header-anchor">&lt;/a>Architecture
+&lt;/h3>&lt;p>InternVL3.5 的架构与 InternVL3 的架构基本一致，包括一个 ViT, 一个 MLP 和一个 LLM, 模型的架构如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-internvl3.5/InternVL-3-5-architecture.png"
+width="1295"
+height="419"
+loading="lazy"
+alt="Architecture of InternVl3.5"
+class="gallery-image"
+data-flex-grow="309"
+data-flex-basis="741px"
+>&lt;/p>
+&lt;p>模型配置如下表所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-internvl3.5/InternVL-3-5-model-configuration.png"
+width="1227"
+height="484"
+loading="lazy"
+alt="Configuration of InternVL3.5"
+class="gallery-image"
+data-flex-grow="253"
+data-flex-basis="608px"
+>&lt;/p>
+&lt;p>InternVl3.5 延续了 InternVL 系列的做法，即 20B 以下的模型使用 InternViT-300M, 20B 以上的模型使用 InternViT-6B 作为 Visual encoder. 大语言模型基于 &lt;a class="link" href="https://maosong.website/p/notes-on-qwen3/" target="_blank" rel="noopener"
+>Qwen3&lt;/a> 和 &lt;a class="link" href="https://maosong.website/p/notes-on-gpt-oss/" target="_blank" rel="noopener"
+>gpt-oss&lt;/a>.&lt;/p>
+&lt;p>在 InternVL3.5 的基础上，作者还构建了 InternVL3.5-Flash 模型，InternVL3.5-Flash 不同的地方在于，其在 MLP 之前加入了一个 Visual Resolution Router (ViR) 模块，来处理不同分辨率的图片。在 InternVL3.5 中，每个 image patch 由 1024 个视觉 token 来表示，然后通过 pixel shuffle 压缩至 256 个。 在 InternVL3.5-Flash 中，ViR 首先会判断每个 patch 的 semantic richness, 然后基于 semantic richness 来将对应的 token 路由到不同的 pixel shuffle 模块中，最高可以将视觉 token 压缩到 64 个，这样就可以大幅度提高模型的推理效率。&lt;/p>
+&lt;h3 id="pre-training">&lt;a href="#pre-training" class="header-anchor">&lt;/a>Pre-training
+&lt;/h3>&lt;p>Pre-training 使用 next-token-prediction loss 来更新模型权重，给定多模态 sequence $x=(x_1,\dots,x_L)$, 损失函数定义为&lt;/p>
+$$
+\mathcal{L}(\theta) = -\sum_{x_i\text{ is text token}} \log p_{\theta}(x_i
+\mid x_1,\dots,x_{i-1})
+$$&lt;p>与 InternVL2.5 一样，作者还对不同长度的 sequence 进行了加权，避免模型产生 bias, 加权后的 loss 为&lt;/p>
+$$
+\mathcal{L}(\theta) = -\sum_{x_i\text{ is text token}}\frac{w_i}{\sum_j w_j} \log p_{\theta}(x_i
+\mid x_1,\dots,x_{i-1}),\quad w_i = \frac{1}{N^{0.5}}
+$$&lt;p>其中 $N$ 是训练样本中需要计算损失的 token 个数。&lt;/p>
+&lt;p>训练数据蛀牙包含两部分：&lt;/p>
+&lt;ol>
+&lt;li>多模态数据，这部分数据基于 InternVL3&lt;/li>
+&lt;li>纯文本数据，基于 InternLM 系列和开源的数据集&lt;/li>
+&lt;/ol>
+&lt;p>最终，预训练数据一共包含&lt;strong>116M&lt;/strong> 样本，&lt;strong>250B&lt;/strong> token. 纯文本数据和多模态数据的比例为 $1:2.5$. 模型上下文长度为 $32K$.&lt;/p>
+&lt;h3 id="post-training">&lt;a href="#post-training" class="header-anchor">&lt;/a>Post-training
+&lt;/h3>&lt;p>Post-training 包含三个阶段：&lt;/p>
+&lt;ol>
+&lt;li>SFT： 使用高质量对话数据提高模型表现&lt;/li>
+&lt;li>Cascade RL: 提高模型的 reasoning 能力&lt;/li>
+&lt;li>Visual Consistency Learning: 训练 ViR 模块，提高模型处理动态分辨率图片的能力&lt;/li>
+&lt;/ol>
+&lt;p>训练 pipeline 如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-internvl3.5/InternVL-3-5-post-training-pipeline.png"
+width="1290"
+height="335"
+loading="lazy"
+alt="Post-training pipeline of InternVL3.5"
+class="gallery-image"
+data-flex-grow="385"
+data-flex-basis="924px"
+>&lt;/p>
+&lt;p>SFT 阶段的训练数据包括三个方面：&lt;/p>
+&lt;ol>
+&lt;li>InternVL3 的指令跟随数据&lt;/li>
+&lt;li>多模态 reasoning 数据&lt;/li>
+&lt;li>能力扩展数据，包括 GUI 交互，具身交互以及 SVG 理解与生成的数据&lt;/li>
+&lt;/ol>
+&lt;p>Cascade RL 阶段结合了 offline RL 和 online RL 的优点。基本思想是先使用 offline RL 来提高模型的能力，降低训练成本。然后再使用 online RL 进一步提高模型的 reasoning 表现。&lt;/p>
+&lt;p>offline RL 阶段使用的是 InternVL-MPO 算法，其损失函数为&lt;/p>
+$$
+\mathcal{L}_{MPO} = w_p\mathcal{L}_p+w_q\mathcal{L}_q+w_g\mathcal{L}_g
+$$&lt;p>其中，$\mathcal{L}_p$ 为 &lt;a class="link" href="https://maosong.website/p/notes-on-dpo/" target="_blank" rel="noopener"
+>DPO&lt;/a> 的损失函数，$\mathcal{L}_q$ 为 Quality loss, $\mathcal{L}_g$ 为 SFT 使用的 next-token-prediction loss.&lt;/p>
+&lt;p>online RL 阶段使用的是 &lt;a class="link" href="https://maosong.website/p/notes-on-gspo/" target="_blank" rel="noopener"
+>GSPO&lt;/a> 算法，核心思想是在 sample 层面做归一化。这个阶段的目的是进一步提高模型的表现。&lt;/p>
+&lt;p>Cascade RL 的优势在于：&lt;/p>
+&lt;ol>
+&lt;li>训练更稳定：offline RL 可以避免模型产生 reward hacking 现象，online RL 阶段可以进一步提高模型的表现&lt;/li>
+&lt;li>训练效率更高：offline RL 可以有效提高采样效率&lt;/li>
+&lt;li>表现更好：先 MPO 再 RL 可以达到更好的表现&lt;/li>
+&lt;/ol>
+&lt;p>Visual Consistency Learning (ViCO) 的目的是降低 InternVL3.5 的推理开销。这个阶段主要训练 ViR 模块&lt;/p>
+&lt;p>ViCO 包括两个 stage:&lt;/p>
+&lt;p>Stage 1: Consistency training&lt;/p>
+&lt;p>这一阶段的目的是使得不同压缩率处理的视觉 token 对应的输出与 ground truth 尽可能一致，作者使用另外一个 InternVL3.5 模型作为 reference model, 然后损失函数为&lt;/p>
+$$
+\mathcal{L}_{ViCO} = \mathbb{E}_{\xi\sim\mathcal{R}}\left[\frac{1}{N}\sum_{i=1}^N\mathrm{KL}\left(\pi_{\mathrm{ref}}(y_i\mid y_{&lt;i}, I)\ \Vert\ \pi_{\theta}(y_i\mid y_{&lt;i}, I_{\xi})\right)\right]
+$$&lt;p>$\xi\in\{1/4,1/16\}$ 为 compression rate, 训练是随机采样。$\xi=1/4$ 代表最终会有 256 个视觉 token, $\xi=1/16$ 代表最终会有 64 个 token.&lt;/p>
+&lt;p>Stage 2: Router training&lt;/p>
+&lt;p>这个阶段的目的是训练 ViR 来选取合适的精度/压缩率。ViR 此时作为一个 binary classifier 来进行训练，训练的损失函数为 cross-entropy loss. 模型其他部分参数冻结，仅训练 ViR 模块，首先，我们将计算压缩 16 倍后的损失与压缩 4 倍的损失的比例&lt;/p>
+$$
+r_i = \frac{\mathcal{L}_{ViCO}(y_i\mid I_{1/16})}{\mathcal{L}_{ViCO}(y_i\mid I_{1/4})}
+$$&lt;p>该比例衡量了压缩 token 之后带来的性能下降程度，接下来，作者设定了一个阈值 $\tau$, 当性能下降超过阈值 $\tau$, 则认为应该使用高精度，也就是 $\xi=1/4$, 反之则说明不需要过度视觉 token, 可以使用低精度，也就是 $\xi=1/16$. 总结得到&lt;/p>
+$$
+y_i^{router} = \begin{cases}
+0, &amp;r_i&lt;\tau\\
+1, &amp;r_i>\tau
+\end{cases}
+$$&lt;p>训练时，作者基于 sliding window 中的 $r_i$ 来动态调整 $\tau$ 的值。&lt;/p>
+&lt;p>post-training 的训练数据如下：&lt;/p>
+&lt;ol>
+&lt;li>SFT 训练数据包括&lt;strong>56M&lt;/strong> 样本，&lt;strong>130B&lt;/strong> token, 纯文本数据与多模态数据的比例为 $1:3.5$.&lt;/li>
+&lt;li>Cascade RL 的训练数据主要基于 MMPR, 包含 200K 左右的样本，通过过滤最终得到&lt;strong>70K&lt;/strong>左右的样本。online RL 同样使用这批数据进行训练&lt;/li>
+&lt;li>ViCO 的训练数据与 SFT 阶段的训练数据一致。主要是 OCR 以及 VQA 数据&lt;/li>
+&lt;/ol>
+&lt;h3 id="test-time-scaling">&lt;a href="#test-time-scaling" class="header-anchor">&lt;/a>Test-time Scaling
+&lt;/h3>&lt;p>test time scaling 主要基于两个方面：&lt;/p>
+&lt;ol>
+&lt;li>deep thinking: 就是 reasoning mode&lt;/li>
+&lt;li>parallel thinking: 基于 VisualPRM 进行多次采样，然后基于 BoN 策略得到最终的输出。&lt;/li>
+&lt;/ol>
+&lt;h3 id="infra">&lt;a href="#infra" class="header-anchor">&lt;/a>Infra
+&lt;/h3>&lt;p>模型使用 XTuner 框架进行训练，使用了包括 FSDP, data packing, FP8, flashattention3 等策略。&lt;/p>
+&lt;p>作者还提出了 DvD 的策略来提高推理效率，核心思想就是将 ViT-MLP 模块放在一个 server 上，然后将 LLM 放在另一个 server 上，这样就也可以提高整体的通信效率。框架示意图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-internvl3.5/InternVL-3-5-DvD.png"
+width="1297"
+height="580"
+loading="lazy"
+alt="DvD of InternVL3.5"
+class="gallery-image"
+data-flex-grow="223"
+data-flex-basis="536px"
+>&lt;/p>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>模型整体表现如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-internvl3.5/InternVL-3-5-model-performance.png"
+width="964"
+height="1113"
+loading="lazy"
+alt="Performance of InternVL3.5"
+class="gallery-image"
+data-flex-grow="86"
+data-flex-basis="207px"
+>&lt;/p>
+&lt;h3 id="ablation-study">&lt;a href="#ablation-study" class="header-anchor">&lt;/a>Ablation Study
+&lt;/h3>&lt;p>作者首先探究了 Cascade RL 对模型表现的影响&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-internvl3.5/InternVL-3-5-ablation-cascade-RL.png"
+width="1299"
+height="331"
+loading="lazy"
+alt="Ablation study on Cascade RL"
+class="gallery-image"
+data-flex-grow="392"
+data-flex-basis="941px"
+>&lt;/p>
+&lt;p>实验结果显示，SFT, MPO 和 offline RL 每个阶段都可以提高模型的多模态 reasoning 表现。&lt;/p>
+&lt;p>作者进一步探究了不同阶段的投入产出比，也就是训练时间与最终模型表现的变化情况，如下表所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-internvl3.5/InternVL-3-5-training-efficiency-effectiveness.png"
+width="1237"
+height="213"
+loading="lazy"
+alt="Training efficiency and effectiveness"
+class="gallery-image"
+data-flex-grow="580"
+data-flex-basis="1393px"
+>&lt;/p>
+&lt;p>实验结果显示，尽管 GSPO 的效果提升比较明显，但是训练所需要的时间比较长。如果先 MPO 再进行 GSPO 的话，我们可以在较短的时间里取得较好的表现。&lt;/p>
+&lt;p>接下来，作者探究了 ViR 的有效性和效率。作者首先对比了 InternVL3.5 以及 InternVL3.5-flash 的表现。结果显示，大部分情况下，这两个模型的表现没有较大差距。说明 ViR 不会损害模型的性能。&lt;/p>
+&lt;p>作者进一步探究了 ViR 和 DvD 对提升模型效率的影响，实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-internvl3.5/InternVL-3-5-ablation-DvD.png"
+width="877"
+height="397"
+loading="lazy"
+alt="Ablation study on DvD and ViR"
+class="gallery-image"
+data-flex-grow="220"
+data-flex-basis="530px"
+>&lt;/p>
+&lt;p>实验结果说明，对于高精度图片输入，DvD 和 ViR 均可以提高模型的推理效率。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>在本文中，作者提出了 InternVL3.5 系列多模态大模型，作者提出了 Cascade RL 框架，该框架结合了 offline RL 以及 online RL 来提高模型的 reasoning 表现以及训练效率。作者还提出了 ViR 以及 DvD 模块来提高模型处理高分辨率图片的效率。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2508.18265" target="_blank" rel="noopener"
+>Arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

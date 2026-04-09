@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>RoPE on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/rope/</link><description>Recent content in RoPE on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/rope/index.xml" rel="self" type="application/rss+xml"/><item><title>Base of RoPE Bounds Context Length</title><link>https://github.com/jiangyigithub/ai.github.io/p/base-of-rope-bounds-context-length/</link><pubDate>Mon, 22 Dec 2025 11:34:42 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/base-of-rope-bounds-context-length/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>&lt;a class="link" href="https://maosong.website/p/notes-on-position-encoding/" target="_blank" rel="noopener"
+>RoPE&lt;/a> 已经成为了大多数 LLM 使用的 position encoding 范式，但是，RoPE 与 LLM long context 之间的关系还没有被探索清楚。在本文中，作者就探究了 base frequency 与 LLM context capability 之间的关系，并给出了一个达到指定上下文长度所需要的 base frequency 的 lower bound.&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;p>首先作者回顾了 attention 与 &lt;a class="link" href="https://maosong.website/p/notes-on-position-encoding/" target="_blank" rel="noopener"
+>RoPE&lt;/a> 的定义， 关键就是 RoPE 这部分，如下所示&lt;/p>
+$$
+A_{ij} = (R_{i,\theta}q_i)^T(R_{j,\theta}k_j) = q_i^TR_{i-j,\theta}k_j
+$$&lt;p>这里 $\theta$ 就是 base frequency, 作者总结不同模型的 base frequency 配置如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Llama-7B&lt;/th>
+&lt;th>Llama2-7B&lt;/th>
+&lt;th>Llama3-8B&lt;/th>
+&lt;th>Mistral-7B&lt;/th>
+&lt;th>Baichuan2-7B&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Base frequency&lt;/td>
+&lt;td>10,000&lt;/td>
+&lt;td>10,000&lt;/td>
+&lt;td>500,000&lt;/td>
+&lt;td>1,000,000&lt;/td>
+&lt;td>10,000&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Context length&lt;/td>
+&lt;td>2048&lt;/td>
+&lt;td>4096&lt;/td>
+&lt;td>8192&lt;/td>
+&lt;td>32,768&lt;/td>
+&lt;td>4,096&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>接下来，作者回顾了 &lt;a class="link" href="https://maosong.website/p/notes-on-yarn/" target="_blank" rel="noopener"
+>YARN&lt;/a>. 其核心思想在于，预训练阶段所有可能的 $\cos(t-s)\theta_i$ 都见过，才能保证模型的 OOD 表现&lt;/p>
+&lt;p>作者认为 base frequency 的设置应该满足两个条件：&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>The closer token gets more attention&lt;/strong>: 当前的 token 应该给邻近的 token 更高的注意力&lt;/li>
+&lt;li>&lt;strong>The similar token gets more attention&lt;/strong>: 当前的 token 应该给相似的 token 更高的注意力&lt;/li>
+&lt;/ol>
+&lt;p>在 &lt;a class="link" href="https://maosong.website/p/notes-on-position-encoding/" target="_blank" rel="noopener"
+>RoPE&lt;/a> 中，作者已经给出了 $A_{ij}$ 与相对距离 $|i-j|$ 之间的关系。因此第一个性质已经满足了。&lt;/p>
+&lt;p>接下来，作者分析了相似 token 的性质，作者定义 token 的相似性如下：&lt;/p>
+$$
+\mathbb{E}_{q,k^*}[q^TR_{m,\theta}k^*] - \mathbb{E}_{q,k}[q^TR_{m,\theta}k]
+$$&lt;p>这里 $k^*=q+\epsilon$ 代表了相似的 token, 而 $k$ 是一个随机 token. 作者给出的结论如下&lt;/p>
+&lt;p>&lt;strong>Theorem&lt;/strong>
+假设 $q,k\in\mathbb{R}^d$ 独立同分布，它们的标准差为 $\sigma\in\mathbb{R}$, 则对于 $k^*=q+\epsilon$, $\epsilon$ 是一个随机变量满足 $\mathbb{E}[\epsilon]=0$, 则我们有&lt;/p>
+$$
+\mathbb{E}_{q,k^*}[q^TR_{m,\theta}k^*] - \mathbb{E}_{q,k}[q^TR_{m,\theta}k] = 2\sigma^2\sum_{i=0}^{d/2-1}\cos(m\theta_i)
+$$&lt;p>作者定义 $B_{m,\theta}=\sum_{i=0}^{d/2-1}\cos(m\theta_i)$, 作者认为给定 $\theta$, 模型的上下文长度 $L_\theta$ 满足&lt;/p>
+$$
+L_\theta = \sup\{L\mid B_{m,\theta}\geq 0, \forall m\in[L]\}
+$$&lt;p>也就是说，base frequency 决定了 LLM 的上下文长度。作者给出了不同的上下文长度对应的 base frequency 如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Context Len.&lt;/th>
+&lt;th>1k&lt;/th>
+&lt;th>2k&lt;/th>
+&lt;th>4k&lt;/th>
+&lt;th>8k&lt;/th>
+&lt;th>16k&lt;/th>
+&lt;th>32k&lt;/th>
+&lt;th>64k&lt;/th>
+&lt;th>128k&lt;/th>
+&lt;th>256k&lt;/th>
+&lt;th>512k&lt;/th>
+&lt;th>1M&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Lower Bound&lt;/td>
+&lt;td>4.3e3&lt;/td>
+&lt;td>1.6e4&lt;/td>
+&lt;td>2.7e4&lt;/td>
+&lt;td>8.4e4&lt;/td>
+&lt;td>3.1e5&lt;/td>
+&lt;td>6.4e5&lt;/td>
+&lt;td>2.1e6&lt;/td>
+&lt;td>7.8e6&lt;/td>
+&lt;td>3.6e7&lt;/td>
+&lt;td>6.4e7&lt;/td>
+&lt;td>5.1e8&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>总的来说，远距离衰减性保证了模型会更关注邻近的 token, 而相似 token 保证了模型能够区分出真正有意义的 token.&lt;/p>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>作者首先分析了 base frequency 在 fine-tuning 阶段对模型上下文能力的影响，实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/base-of-rope-bounds-context-length/base-frequency-fine-tuning-impact.png"
+width="1072"
+height="465"
+loading="lazy"
+alt="impact of base frequency on fine-tuning stage"
+class="gallery-image"
+data-flex-grow="230"
+data-flex-basis="553px"
+>&lt;/p>
+&lt;p>从实验结果可以看到，当 base frequency 低于阈值时，模型的表现急剧下降。&lt;/p>
+&lt;p>作者进一步探讨了 base frequency 对于模型 pre-training 阶段的影响，结果也是一样的，即非常小的 base frequency 会限制模型的 context 能力，结果下图所示 （三行分别代表了 base frequency 为 1e2, 1e4 和 1e6 的情况）&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/base-of-rope-bounds-context-length/base-frequency-pre-training-stage.png"
+width="1044"
+height="725"
+loading="lazy"
+alt="impact of base frequency on pre-training stage"
+class="gallery-image"
+data-flex-grow="144"
+data-flex-basis="345px"
+>&lt;/p>
+&lt;p>可以看到，尽管 perplexity 都差不多，但是使用更大的 base frequency 其长上下文能力明显更好。&lt;/p>
+&lt;p>作者进一步分析了为什么较小的 base frequency 会影响模型的长上下文能力。作者认为较小的 base frequency 会导致 $B_{m,\theta}$ 接近于 0， 从而模型难以区分随机 token 和相似 token, 这样模型只能依赖于邻近 token 进行学习，这样就限制了模型的长上下文能力&lt;/p>
+&lt;p>作者还进一步对比了提高 base frequency 与 Interpolation 两种做法，实验结果如下表所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/base-of-rope-bounds-context-length/base-frequency-comparison-interpolation.png"
+width="865"
+height="180"
+loading="lazy"
+alt="comparison with interpolation"
+class="gallery-image"
+data-flex-grow="480"
+data-flex-basis="1153px"
+>&lt;/p>
+&lt;p>实验结果说明，Interpolation 在上下文超过 30K 之后，其 $B_{m,\theta}\leq0$ 的 次数显著增加，表明了其和上下文能力之间的关系。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者在本文中，探究了 RoPE 中 base frequency 与 LLM 上下文能力之间的关系，发现了提高模型的上下文能力需要关注 RoPE 的 base frequency 超参数，并给出了对应的 lower bound. 作者通过实验验证了这个观点。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2405.14591" target="_blank" rel="noopener"
+>arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

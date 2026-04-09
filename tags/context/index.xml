@@ -1,0 +1,668 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Context on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/context/</link><description>Recent content in Context on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/context/index.xml" rel="self" type="application/rss+xml"/><item><title>Dual Chunk Attention</title><link>https://github.com/jiangyigithub/ai.github.io/p/dual-chunk-attention/</link><pubDate>Sat, 12 Jul 2025 10:41:12 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/dual-chunk-attention/</guid><description>&lt;p>Dual Chunk Attention (DCA) 由阿里巴巴在 2024 年 9 月份提出，DCA 是一个无需训练的，扩展 LLM 上下文长度的方法，后续，DCA 被应用于 Qwen2, Qwen2.5, Qwen2.5-1M 以及 Qwen3 中，与 &lt;a class="link" href="https://maosong.website/p/notes-on-yarn/" target="_blank" rel="noopener"
+>YARN&lt;/a> 一起作为扩展模型上下文的有效手段&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>提升 LLM 上下文长度的方法可以分为两类：一类是 training-free 的，包括 LM-infinite 和 StreamingLLM 等，这些方法以损失 long range dependency 为代价来保持较低的 perplexity。另一类为了保留全局信息，则是通过外插来扩展模型的上下文，主要工作我们在 &lt;a class="link" href="https://maosong.website/p/notes-on-yarn/" target="_blank" rel="noopener"
+>YARN&lt;/a> 中已经回顾了。&lt;/p>
+&lt;p>第二类方法的问题在于，其依赖训练，在 training-free 的 setting 下，这些方法也会导致 perplexity 的上升&lt;/p>
+&lt;p>因此，在本文中，作者就提出了 Dual Chunk Attention (DCA) ，一个无需训练的，扩展 LLM 上下文长度的方法。DCA 的主要做法是将 attention 的计算进行分块，这样就可以提高计算效率。&lt;/p>
+&lt;p>通过实验，作者给出了三点关键发现：&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>Extrapolation&lt;/strong>： DCA 可以在无需训练的情况下，将 LLM 的上下文提升到 32K，而不导致 Perplexity 大幅度增加&lt;/li>
+&lt;li>&lt;strong>Orthogonality&lt;/strong>： DCA 可以和其他方法一起使用，如 &lt;a class="link" href="https://maosong.website/p/notes-on-yarn/" target="_blank" rel="noopener"
+>YARN&lt;/a>, 这一点已经在 Qwen2.5-1M 以及 Qwen3 中得到了应用&lt;/li>
+&lt;li>&lt;strong>Long Context Understanding&lt;/strong>: DCA 可以在无需训练的情况下，在长上下文设置下，达到已有 SOTA 模型的表现&lt;/li>
+&lt;/ol>
+&lt;h2 id="preliminary">&lt;a href="#preliminary" class="header-anchor">&lt;/a>Preliminary
+&lt;/h2>&lt;p>对于一个长度为 $L$ 的 token 序列，我们首先定义对应的 position id 如下&lt;/p>
+$$
+P_{\mathbf{q}} = [0,1,\dots,L-1],\quad P_{\mathbf{k}} = [0,1,\dots,L-1]
+$$&lt;p>然后，对于第 $i$ 个位置和第 $j$ 个位置的 token，其 attention score 定义为：&lt;/p>
+$$
+\langle f(\mathbf{q}, i), f(\mathbf{k}, j)\rangle =\langle R_{\theta,i}\mathbf{q}, R_{\theta,j}\mathbf{k}\rangle =\mathbf{q}^TR_{\theta, i-j}\mathbf{k}
+$$&lt;p>具体细节参考 &lt;a class="link" href="https://maosong.website/p/notes-on-position-encoding/" target="_blank" rel="noopener"
+>Position Encoding&lt;/a> 中的 RoPE 部分介绍。这里面的关键在于，最后的结果只与相对位置 $i-j$ 相关，而与绝对位置 $i$ 和 $j$ 无关。因此，我们可以用一个相对位置矩阵 $M\in\mathbb{R}^{L\times L}$ 来表示这个信息，其中 $M_{ij}=P_{\mathbf{q},i}- P_{\mathbf{k},j}$ 代表了第 $i$ 个位置的 query $\mathbf{q}$ 和第 $j$ 个位置的 key $\mathbf{k}$ 的相对位置信息，其示意图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/dual-chunk-attention/DCA_relative_position_visualization.png"
+width="379"
+height="384"
+loading="lazy"
+alt="Relative Position Visualization"
+class="gallery-image"
+data-flex-grow="98"
+data-flex-basis="236px"
+>&lt;/p>
+&lt;p>原始版本的 RoPE 的问题在于，在训练时，模型没有见过更长的上下文，因此其泛化性也最差，这一点在 &lt;a class="link" href="https://maosong.website/p/notes-on-yarn/" target="_blank" rel="noopener"
+>YARN&lt;/a> 已经得到了验证&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;p>DCA 的关键在于将 sequence 分割为若干个 Chunk，然后将 attention 的计算拆分为三个部分：&lt;/p>
+&lt;ol>
+&lt;li>intra-chunk：负责计算每个 chunk 内部的 attention&lt;/li>
+&lt;li>inter-chunk ：负责计算 chunk 之间的 attention&lt;/li>
+&lt;li>successive-chunk：负责计算相邻两个 chunk 之间的 attention&lt;/li>
+&lt;/ol>
+&lt;p>为了更好理解 DCA，我们接下来假设 $L=12$, 这时我们有&lt;/p>
+$$
+P_{\mathbf{q}} = [0,1,\dots,11],\quad P_{\mathbf{k}} = [0,1,\dots,11]
+$$&lt;h3 id="intra-chunk-attention">&lt;a href="#intra-chunk-attention" class="header-anchor">&lt;/a>Intra-Chunk Attention
+&lt;/h3>&lt;p>我们首先定义个超参数 chunk size $s>0$, 然后我们将我们的 sequence 分割成 $L/s$ 个 chunk，然后每个 chunk 重新进行编号，就得到了如下的 position id&lt;/p>
+$$
+P_{\mathbf{q}}^{Intra} = [0,1,\dots,L-1]\mod s,\quad P_{\mathbf{k}}^{Intra} = [0,1,\dots,L-1]\mod s
+$$&lt;p>接下来，我们定义 intra-chunk 的相对位置矩阵 $M$， 此时，我们仅在每个 chunk 内部进行计算 attention，即&lt;/p>
+$$
+M[i][j] = \begin{cases} P_{\mathbf{q},i}^{Intra} - P_{\mathbf{k},j}^{Intra},&amp;\text{if}\lfloor P_{\mathbf{q},i}/s \rfloor = \lfloor P_{\mathbf{k},j} /s\rfloor ,\\
+0,&amp;\text{otherwise}
+\end{cases}
+$$&lt;p>在上面的例子中，假设 $s=6$, 那么我们新的 position id 就变成了&lt;/p>
+$$
+\begin{aligned}
+P_{\mathbf{q}}^{Intra} = [0,1,2,3,4,5,0,1,2,3,4,5]\\
+P_{\mathbf{k}}^{Intra} = [\underbrace{0,1,2,3,4,5}_{\text{Chunk 0}},\underbrace{0,1,2,3,4,5}_{\text{Chunk 1}}]
+\end{aligned}
+$$&lt;p>对其进行可视化，我们就得到&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/dual-chunk-attention/DCA_intra_chunk_attention_visualization.png"
+width="362"
+height="386"
+loading="lazy"
+alt="Intra Chunk Attention Visualization"
+class="gallery-image"
+data-flex-grow="93"
+data-flex-basis="225px"
+>&lt;/p>
+&lt;h3 id="inter-chunk-attention">&lt;a href="#inter-chunk-attention" class="header-anchor">&lt;/a>Inter-Chunk Attention
+&lt;/h3>&lt;p>接下来，我们来看一下不同 chunk 之间如何计算彼此的 attention。在 Intra-chunk attention 计算中，我们忽略了跨 chunk 的信息，而且，由于现在的 position id 不再是单调递增的了，我们直接使用 $P_{\mathbf{q}}^{Intra}$ 和 $P_{\mathbf{k}}^{Intra}$ 给出的位置信息不对，这也是为什么我们在 Intra-chunk attention 中要求 query 和 key 在同一个 chunk 中才能计算的原因。&lt;/p>
+&lt;p>为了解决这个问题，作者构建了一个新的 position id。首先我们引入一个新的超参数 $c>\max_i P_{\mathbf{q},i}$, $c$ 代表了模型预训练时的上下文长度，如 4096。&lt;/p>
+&lt;p>接下来，基于 $c$, 我们定义新的 position id 如下：&lt;/p>
+$$
+P_{\mathbf{q}}^{Inter} = [c-1,c-1,\dots,c-1]\in\mathbb{R}^s,\quad P_{\mathbf{k}}^{Inter} = P_{\mathbf{k}}^{Intra}
+$$&lt;blockquote>
+&lt;p>注：这里的 $P_{\mathbf{q}}^{Inter}$ 指的是某一个 chunk 中的 position id，每个 chunk 中的 position id 都相同，请参考例子理解，后面不再赘述。&lt;/p>
+&lt;/blockquote>
+&lt;p>也就是说，在计算跨 chunk 的 attention 的时候，我们直接把 query 的 position id 设置为最大值，然后 key 的 position id 依然使用 intra-chunk 的位置信息。由于 $\max_i P_{\mathbf{k},i}=s-1$, 因此我们有&lt;/p>
+$$
+M[i][j] = P_{\mathbf{q},i}^{Inter} - P_{\mathbf{k},j}^{Inter} = c - 1 - P_{\mathbf{k},j}^{Inter}\geq c - 1 - (s- 1) \geq c-s.
+$$&lt;p>最后，我们对于 inter chunk 的位置矩阵 $M$ 定义如下：&lt;/p>
+$$
+M[i][j] = \begin{cases} P_{\mathbf{q},i}^{Inter} - P_{\mathbf{k},j}^{Inter},&amp;\text{if}\lfloor P_{\mathbf{q},i}/s \rfloor \neq \lfloor P_{\mathbf{k},j} /s\rfloor ,\\
+0,&amp;\text{otherwise}
+\end{cases}
+$$&lt;p>在上面的例子中，当 $c=10$ 时，$c-1=9$, 我们有&lt;/p>
+$$
+P_{\mathbf{q}}^{Inter}=[\underbrace{9,9,9,9,9,9}_{\text{Chunk 0}},\underbrace{9,9,9,9,9,9}_{\text{Chunk 1}}]
+$$&lt;p>对其进行可视化，得到&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/dual-chunk-attention/DCA_inter_chunk_attention_visualization.png"
+width="351"
+height="388"
+loading="lazy"
+alt="Inter Chunk Attention Visualization"
+class="gallery-image"
+data-flex-grow="90"
+data-flex-basis="217px"
+>&lt;/p>
+&lt;h3 id="successive-chunk-attention">&lt;a href="#successive-chunk-attention" class="header-anchor">&lt;/a>Successive-Chunk Attention
+&lt;/h3>&lt;p>现在我们既可以计算 intra-chunk，也可以计算 inter-block 的 attention，但是问题是对于相邻的 chunk，其位置信息不对了，从上面的可视化中，我们可以看到，当 $P_{\mathbf{q},i}=6$ , $P_{\mathbf{k},j}=5$ 时，我们有&lt;/p>
+$$
+P_{\mathbf{q},i}^{Inter} - P_{\mathbf{k},j}^{Inter}=9-5=4\neq 1 = P_{\mathbf{q},i}-P_{\mathbf{k},j}
+$$&lt;p>也就是说，inter-block 的 attention 会破坏原有的相对位置信息，因此我们就通过 successive chunk attention 来解决这个问题，使得 $P_{\mathbf{q},i}^{Inter} - P_{\mathbf{k},j}^{Inter}\approx P_{\mathbf{q},i}-P_{\mathbf{k},j}$.&lt;/p>
+&lt;p>作者发现，这个问题不是所有的 chunk 都有，而是只存在于相邻的 chunk 中，因此，作者又加入了一个超参数 $w>0$ 代表了 local window size，我们可以直接将其设置为 $c-s$, 通过这个 local window，我们调整对应的 position id 如下：&lt;/p>
+$$
+P_{\mathbf{q}}^{Succ} = [\overbrace{s,s+1,\dots,s+w-1}^{w \text{ elements}},c-1, \dots,c-1]\in\mathbb{R}^s,\quad P_{\mathbf{k}}^{Succ} = P_{\mathbf{k}}^{Inter}
+$$&lt;p>对于 successive chunk 的位置矩阵 $M$ 定义如下：&lt;/p>
+$$
+M[i][j] = \begin{cases} P_{\mathbf{q},i}^{Inter} - P_{\mathbf{k},j}^{Inter},&amp;\text{if}\lfloor P_{\mathbf{q},i}/s \rfloor - \lfloor P_{\mathbf{k},j} /s\rfloor=1 ,\\
+0,&amp;\text{otherwise}
+\end{cases}
+$$&lt;p>在上面的例子中，我们设置 $w=4$, 就得到&lt;/p>
+$$
+P_{\mathbf{q}}^{Succ}=[\underbrace{6,7,8,9,9,9}_{\text{Chunk 0}},\underbrace{6,7,8,9,9,9}_{\text{Chunk 1}}]
+$$&lt;p>对其进行可视化，得到&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/dual-chunk-attention/DCA_successive_chunk_attention_visualization.png"
+width="388"
+height="388"
+loading="lazy"
+alt="Successive Chunk Attention Visualization"
+class="gallery-image"
+data-flex-grow="100"
+data-flex-basis="240px"
+>&lt;/p>
+&lt;h3 id="computation">&lt;a href="#computation" class="header-anchor">&lt;/a>Computation
+&lt;/h3>&lt;p>接下来，我们把所有的改进放在一起，就得到&lt;/p>
+$$
+M[i][j] = \begin{cases}
+P_{\mathbf{q},i}^{Intra} - P_{\mathbf{k},j},&amp;\text{if}\lfloor P_{\mathbf{q},i}/s \rfloor - \lfloor P_{\mathbf{k},j} /s\rfloor=0 ,\\
+P_{\mathbf{q},i}^{Succ} - P_{\mathbf{k},j},&amp;\text{if}\lfloor P_{\mathbf{q},i}/s \rfloor - \lfloor P_{\mathbf{k},j} /s\rfloor=1 ,\\
+P_{\mathbf{q},i}^{Inter} - P_{\mathbf{k},j},&amp;\text{if}\lfloor P_{\mathbf{q},i}/s \rfloor - \lfloor P_{\mathbf{k},j} /s\rfloor>1.
+\end{cases}
+$$&lt;p>基于上面的位置矩阵 $M$， 我们再依次计算对应的 attention score&lt;/p>
+$$
+\langle f(\mathbf{q}, i), f(\mathbf{k}, j)\rangle = \begin{cases}
+\langle f(\mathbf{q}, P_{\mathbf{q},i}^{Intra})
+, f(\mathbf{k}, P_{\mathbf{k},j})\rangle,&amp;\text{if}\lfloor P_{\mathbf{q},i}/s \rfloor - \lfloor P_{\mathbf{k},j} /s\rfloor=0 ,\\
+\langle f(\mathbf{q}, P_{\mathbf{q},i}^{Succ})
+, f(\mathbf{k}, P_{\mathbf{k},j})\rangle,&amp;\text{if}\lfloor P_{\mathbf{q},i}/s \rfloor - \lfloor P_{\mathbf{k},j} /s\rfloor=1 ,\\
+\langle f(\mathbf{q}, P_{\mathbf{q},i}^{Inter})
+, f(\mathbf{k}, P_{\mathbf{k},j})\rangle,&amp;\text{if}\lfloor P_{\mathbf{q},i}/s \rfloor - \lfloor P_{\mathbf{k},j} /s\rfloor>1.
+\end{cases}
+$$&lt;h2 id="code">&lt;a href="#code" class="header-anchor">&lt;/a>Code
+&lt;/h2>&lt;p>首先是 &lt;code>RotaryEmbedding&lt;/code> 部分的修改&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">class&lt;/span> &lt;span class="nc">DCARotaryEmbedding&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Module&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">max_len&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">chunk_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">local_window&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">max_len&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">max_len&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">chunk_size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">chunk_size&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">local_window&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">local_window&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">inv_freq&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="o">...&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="nf">forward&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">q_t&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">arange&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">chunk_size&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">qc_t&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">q_t&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">chunk_size&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">clamp&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">max&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">chunk_size&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">k_t&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">arange&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">seq_len&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">%&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">chunk_size&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">q_freqs&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">outer&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">q_t&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">inv_freq&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="c1"># seq_len x dim/2&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">qc_freqs&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">outer&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">qc_t&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">inv_freq&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">k_freqs&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">outer&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">k_t&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">inv_freq&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="c1"># seq_len x dim/2&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">q_emb&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cat&lt;/span>&lt;span class="p">((&lt;/span>&lt;span class="n">q_freqs&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">q_freqs&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="o">=-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="c1"># seq_len x dim&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">qc_emb&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cat&lt;/span>&lt;span class="p">((&lt;/span>&lt;span class="n">qc_freqs&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">qc_freqs&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="o">=-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">k_emb&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cat&lt;/span>&lt;span class="p">((&lt;/span>&lt;span class="n">k_freqs&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">k_freqs&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="o">=-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="c1"># seq_len x dim&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># compute related sin, cos&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">q_sin&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">q_cos&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">qc_sin&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">qc_cos&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">k_sin&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">k_cos&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>attention 计算时的逻辑&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;span class="lnt">38
+&lt;/span>&lt;span class="lnt">39
+&lt;/span>&lt;span class="lnt">40
+&lt;/span>&lt;span class="lnt">41
+&lt;/span>&lt;span class="lnt">42
+&lt;/span>&lt;span class="lnt">43
+&lt;/span>&lt;span class="lnt">44
+&lt;/span>&lt;span class="lnt">45
+&lt;/span>&lt;span class="lnt">46
+&lt;/span>&lt;span class="lnt">47
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">class&lt;/span> &lt;span class="nc">Attention&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Module&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="nf">forward&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">...&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">key_states&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">apply_rotary_pos_emb&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">key_states&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">k_cos&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">k_sin&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">position_ids&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">q_states_intra&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">apply_rotary_pos_emb&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">query_states&lt;/span>&lt;span class="p">[:,&lt;/span> &lt;span class="p">:,&lt;/span> &lt;span class="p">:&lt;/span>&lt;span class="n">chunk_len&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">:],&lt;/span> &lt;span class="n">q_cos&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">q_sin&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">position_ids&lt;/span>&lt;span class="p">[:,&lt;/span> &lt;span class="p">:&lt;/span>&lt;span class="n">chunk_len&lt;/span>&lt;span class="p">])&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">k_states_prev&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">key_states&lt;/span>&lt;span class="p">[:,&lt;/span> &lt;span class="p">:,&lt;/span> &lt;span class="p">:&lt;/span>&lt;span class="n">chunk_len&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">:]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">v_states_prev&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">value_states&lt;/span>&lt;span class="p">[:,&lt;/span> &lt;span class="p">:,&lt;/span> &lt;span class="p">:&lt;/span>&lt;span class="n">chunk_len&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">:]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># first chunk&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">flash_result&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">do_flash_attn&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">q_states_intra&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">k_states_prev&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">v_states_prev&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">flash_results&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">flash_result&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">remain_len&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">kv_seq_len&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">chunk_len&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">while&lt;/span> &lt;span class="n">remain_len&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">flash_per_chunk&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">begin&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">kv_seq_len&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">remain_len&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">curr_chunk_len&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">min&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">chunk_len&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">remain_len&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">end&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">begin&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">curr_chunk_len&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># current chunk, intra-chunk attention&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">q_states_intra&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">apply_rotary_pos_emb&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">query_states&lt;/span>&lt;span class="p">[:,&lt;/span> &lt;span class="p">:,&lt;/span> &lt;span class="n">begin&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="n">end&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">:],&lt;/span> &lt;span class="n">q_cos&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">q_sin&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">position_ids&lt;/span>&lt;span class="p">[:,&lt;/span> &lt;span class="n">begin&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="n">end&lt;/span>&lt;span class="p">])&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">k_states_intra&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">key_states&lt;/span>&lt;span class="p">[:,&lt;/span> &lt;span class="p">:,&lt;/span> &lt;span class="n">begin&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="n">end&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">:]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">v_states_intra&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">value_states&lt;/span>&lt;span class="p">[:,&lt;/span> &lt;span class="p">:,&lt;/span> &lt;span class="n">begin&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="n">end&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">:]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">flash_result&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">do_flash_attn&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">q_states_intra&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">k_states_intra&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">v_states_intra&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">flash_per_chunk&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">flash_result&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># successive chunk attention&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">q_states_succ&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">apply_rotary_pos_emb&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">query_states&lt;/span>&lt;span class="p">[:,&lt;/span> &lt;span class="p">:,&lt;/span> &lt;span class="n">begin&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="n">end&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">:],&lt;/span> &lt;span class="n">qc_cos&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">qc_sin&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">position_ids&lt;/span>&lt;span class="p">[:,&lt;/span> &lt;span class="n">begin&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="n">end&lt;/span>&lt;span class="p">])&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">flash_result&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">do_flash_attn&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">q_states_succ&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">k_states_prev&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">v_states_prev&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">False&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">flash_per_chunk&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">flash_result&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># inter chunk attention&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">begin&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">k_states_prev&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">size&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">prev_len&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">k_states_prev&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">size&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">q_states_inter&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">apply_rotary_pos_emb&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">query_states&lt;/span>&lt;span class="p">[:,&lt;/span> &lt;span class="p">:,&lt;/span> &lt;span class="n">begin&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="n">end&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">:],&lt;/span> &lt;span class="n">qc_cos&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">qc_sin&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">position_ids&lt;/span>&lt;span class="p">[:,&lt;/span> &lt;span class="n">chunk_len&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">][:,&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">]&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">repeat&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">curr_chunk_len&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">k_states_inter&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">key_states&lt;/span>&lt;span class="p">[:,&lt;/span> &lt;span class="p">:,&lt;/span> &lt;span class="p">:&lt;/span>&lt;span class="n">begin&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">prev_len&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">:]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">v_states_inter&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">value_states&lt;/span>&lt;span class="p">[:,&lt;/span> &lt;span class="p">:,&lt;/span> &lt;span class="p">:&lt;/span>&lt;span class="n">begin&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">prev_len&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">:]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">flash_result&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">do_flash_attn&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">q_states_inter&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">k_states_inter&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">v_states_inter&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">False&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">flash_per_chunk&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">flash_result&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">flash_results&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">flash_per_chunk&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">k_states_prev&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">k_states_intra&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">v_states_prev&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">v_states_intra&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">remain_len&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">remain_len&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">chunk_len&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># merge the final results&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">attn_output&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">merge_attn_outputs&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">flash_results&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h2 id="evaluation">&lt;a href="#evaluation" class="header-anchor">&lt;/a>Evaluation
+&lt;/h2>&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/dual-chunk-attention/DCA_perplexity_evaluation_PG19.png"
+width="1202"
+height="418"
+loading="lazy"
+alt="Perplexity evaluation on PG19"
+class="gallery-image"
+data-flex-grow="287"
+data-flex-basis="690px"
+>&lt;/p>
+&lt;p>作者还分析了一下 DCA 的效率，结果如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/dual-chunk-attention/DCA_efficiency_analysis.png"
+width="1080"
+height="618"
+loading="lazy"
+alt="Efficiency of DCA"
+class="gallery-image"
+data-flex-grow="174"
+data-flex-basis="419px"
+>&lt;/p>
+&lt;p>可以看到，在 &lt;a class="link" href="https://maosong.website/p/notes-on-flashattention/" target="_blank" rel="noopener"
+>flash attention&lt;/a> 的基础上加上 DCA 之后，内存占用和推理时间并没有发生太大变化&lt;/p>
+&lt;p>作者还分析了三种 attention 对结果的贡献，如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/dual-chunk-attention/DCA_ablation_study.png"
+width="1088"
+height="404"
+loading="lazy"
+alt="Ablation study on three modules"
+class="gallery-image"
+data-flex-grow="269"
+data-flex-basis="646px"
+>&lt;/p>
+&lt;p>结果显示，intra block 的 perplexity 是最低的，但是其在下游任务上表现是最差的。当三者结合在一起之后，perplexity 和下游任务上的表现都是最好的。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>本文中，我们回顾了 Qwen 系列扩展大模型上下文的方法 Dual Chunk Attention （DCA） 通过将 attention 切分成更小的 chunk，然后将 attention 的计算分为 intra-chunk，inter-chunk 和 successive-chunk，分别处理 chunk 内部，chunk 之间以及相邻 chunk 的 attention，通过这种方式，在无需训练的情况下，我们可以有效将模型上下文长度扩展 4 倍以上。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2402.17463" target="_blank" rel="noopener"
+>Arxiv&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://github.com/HKUNLP/ChunkLlama/tree/main" target="_blank" rel="noopener"
+>Github&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on YaRN</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-yarn/</link><pubDate>Thu, 03 Jul 2025 14:40:49 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-yarn/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>YaRN (Yet Another RoPE extentionN method) 时23年9月EleutherAI等提出来的一个扩展LLM上下文长度的方法，后来被Qwen系列模型所应用。&lt;/p>
+&lt;h2 id="preliminary">&lt;a href="#preliminary" class="header-anchor">&lt;/a>Preliminary
+&lt;/h2>&lt;p>作者首先回顾了一下RoPE, 具体内容请参见上一篇&lt;a class="link" href="https://maosong.website/p/notes-on-position-encoding/" target="_blank" rel="noopener"
+>blog&lt;/a>。并使用了 $f_{W}(x_m, m, \theta_d)$ 来表示RoPE：&lt;/p>
+$$
+f_{W}(x_m, m, \theta_{d}) = \Theta_{\theta, m}^d W x_m
+$$&lt;p>其中 $\Theta_{\theta, m}^d\in\mathbb{R}^{d\times d}$ 是多维旋转矩阵, $\theta_d=[\theta_{0,d},\dots,\theta_{(d-2)/2,d}]\in\mathbb{R}^{d/2}$, $\theta_{i,d}=\theta^{2i/d}$, $\theta>0$ 是一个超参数，RoPE中设置为 $\theta=10000$, $W\in\{W_q,W_k\}\subset\mathbb{R}^{d\times d}$ 是对应的query/key projection layer的权重矩阵， $x\in\mathbb{R}^{d}$ 是输入的hidden states.&lt;/p>
+&lt;p>接下来，作者定义了两个新的变量：&lt;/p>
+&lt;p>&lt;strong>scaling factor&lt;/strong>
+假设预训练的上下文长度为 $L$, 扩展的上下文长度为 $L'>L$, 则我们定义scaling factor 为&lt;/p>
+$$
+s = \frac{L'}{L}
+$$&lt;p>易知 $s>1$.&lt;/p>
+&lt;p>&lt;strong>wavelength&lt;/strong>
+我们将 $\lambda_d$ 定义为 $i$-th 维的RoPE embedding对应的 wavelength：&lt;/p>
+$$
+\lambda_{i,d} = \frac{2\pi}{\theta_{i,d}} = 2\pi\theta^{2i/d}, \ i=0,\dots,(d-2)/2
+$$&lt;p>wavelength描述了对于第$i$ 个维度，RoPE旋转一周 ($2\pi$) 所需要的上下文长度。&lt;/p>
+&lt;h2 id="unified-perspective-on-related-work">&lt;a href="#unified-perspective-on-related-work" class="header-anchor">&lt;/a>Unified Perspective on Related Work
+&lt;/h2>&lt;p>基于 $f_{W}(x_m, m, \theta_d)$, 作者统一了已有的扩展上下文长度的方法，作者将不同的扩展方法使用一个通用函数 $f_W(x_m,g(m), h(\theta_d))$ 来表示，这里 $g(m)$ 和 $h(\theta_d)$ 分别代表了不同的长度外推方法所使用的变换。&lt;/p>
+&lt;h3 id="position-interpolation">&lt;a href="#position-interpolation" class="header-anchor">&lt;/a>Position Interpolation
+&lt;/h3>&lt;p>Position Interpolation (PI) 的核心思想在于，我们可以通过Interpolation，将超过预训练长度的文本给压缩到当前最大长度，以此来避免RoPE外推产生的问题，其对应的公式为&lt;/p>
+$$
+f'_W(x_m,m,\theta_d) = f_W(x_m, \frac{mL}{L'}, \theta_d)
+$$&lt;p>其中 $L'>L$ 为我们扩展之后的上下文长度， $L$ 为我们预训练的上下文长度。使用通用函数表示的话，我们有&lt;/p>
+$$
+g(m) = \frac{m}{s},\quad h(\theta_d) = \theta_d
+$$&lt;h3 id="ntk-aware-interpolation">&lt;a href="#ntk-aware-interpolation" class="header-anchor">&lt;/a>NTK-aware Interpolation
+&lt;/h3>&lt;p>PI的问题是，并没有考虑不同维度的wavelength。
+基于NTK理论，DNN当输入维度比较低，且embedding缺少高频内容时，模型就会很难学习到高频信息。对应到RoPE里面，输入的token position id是低位信息（1维），而输出的RoPE是一个 $d$ 维的复杂向量。因此，当输入token非常相似却距离非常近时，RoPE就会丢失高频的细节信息&lt;/p>
+&lt;p>因此，为了解决这个问题，作者对不同的维度使用了不同的缩放策略：&lt;strong>维度比较小时，其缩放的更多，维度比较大是，其缩放的更少。&lt;/strong>&lt;/p>
+&lt;p>基于这个策略，作者提出了NTK-aware interpolation，其定义如下：&lt;/p>
+$$
+g(m) = m, \quad h(\theta_{i,d}) = \theta'^{-2i/d}, i=0,\dots,(d-2)/2
+$$&lt;p>其中&lt;/p>
+$$
+\theta' = \theta\cdot s^{\frac{d}{d-2}}
+$$&lt;p>实际中，这种方法会产生out-of-bound的值，因此最终结果会比PI要差一点，为了解决这个问题，一般会使用比 $s$ 更大的scaling factor.&lt;/p>
+&lt;blockquote>
+&lt;p>上式的推导基于一个简单的假设：我们希望最后一个维度的wavelength在scaling之后，是线性变化的，即 $\theta'_{(d-2)/2,d}=s\theta_{(d-2)/2,d}$, 求解之后，我们就得到了上面的定义&lt;/p>
+&lt;/blockquote>
+&lt;p>PI 和NTK-aware interpolation的问题在于，我们对不同的维度的处理都是一样的。这类不在乎wavelength的方法被称为&lt;strong>blind interpolation methods&lt;/strong>, 接下来要介绍的就是基于wavelength的方法，即&lt;strong>target interpolation methods&lt;/strong>.&lt;/p>
+&lt;h3 id="ntk-by-parts-interpolation">&lt;a href="#ntk-by-parts-interpolation" class="header-anchor">&lt;/a>NTK-by-parts Interpolation
+&lt;/h3>&lt;p>与NTK-aware interpolation， NTK-by-parts interpolation基于wavelength来考虑不同维度上所做的变换。&lt;/p>
+&lt;p>对于低维度，其 $\theta_{i,d}$ 非常大，因此旋转一周所需要的上下文长度也非常大。实际上就导致某些维度的embedding并不是均匀分布的，（比如说只有 $0\sim\pi$ 这个区间的embedding），这个时候，模型就只能访问到绝对位置信息，而访问不到相对位置信息。
+另外，当我们对所有的维度都进行scale的时候，所有的token都会与彼此更加靠近，这损害了模型对于局部信息的获取能力。
+基于这些认知，作者基于wavelength，对不同的维度分别进行处理：&lt;/p>
+&lt;ol>
+&lt;li>如果wavelength远小于上下文长度 $L$， 则我们不做任何处理&lt;/li>
+&lt;li>如果wavelength等于或者大于上下文长度 $L$， 则我们使用NTK-aware interpolation 进行处理&lt;/li>
+&lt;li>对于中间的其他维度，我们进行了一个trade off&lt;/li>
+&lt;/ol>
+&lt;p>作者定义了一个ratio $r$ 来描述原始上下文长度 $L$ 和 wavelength 之间的关系&lt;/p>
+$$
+r(i,d) = \frac{L}{\lambda_{i,d}} = \frac{L}{2\pi\theta'^{2i/d}}
+$$&lt;p>基于这个ratio，我们可以定义上面的三种处理方式对应的权重&lt;/p>
+$$
+\gamma(r) = \begin{cases}
+0, &amp;\text{if } r &lt; \alpha\\
+1, &amp;\text{if } r > \beta\\
+\frac{r-\alpha}{\beta-\alpha}, &amp;\text{otherwise}
+\end{cases}
+$$&lt;p>其中， $\beta>\alpha>0$ 是超参数， $r&lt;\alpha$, $r&lt;\beta$ 分别代表了上面的第1种，第2种情况。&lt;/p>
+&lt;p>最后，NTK-by-parts interpolation的定义如下&lt;/p>
+$$
+g(m) = m, \quad h(\theta_i) = \left(1-\gamma(r(i,d)\right)\frac{\theta_i}{s} + \gamma(r(i,d))\theta_i
+$$&lt;p>作者通过实验发现，在LLaMA上，$\alpha=1$ 和 $\beta=32$ 是一个比较好的选择&lt;/p>
+&lt;h3 id="dynamic-ntk-interpolation">&lt;a href="#dynamic-ntk-interpolation" class="header-anchor">&lt;/a>Dynamic NTK Interpolation
+&lt;/h3>&lt;p>在实际中，一个经常遇到的场景就是sequence length会从1逐步上升到最大上下文长度，比如说inference的时候。对于这种情况，我们有两种解决方法：&lt;/p>
+&lt;ol>
+&lt;li>在整个inference周期中，RoPE的scaling factor都设置为 $s=K'/L$, 其中$L'$ 是扩展后的上下文长度&lt;/li>
+&lt;li>在每次foward的过程汇总，都更新sclaing factor $s=\max(1, \ell'/L)$, 这里 $\ell'$ 是当前sequence的长度&lt;/li>
+&lt;/ol>
+&lt;p>作者发现，方案1在sequence长度小于 $L$的时候性能会下降，并且当上下文长度超过 $L'$ 时，性能下降的更快。
+但是，方案2可以让模型的性能下降曲线更平缓。因此，作者将这种inference-time方法称为 &lt;strong>Dynamic Scaling method&lt;/strong>, 当其与NTK-aware方法结合时，就得到了 &lt;strong>Dynamic NTK interpolation&lt;/strong>&lt;/p>
+&lt;p>作者通过实验发现，Dynamic NTK interpolation在$L'=L$ 时，效果非常好&lt;/p>
+&lt;h2 id="yarn">&lt;a href="#yarn" class="header-anchor">&lt;/a>YaRN
+&lt;/h2>&lt;p>在YaRN中，作者针对Dynamic NTK interpolation做了进一步改进，也就是在计算attention softmax时，加入了一个温度参数 $t>0$, 这样attention的计算就变成了&lt;/p>
+$$
+\mathrm{Attn}(Q, K, V) = \mathrm{softmax}\left(\frac{QK^T}{t\sqrt{d}}\right)V
+$$&lt;p>作者发现，通过这种scaling的方式，YaRN可以在不改变代码的前提下，更改attention的机制。并且，其不增加训练和推理的cost&lt;/p>
+&lt;p>作者将YaRN定义为&lt;strong>结合了NTK-by-parts interpolation和上述scaling技巧的方法&lt;/strong>&lt;/p>
+&lt;p>对于LLaMA，作者推荐使用如下参数：&lt;/p>
+$$
+\sqrt{\frac{1}{t}} = 0.1\ln(s) + 1.
+$$&lt;p>实验结果如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-yarn/YaRN_temperature_ablation.png"
+width="1049"
+height="528"
+loading="lazy"
+alt="Ablation study on temperature"
+class="gallery-image"
+data-flex-grow="198"
+data-flex-basis="476px"
+>&lt;/p>
+&lt;p>作者发现：&lt;/p>
+&lt;ol>
+&lt;li>对于合适的 $t$, 扩展上下文之后，perplexity会变的更好&lt;/li>
+&lt;li>最好的$t$ 对于不同的位置和样本提升都是一样的&lt;/li>
+&lt;/ol>
+&lt;h2 id="evaluation">&lt;a href="#evaluation" class="header-anchor">&lt;/a>Evaluation
+&lt;/h2>&lt;p>实验结果如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Extension Method&lt;/th>
+&lt;th>Trained Tokens&lt;/th>
+&lt;th>Context Window&lt;/th>
+&lt;th>&lt;/th>
+&lt;th>&lt;/th>
+&lt;th>&lt;/th>
+&lt;th>Evaluation Context Window Size&lt;/th>
+&lt;th>&lt;/th>
+&lt;th>&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>2048&lt;/td>
+&lt;td>4096&lt;/td>
+&lt;td>6144&lt;/td>
+&lt;td>8192&lt;/td>
+&lt;td>10240&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>PI (s = 2)&lt;/td>
+&lt;td>1B&lt;/td>
+&lt;td>8k&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>3.92&lt;/td>
+&lt;td>3.51&lt;/td>
+&lt;td>3.51&lt;/td>
+&lt;td>3.34&lt;/td>
+&lt;td>8.07&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>NTK ($\theta$ = 20k)&lt;/td>
+&lt;td>1B&lt;/td>
+&lt;td>8k&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>4.20&lt;/td>
+&lt;td>3.75&lt;/td>
+&lt;td>3.74&lt;/td>
+&lt;td>3.59&lt;/td>
+&lt;td>6.24&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>YaRN (s = 2)&lt;/td>
+&lt;td>400M&lt;/td>
+&lt;td>8k&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;strong>3.91&lt;/strong>&lt;/td>
+&lt;td>&lt;strong>3.50&lt;/strong>&lt;/td>
+&lt;td>&lt;strong>3.51&lt;/strong>&lt;/td>
+&lt;td>3.35&lt;/td>
+&lt;td>&lt;strong>6.04&lt;/strong>&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>可以看到，YaRN使用的数据更少，并且当模型扩展到10240的时候，其表现下降的最慢，这说明了YaRN在扩展上下文长度时的有效性&lt;/p>
+&lt;p>原始RoPE，dynamic-PI和dynamic-YaRN的对比&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-yarn/YaRN_comparison_RoPE_PI.png"
+width="1154"
+height="573"
+loading="lazy"
+alt="Comparison with RoPE and PI"
+class="gallery-image"
+data-flex-grow="201"
+data-flex-basis="483px"
+>&lt;/p>
+&lt;p>可以看到，RoPE的上下文扩展能力很差，Dynamic-YaRN的表现最好。&lt;/p>
+&lt;h2 id="code">&lt;a href="#code" class="header-anchor">&lt;/a>Code
+&lt;/h2>&lt;p>YaRN的实现在&lt;a class="link" href="https://github.com/huggingface/transformers/blob/main/src/transformers/modeling_rope_utils.py" target="_blank" rel="noopener"
+>HuggingFace/src/transformers/modeling_rope_utils.py&lt;/a> 里的 &lt;code>_compute_yarn_parameters&lt;/code> 函数里，其返回 &lt;code>inv_freq&lt;/code> 以及 &lt;code>attention_factor&lt;/code> 两个量，前者代表了 $\theta_d$, 后者代表 $t\sqrt{d}$.&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;span class="lnt">38
+&lt;/span>&lt;span class="lnt">39
+&lt;/span>&lt;span class="lnt">40
+&lt;/span>&lt;span class="lnt">41
+&lt;/span>&lt;span class="lnt">42
+&lt;/span>&lt;span class="lnt">43
+&lt;/span>&lt;span class="lnt">44
+&lt;/span>&lt;span class="lnt">45
+&lt;/span>&lt;span class="lnt">46
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">get_mscale&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">scale&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">scale&lt;/span> &lt;span class="o">&amp;lt;=&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="mf">1.0&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="mf">0.1&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">math&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">log&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">scale&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mf">1.0&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">find_correction_dim&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">num_rotations&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">max_position_embeddings&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;Inverse dimension formula to find the dimension based on the number of rotations&amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">dim&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">math&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">log&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">max_position_embeddings&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">num_rotations&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="mi">2&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">math&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">pi&lt;/span>&lt;span class="p">)))&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="mi">2&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">math&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">log&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">base&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">find_correction_range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">low_rot&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">high_rot&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">max_position_embeddings&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;&amp;#34;&amp;#34;Find dimension range bounds based on rotations&amp;#34;&amp;#34;&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">low&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">math&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">floor&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">find_correction_dim&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">low_rot&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">max_position_embeddings&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">high&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">math&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">ceil&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">find_correction_dim&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">high_rot&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">max_position_embeddings&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="nb">max&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">low&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="nb">min&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">high&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">linear_ramp_factor&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="nb">min&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">max&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="nb">min&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="nb">max&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">max&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="mf">0.001&lt;/span> &lt;span class="c1"># Prevent singularity&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">linear_func&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">arange&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">float32&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="nb">min&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="nb">max&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="nb">min&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">ramp_func&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">clamp&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">linear_func&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">ramp_func&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">class&lt;/span> &lt;span class="nc">YaRNRotaryEmbedding&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Module&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">beta_fast&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;beta_fast&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="ow">or&lt;/span> &lt;span class="mi">32&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">beta_slow&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;beta_slow&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="ow">or&lt;/span> &lt;span class="mi">1&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dim&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="s2">&amp;#34;head_dim&amp;#34;&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">factor&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">max_position_embeddings&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="n">original_max_position_embeddings&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">pos_freqs&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">base&lt;/span> &lt;span class="o">**&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">arange&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">inv_freq_extrapolation&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mf">1.0&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="n">pos_freqs&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">inv_freq_interpolation&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mf">1.0&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">factor&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">pos_freqs&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">low&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">high&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">find_correction_range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">beta_fast&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">beta_slow&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">base&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">original_max_position_embeddings&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># Get n-dimensional rotational scaling corrected for extrapolation&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">inv_freq_extrapolation_factor&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">1&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">linear_ramp_factor&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">low&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">high&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span> &lt;span class="o">//&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">inv_freq&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">inv_freq_interpolation&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">inv_freq_extrapolation_factor&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">inv_freq_extrapolation&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">inv_freq_extrapolation_factor&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">attention_factor&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">get_mscale&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">factor&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="nf">forward&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">position_ids&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="o">...&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">cos&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">sin&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>实际的transformers代码中，Qwen使用的还是默认的RoPE，在inference时如果我们需要扩展上下文，可以通过修改config的形式：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="kn">from&lt;/span> &lt;span class="nn">transformers&lt;/span> &lt;span class="kn">import&lt;/span> &lt;span class="n">pipeline&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">model_name_or_path&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="s2">&amp;#34;Qwen/Qwen3-8B&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">generator&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">pipeline&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;text-generation&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">model_name_or_path&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">torch_dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="s2">&amp;#34;auto&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">device_map&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="s2">&amp;#34;auto&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">model_kwargs&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="p">{&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;max_position_embeddings&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="mi">131072&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;rope_scaling&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="p">{&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;rope_type&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="s2">&amp;#34;yarn&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;factor&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="mf">4.0&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="s2">&amp;#34;original_max_position_embeddings&amp;#34;&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="mi">32768&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="p">},&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="p">}&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>在本文中，作者首先构建了一个统一的表征不同上下文长度扩展的形式，接下来作者分析了不同上下文长度扩展的不足，并提出了YaRN这种上下文长度扩展方式，结果发现，YaRN不仅在短上下文长度下面表现很好，当上下文长度扩展之后，其表现依然非常优秀。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2309.00071" target="_blank" rel="noopener"
+>arxiv YaRN&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://arxiv.org/pdf/2306.15595" target="_blank" rel="noopener"
+>arxiv PI&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://qwen.readthedocs.io/en/latest/inference/transformers.html#enabling-long-context" target="_blank" rel="noopener"
+>Qwen documentation&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

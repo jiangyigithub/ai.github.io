@@ -1,0 +1,1494 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>NVIDIA on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/nvidia/</link><description>Recent content in NVIDIA on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/nvidia/index.xml" rel="self" type="application/rss+xml"/><item><title>megatron-lm</title><link>https://github.com/jiangyigithub/ai.github.io/p/megatron-lm/</link><pubDate>Wed, 21 Jan 2026 18:04:12 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/megatron-lm/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>随着模型参数变大，现有的 GPU 已经很难使用单一 GPU 来训练模型。对于多 GPU 训练场景，目前主要采用了 pipeline parallelism, 比如 &lt;a class="link" href="https://maosong.website/p/gpipe/" target="_blank" rel="noopener"
+>GPipe&lt;/a> 等，但是，这些策略需要我们对代码进行比较大的改动，这提高了开发成本。&lt;/p>
+&lt;p>为了解决多 GPU 训练大规模 LLM 的效率，降低开发成本，目前主要使用了 model parallelism 策略，即对模型进行切分部署在多个 GPU 上。model parallelism 有两种范式：&lt;/p>
+&lt;ol>
+&lt;li>pipeline parallelism (PP): 将模型按照 layer 进行切分，如 &lt;a class="link" href="https://maosong.website/p/gpipe/" target="_blank" rel="noopener"
+>GPipe&lt;/a> 等，这种方法的问题是需要额外的逻辑来处理通信以及存在 pipeline bubbles&lt;/li>
+&lt;li>tensor parallelism (TP): 将模型的按照权重进行切分，部署在不同的 GPU 上。&lt;/li>
+&lt;/ol>
+&lt;p>作者在本文中基于 TP 策略来对 attention, FFN layer 进行简单改动来实现训练效率的提升。&lt;/p>
+&lt;p>作者通过实现验证了 tensor parallelism 的有效性和高效率，结果发现在 512 张 GPU 的场景下，TP 可以达到 $76\%$ 的 scaling efficiency (相比于 1 张 GPU 带来的性能提升)&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;p>作者使用的 transformer 架构如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/megatron-lm/megatron-lm-transformer-architecture.png"
+width="210"
+height="501"
+loading="lazy"
+alt="transformer architecture"
+class="gallery-image"
+data-flex-grow="41"
+data-flex-basis="100px"
+>&lt;/p>
+&lt;p>本文中，作者探究了 BERT 和 GPT-2 两种架构。&lt;/p>
+&lt;p>首先，我们假设 transformer layer 输入为 $X\in\mathbb{R}^{bs\times d}$, 这里 $b, s$ 分别为 batch size, sequence length, 接下来我们介绍如何针对 FFN, attention 以及 embedding 构建 TP 策略&lt;/p>
+&lt;h3 id="ffn">&lt;a href="#ffn" class="header-anchor">&lt;/a>FFN
+&lt;/h3>&lt;p>论文中使用的 FFN 为 &lt;code>Linear-GeLU-Linear&lt;/code> 的结构，对应第一层权重为 $W_1\in\mathbb{R}^{d\times d_{ff}}$, 第二层权重为 $W_2\in\mathbb{R}^{d_{ff}\times d}$, 对应数学表达式为&lt;/p>
+$$
+Y = \mathrm{GeLU}(XW_1)W_2\in\mathbb{R}^{bs\times d}
+$$&lt;p>我们首先对 $W_1$ 按照 column 进行切分，得到&lt;/p>
+$$
+W_1 = [W_{11}, W_{12}]\in\mathbb{R}^{d\times d_{ff}}, \text{ where } W_{11}\in\mathbb{R}^{d\times d_1}, W_{12}\in\mathbb{R}^{d\times d_2}, d_1+d_2=d_{ff}
+$$&lt;p>这里 $d_1, d_2$ 与我们并行的 GPU 数 (x-way TP) 相关，这样，我们就有&lt;/p>
+$$
+\mathrm{GeLU}(XW_1) = \mathrm{GeLU}(X[W_{11}, W_{12}]) = \mathrm{GeLU}([XW_{11}, XW_{22}]) = [\mathrm{GeLU}(XW_{11}), \mathrm{GeLU}(XW_{12})]
+$$&lt;p>从而我们可以分别将 $W_{11}$ 和 $W_{12}$ 部署在两个 GPU 上，然后并行计算。&lt;/p>
+&lt;p>论文中还介绍如果我们对 $W_1$ 按照 row 进行切分，则最终由于 $\mathrm{GeLU}(A+B)\neq \mathrm{GeLU}(A)+\mathrm{GeLU}(B)$ 计算时会产生一次额外的同步。&lt;/p>
+&lt;p>接下来，对于 $W_2$, 我们按照 row 进行切分得到&lt;/p>
+$$
+W_2 = \begin{bmatrix}
+W_{21}\\
+W_{22}
+\end{bmatrix}\in\mathbb{R}^{d_{ff}\times d}, \text{ where }W_{21}\in\mathbb{R}^{d_1\times d}, W_{22}\in\mathbb{R}^{d_2\times d}, d_1+d_2=d_{ff}
+$$&lt;p>计算时，我们有&lt;/p>
+$$
+\mathrm{GeLU}(XW_1)W_2 = [\mathrm{GeLU}(XW_{11}), \mathrm{GeLU}(XW_{12})]\begin{bmatrix}
+W_{21}\\
+W_{22}
+\end{bmatrix} = \mathrm{GeLU}(XW_{11})W_{21} + \mathrm{GeLU}(XW_{12})W_{22}
+$$&lt;p>可以看到，通过按照 row 进行切分，我们可以将 $W_{11}, W_{21}$ 部署在一个 GPU 上，将 $W_{12}, W_{22}$ 部署在另一个 GPU 上，分别计算出 $\mathrm{GeLU}(XW_{11})W_{21}$ 和 $\mathrm{GeLU}(XW_{12})W_{22}$ 之后，再通过一此 &lt;code>all-reduce&lt;/code> 操作得到最终的输出结果。计算图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/megatron-lm/megatron-lm-MLP-tp.png"
+width="580"
+height="264"
+loading="lazy"
+alt="Tensor Parallelism for MLP in transformer block"
+class="gallery-image"
+data-flex-grow="219"
+data-flex-basis="527px"
+>&lt;/p>
+&lt;p>这里 $f$ 和 $g$ 是两个对偶算子，代表了 TP 产生的额外通信开销&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>operator&lt;/th>
+&lt;th>forward&lt;/th>
+&lt;th>backward&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$f$&lt;/td>
+&lt;td>identity&lt;/td>
+&lt;td>&lt;code>all-reduce&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$g$&lt;/td>
+&lt;td>&lt;code>all-reduce&lt;/code>&lt;/td>
+&lt;td>identity&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>如果说我们使用的是 SwiGLU FFN, 即&lt;/p>
+$$
+Y = (XW_3\odot \mathrm{Swish}(XW_1))W_2
+$$&lt;p>我们按照 column 对 $W_1, W_3$ 进行切分，按照 row 对 $W_2$ 进行切分（假设我们有 2 个 GPU），得到&lt;/p>
+$$
+\begin{aligned}
+W_1 &amp;= [W_{11}, W_{12}]\in\mathbb{R}^{d\times d_{ff}}, \text{ where } W_{11}\in\mathbb{R}^{d\times d_1}, W_{12}\in\mathbb{R}^{d\times d_2}, d_1+d_2=d_{ff}\\
+W_3 &amp;= [W_{31}, W_{32}]\in\mathbb{R}^{d\times d_{ff}}, \text{ where } W_{31}\in\mathbb{R}^{d\times d_1}, W_{32}\in\mathbb{R}^{d\times d_2}, d_1+d_2=d_{ff}\\
+W_2 &amp;= \begin{bmatrix}
+W_{21}\\
+W_{22}
+\end{bmatrix}\in\mathbb{R}^{d_{ff}\times d}, \text{ where }W_{21}\in\mathbb{R}^{d_1\times d}, W_{22}\in\mathbb{R}^{d_2\times d}, d_1+d_2=d_{ff}
+\end{aligned}
+$$&lt;p>然后我们将 $W_{11}, W_{31}, W_{21}$ 放在第一个 GPU 上，将 $W_{12}, W_{32}, W_{22}$ 放在第二个 GPU 上，此时，&lt;/p>
+$$
+\begin{aligned}
+\mathrm{Swish}(XW_1) &amp;= \mathrm{Swish}(X[W_{11}, W_{12}])
+= \mathrm{Swish}([XW_{11}, XW_{12}])=[\mathrm{Swish}(XW_{11}, \mathrm{Swish}(XW_{12}]\\
+XW_3\odot \mathrm{Swish}(XW_1) &amp;= [XW_{31}, XW_{32}]\mathrm{Swish}(XW_1) = [XW_{31}\mathrm{Swish}(XW_{11}), XW_{32}\mathrm{Swish}(XW_{12})]\\
+Y = (XW_3\odot \mathrm{Swish}(XW_1))W_2&amp;=(XW_3\odot \mathrm{Swish}(XW_1))\begin{bmatrix}
+W_{21}\\
+W_{22}
+\end{bmatrix} = XW_{31}\mathrm{Swish}(XW_{11})W_{21}+ XW_{32}\mathrm{Swish}(XW_{12})W_{22}
+\end{aligned}
+$$&lt;p>这样我们通过一次 &lt;code>all-reduce&lt;/code> 也可以完成 SwiGLU FFN 的 tensor parallelism, 示意图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/megatron-lm/megatron-lm-SwiGLU-TP.png"
+width="771"
+height="449"
+loading="lazy"
+alt="Tensor Parallelism for SwiGLU MLP in transformer block"
+class="gallery-image"
+data-flex-grow="171"
+data-flex-basis="412px"
+>&lt;/p>
+&lt;h3 id="attention">&lt;a href="#attention" class="header-anchor">&lt;/a>Attention
+&lt;/h3>&lt;p>Attention 的处理与 MLP 非常相似，论文中的做法就是将不同 head 部署到不同 gpu 上分别进行计算，最后在计算 output projection 时再通过一次 &lt;code>all-reduce&lt;/code> 来合并输出，这里我们假设有 $h$ 个 heads, 每个 head 的 dimension 为 $d_h$, 我们先对 query, key, value layer 的 weight $W_Q, W_K, W_V\in\mathbb{R}^{d\times hd_h}$ 进行切分&lt;/p>
+$$
+W_Q = [W_{Q1}, \dots, W_{Qh}], W_K = [W_{K1}, \dots, W_{kh}], W_V = [W_{V1}, \dots, W_{Vh}]
+$$&lt;p>其中 $W_{Qi}, W_{Ki}, W_{Vi}\in\mathbb{R}^{d\times d_h}$ 为每个 head 对应的 query, key, value weight. 我们将切分后的 $W_{Qi}, W_{Ki}, W_{Vi}$ 部署在一个 GPU 上（也可以将若干个 head 部署在一个 GPU 上），然后分别计算出每个 GPU 的 attention 结果，最后再进行汇总，如下所示&lt;/p>
+$$
+\begin{aligned}
+o_i &amp;= \mathrm{softmax}\left(\frac{(XW_{Qi})(XW_{Ki})^T}{d_h}\right) XW_{Vi}, i=1,\dots,h\\
+O &amp;= [o_1,\dots,o_h]W_O
+\end{aligned}
+$$&lt;p>下面是 multi-head attention 对应的 TP 示意图&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/megatron-lm/megatron-lm-mha-tp.png"
+width="596"
+height="324"
+loading="lazy"
+alt="Tensor Parallelism for multi-head attention"
+class="gallery-image"
+data-flex-grow="183"
+data-flex-basis="441px"
+>&lt;/p>
+&lt;h3 id="embedding">&lt;a href="#embedding" class="header-anchor">&lt;/a>Embedding
+&lt;/h3>&lt;p>对于 Input embedding, 作者将 embedding matrix $E\in\mathbb{E}^{V\times d}$ 按照 row 进行切分（论文中使用了转置，因此是按照 column 进行切分），得到 $E=[E_1,E_2]^T$, 这里 $E_i\in\mathbb{R}^{d\times V_i}$, $V_1+V_2=V$, 接下来我们把切分后的 embedding matrix 部署在不同的 GPU 上，由于每个 GPU 只有部分结果，因此我们还需要进行 &lt;code>all-reduce&lt;/code> 来进行汇总。&lt;/p>
+&lt;p>而对于 output embedding, 我们也可以使用类似的做法进行切分，每个 GPU 上计算完结果之后我们还需要一个 &lt;code>all-gather&lt;/code> 来汇总结果。&lt;/p>
+&lt;p>作者在这里还额外介绍了针对 output embedding 的优化方法，由于 embedding 的输出大小为 $[bs, V]$, 而 $V$ 通常比较大，因此，为了降低通信开销，作者将 cross-entropy-loss 与 output embedding kernel 进行融合，这样我们传输的数据量就减少到了 $bs$.&lt;/p>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>作者首先对 GPT-2 模型进行了修正，首先将 &lt;code>vocab_size&lt;/code> 从 50257 提升到 128 的倍数，即 51200. 对于 model+data parallelism, 作者固定 global batch size 为 512. (64-way DP)&lt;/p>
+&lt;p>配置如下表所示（head size 为 96）&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Hidden size&lt;/th>
+&lt;th>attention heads&lt;/th>
+&lt;th>layers&lt;/th>
+&lt;th>parameters (B)&lt;/th>
+&lt;th>TP&lt;/th>
+&lt;th>TP+DP&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>1536&lt;/td>
+&lt;td>16&lt;/td>
+&lt;td>40&lt;/td>
+&lt;td>1.2&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>64&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>1920&lt;/td>
+&lt;td>20&lt;/td>
+&lt;td>54&lt;/td>
+&lt;td>2.5&lt;/td>
+&lt;td>2&lt;/td>
+&lt;td>128&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>2304&lt;/td>
+&lt;td>24&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>4.2&lt;/td>
+&lt;td>4&lt;/td>
+&lt;td>256&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>3072&lt;/td>
+&lt;td>32&lt;/td>
+&lt;td>72&lt;/td>
+&lt;td>8.3&lt;/td>
+&lt;td>8&lt;/td>
+&lt;td>512&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>对应的 scaling （使用多卡训练后，每个 GPU 相对于单卡训练的利用率）如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>parallelism&lt;/th>
+&lt;th>TP-1&lt;/th>
+&lt;th>TP-2&lt;/th>
+&lt;th>TP-4&lt;/th>
+&lt;th>TP-8&lt;/th>
+&lt;th>TP-1+DP-64&lt;/th>
+&lt;th>TP-2+DP-64&lt;/th>
+&lt;th>TP-4+DP-64&lt;/th>
+&lt;th>TP-8+DP-64&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>scaling&lt;/td>
+&lt;td>100%&lt;/td>
+&lt;td>95%&lt;/td>
+&lt;td>82%&lt;/td>
+&lt;td>77%&lt;/td>
+&lt;td>96%&lt;/td>
+&lt;td>83%&lt;/td>
+&lt;td>79%&lt;/td>
+&lt;td>74%&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="implementation">&lt;a href="#implementation" class="header-anchor">&lt;/a>Implementation
+&lt;/h2>&lt;p>首先是 linear layer 的 TP 版本，如下所示&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;span class="lnt">38
+&lt;/span>&lt;span class="lnt">39
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="kn">import&lt;/span> &lt;span class="nn">torch&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="kn">import&lt;/span> &lt;span class="nn">torch.nn&lt;/span> &lt;span class="k">as&lt;/span> &lt;span class="nn">nn&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="kn">import&lt;/span> &lt;span class="nn">torch.distributed&lt;/span> &lt;span class="k">as&lt;/span> &lt;span class="nn">dist&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">class&lt;/span> &lt;span class="nc">ColumnParallelLinear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Module&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">in_features&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">out_features&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">bias&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="kc">True&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">super&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="fm">__init__&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">rank&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">world_size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_world_size&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">local_out&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">out_features&lt;/span> &lt;span class="o">//&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">world_size&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">weight&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Parameter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">empty&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">in_features&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">local_out&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="nf">forward&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">out&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">x&lt;/span> &lt;span class="o">@&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">weight&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">gather_list&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">empty_like&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">out&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">_&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">world_size&lt;/span>&lt;span class="p">)]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">all_gather&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">gather_list&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">out&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cat&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">gather_list&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="o">=-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">class&lt;/span> &lt;span class="nc">RowParallelLinear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Module&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">in_features&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">out_features&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">bias&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="kc">True&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">super&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="fm">__init__&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">rank&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_rank&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">world_size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">get_world_size&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">local_in&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">in_features&lt;/span> &lt;span class="o">//&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">world_size&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">weight&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Parameter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">empty&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">local_in&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">out_features&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="nf">forward&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">x_local&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">chunk&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">world_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="o">=-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)[&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">rank&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">out&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">x_local&lt;/span> &lt;span class="o">@&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">weight&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">all_reduce&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">out&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">op&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">ReduceOp&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">SUM&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">out&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>接下来是针对 LLM 中使用的 SwiGLU FFN 进行的优化，基于前面的介绍，我们不需要对基于 column linear 进行 all-reduce, 代码如下所示&lt;/p>
+&lt;p>SwiGLU&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;span class="lnt">38
+&lt;/span>&lt;span class="lnt">39
+&lt;/span>&lt;span class="lnt">40
+&lt;/span>&lt;span class="lnt">41
+&lt;/span>&lt;span class="lnt">42
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="kn">import&lt;/span> &lt;span class="nn">torch&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="kn">from&lt;/span> &lt;span class="nn">torch&lt;/span> &lt;span class="kn">import&lt;/span> &lt;span class="n">nn&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="kn">import&lt;/span> &lt;span class="nn">torch.nn.functional&lt;/span> &lt;span class="k">as&lt;/span> &lt;span class="nn">F&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="kn">import&lt;/span> &lt;span class="nn">torch.distributed&lt;/span> &lt;span class="k">as&lt;/span> &lt;span class="nn">dist&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">world_size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">1&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">rank&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">class&lt;/span> &lt;span class="nc">ColumnParallelLinear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Module&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">in_features&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">out_features&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">assert&lt;/span> &lt;span class="n">out_features&lt;/span> &lt;span class="o">%&lt;/span> &lt;span class="n">world_size&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;Output features must be divisible by world size (world_size=&lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">world_size&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">)&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">part_out_features&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">out_features&lt;/span> &lt;span class="o">//&lt;/span> &lt;span class="n">world_size&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">weight&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Parameter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">empty&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">part_out_features&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">part_in_features&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">dtype&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="nf">forward&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">y&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">x&lt;/span> &lt;span class="o">@&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">weight&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">y&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">class&lt;/span> &lt;span class="nc">RowParallelLinear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Module&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">in_features&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">out_features&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">assert&lt;/span> &lt;span class="n">in_features&lt;/span> &lt;span class="o">%&lt;/span> &lt;span class="n">world_size&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;Input features must be divisible by world size (world_size=&lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">world_size&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">)&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">part_in_features&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">in_features&lt;/span> &lt;span class="o">//&lt;/span> &lt;span class="n">world_size&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">weight&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Parameter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">empty&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">out_features&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">part_in_features&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">dtype&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="nf">forward&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">y&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">x&lt;/span> &lt;span class="o">@&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">weight&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">world_size&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">all_reduce&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">y&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">y&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">class&lt;/span> &lt;span class="nc">MLP&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Module&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">inter_dim&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">super&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="fm">__init__&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">w1&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">ColumnParallelLinear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">inter_dim&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">w2&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">RowParallelLinear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">inter_dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">w3&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">ColumnParallelLinear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">inter_dim&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="nf">forward&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">w2&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">F&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">silu&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">w1&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">w3&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>attention&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;span class="lnt">38
+&lt;/span>&lt;span class="lnt">39
+&lt;/span>&lt;span class="lnt">40
+&lt;/span>&lt;span class="lnt">41
+&lt;/span>&lt;span class="lnt">42
+&lt;/span>&lt;span class="lnt">43
+&lt;/span>&lt;span class="lnt">44
+&lt;/span>&lt;span class="lnt">45
+&lt;/span>&lt;span class="lnt">46
+&lt;/span>&lt;span class="lnt">47
+&lt;/span>&lt;span class="lnt">48
+&lt;/span>&lt;span class="lnt">49
+&lt;/span>&lt;span class="lnt">50
+&lt;/span>&lt;span class="lnt">51
+&lt;/span>&lt;span class="lnt">52
+&lt;/span>&lt;span class="lnt">53
+&lt;/span>&lt;span class="lnt">54
+&lt;/span>&lt;span class="lnt">55
+&lt;/span>&lt;span class="lnt">56
+&lt;/span>&lt;span class="lnt">57
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">class&lt;/span> &lt;span class="nc">TPMultiHeadAttention&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Module&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">d_model&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">num_heads&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">head_dim&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">d_model&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">d_model&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_heads&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">num_heads&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">head_dim&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">head_dim&lt;/span> &lt;span class="k">if&lt;/span> &lt;span class="n">head_dim&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span> &lt;span class="k">else&lt;/span> &lt;span class="n">d_model&lt;/span> &lt;span class="o">//&lt;/span> &lt;span class="n">num_heads&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">assert&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_heads&lt;/span> &lt;span class="o">%&lt;/span> &lt;span class="n">world_size&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s2">&amp;#34;num_heads must be divisible by world size&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">assert&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">d_model&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_heads&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">head_dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="s2">&amp;#34;d_model must equal num_heads * head_dim&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># heads of different GPU&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">local_num_heads&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_heads&lt;/span> &lt;span class="o">//&lt;/span> &lt;span class="n">world_size&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">local_qkv_dim&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">local_num_heads&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">head_dim&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">qkv_proj&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">ColumnParallelLinear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">in_features&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">d_model&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">out_features&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">3&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">local_qkv_dim&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">out_proj&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">RowParallelLinear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">in_features&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">d_model&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">out_features&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">d_model&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">scale&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mf">1.0&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">sqrt&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">tensor&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">head_dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">float32&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="nf">_split_heads&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">batch_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">seq_len&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">_&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">shape&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># [batch, seq_len, local_num_heads, head_dim]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">x&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">reshape&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">batch_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">seq_len&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">local_num_heads&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">head_dim&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># [batch, local_num_heads, seq_len, head_dim]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">transpose&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="nf">forward&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">attn_mask&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">batch_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">seq_len&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">_&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">shape&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># [batch, seq_len, local_qkv_dim * 3]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">qkv&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">qkv_proj&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># [batch, seq_len, local_qkv_dim]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">q&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">k&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">v&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">split&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">qkv&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">local_qkv_dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="o">=-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># [batch, local_num_heads, seq_len, head_dim]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">q&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">_split_heads&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">q&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">k&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">_split_heads&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">k&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">v&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">_split_heads&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">v&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">attn_scores&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">q&lt;/span> &lt;span class="o">@&lt;/span> &lt;span class="n">k&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">transpose&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">scale&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">attn_mask&lt;/span> &lt;span class="ow">is&lt;/span> &lt;span class="ow">not&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">attn_scores&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">attn_scores&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">attn_mask&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">attn_weights&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">F&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">softmax&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">attn_scores&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="o">=-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># [batch, local_num_heads, seq_len, head_dim]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">attn_output&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">attn_weights&lt;/span> &lt;span class="o">@&lt;/span> &lt;span class="n">v&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># [batch, seq_len, local_num_heads, head_dim]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">attn_output&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">attn_output&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">transpose&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># [batch, seq_len, local_qkv_dim]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">attn_output&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">attn_output&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">reshape&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">batch_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">seq_len&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">local_qkv_dim&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">gather_list&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">empty_like&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">attn_output&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">_&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">world_size&lt;/span>&lt;span class="p">)]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">all_gather&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">gather_list&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">attn_output&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># [batch, seq_len, d_model]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">full_attn_output&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">cat&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">gather_list&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="o">=-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">out&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">out_proj&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">full_attn_output&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">out&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>Embedding&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">class&lt;/span> &lt;span class="nc">ParallelEmbedding&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Module&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">vocab_size&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="nb">super&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="fm">__init__&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">vocab_size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">vocab_size&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">dim&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">dim&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">assert&lt;/span> &lt;span class="n">vocab_size&lt;/span> &lt;span class="o">%&lt;/span> &lt;span class="n">world_size&lt;/span> &lt;span class="o">==&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="sa">f&lt;/span>&lt;span class="s2">&amp;#34;Vocabulary size must be divisible by world size (world_size=&lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">world_size&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s2">)&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">part_vocab_size&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">vocab_size&lt;/span> &lt;span class="o">//&lt;/span> &lt;span class="n">world_size&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">vocab_start_idx&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">rank&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">part_vocab_size&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">vocab_end_idx&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">vocab_start_idx&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">part_vocab_size&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">weight&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Parameter&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">empty&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">part_vocab_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">dim&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="nf">forward&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">world_size&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">mask&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">vocab_start_idx&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">|&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span> &lt;span class="o">&amp;gt;=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">vocab_end_idx&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">x&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">x&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">vocab_start_idx&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">x&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">mask&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">y&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">F&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">embedding&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">weight&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">if&lt;/span> &lt;span class="n">world_size&lt;/span> &lt;span class="o">&amp;gt;&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">y&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">mask&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dist&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">all_reduce&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">y&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">y&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者提出了针对 transformer 架构的 tensor parallelism 策略来提高整体的训练效率，通过在训练过程加入四次 all-reduce 通信我们就可以训练更大规模的模型。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://github.com/NVIDIA/Megatron-LM/tree/main#megatron-lm--megatron-core" target="_blank" rel="noopener"
+>Megatron-LM &amp;amp; Megatron Core Github&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/1909.08053" target="_blank" rel="noopener"
+>Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/model.py" target="_blank" rel="noopener"
+>DeepSeek-V3&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Nvidia-GPU specs</title><link>https://github.com/jiangyigithub/ai.github.io/p/nvidia-gpu-specs/</link><pubDate>Wed, 14 Jan 2026 11:09:19 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/nvidia-gpu-specs/</guid><description>&lt;h2 id="v100">&lt;a href="#v100" class="header-anchor">&lt;/a>V100
+&lt;/h2>&lt;h3 id="v100-关键改进">&lt;a href="#v100-%e5%85%b3%e9%94%ae%e6%94%b9%e8%bf%9b" class="header-anchor">&lt;/a>V100 关键改进
+&lt;/h3>&lt;ul>
+&lt;li>Volta architecture&lt;/li>
+&lt;li>SM architecture: 支持深度学习&lt;/li>
+&lt;li>2nd NVIDIA NVLink&lt;/li>
+&lt;li>HBM2 memory&lt;/li>
+&lt;li>Volta Multi-process Service&lt;/li>
+&lt;/ul>
+&lt;h3 id="v100-技术规格">&lt;a href="#v100-%e6%8a%80%e6%9c%af%e8%a7%84%e6%a0%bc" class="header-anchor">&lt;/a>V100 技术规格
+&lt;/h3>&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Tesla Product&lt;/th>
+&lt;th>Tesla K40&lt;/th>
+&lt;th>Tesla M40&lt;/th>
+&lt;th>Tesla P100&lt;/th>
+&lt;th>Tesla V100&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>GPU&lt;/td>
+&lt;td>GK180 (Kepler)&lt;/td>
+&lt;td>GM200 (Maxwell)&lt;/td>
+&lt;td>GP100 (Pascal)&lt;/td>
+&lt;td>GV100 (Volta)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>SMs&lt;/td>
+&lt;td>15&lt;/td>
+&lt;td>24&lt;/td>
+&lt;td>56&lt;/td>
+&lt;td>80&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>TPCs&lt;/td>
+&lt;td>15&lt;/td>
+&lt;td>24&lt;/td>
+&lt;td>28&lt;/td>
+&lt;td>40&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP32 Cores / GPU&lt;/td>
+&lt;td>2880&lt;/td>
+&lt;td>3072&lt;/td>
+&lt;td>3584&lt;/td>
+&lt;td>5120&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP64 Cores / GPU&lt;/td>
+&lt;td>960&lt;/td>
+&lt;td>96&lt;/td>
+&lt;td>1792&lt;/td>
+&lt;td>2560&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Tensor Cores / GPU&lt;/td>
+&lt;td>NA&lt;/td>
+&lt;td>NA&lt;/td>
+&lt;td>NA&lt;/td>
+&lt;td>640&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GPU Boost Clock&lt;/td>
+&lt;td>810/875 MHz&lt;/td>
+&lt;td>1114 MHz&lt;/td>
+&lt;td>1480 MHz&lt;/td>
+&lt;td>1530 MHz&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Peak FP32 TFLOPS²&lt;/td>
+&lt;td>5&lt;/td>
+&lt;td>6.8&lt;/td>
+&lt;td>10.6&lt;/td>
+&lt;td>15.7&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Peak FP64 TFLOPS²&lt;/td>
+&lt;td>1.7&lt;/td>
+&lt;td>.21&lt;/td>
+&lt;td>5.3&lt;/td>
+&lt;td>7.8&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Peak Tensor TFLOPS²&lt;/td>
+&lt;td>NA&lt;/td>
+&lt;td>NA&lt;/td>
+&lt;td>NA&lt;/td>
+&lt;td>125&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Memory Size&lt;/td>
+&lt;td>Up to 12 GB&lt;/td>
+&lt;td>Up to 24 GB&lt;/td>
+&lt;td>16 GB&lt;/td>
+&lt;td>16 GB&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Memory Interface&lt;/td>
+&lt;td>384-bit GDDR5&lt;/td>
+&lt;td>384-bit GDDR5&lt;/td>
+&lt;td>4096-bit HBM2&lt;/td>
+&lt;td>4096-bit HBM2&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>TDP&lt;/td>
+&lt;td>235 Watts&lt;/td>
+&lt;td>250 Watts&lt;/td>
+&lt;td>300 Watts&lt;/td>
+&lt;td>300 Watts&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Manufacturing Process&lt;/td>
+&lt;td>28 nm&lt;/td>
+&lt;td>28 nm&lt;/td>
+&lt;td>16 nm FinFET+&lt;/td>
+&lt;td>12 nm FFN&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>内存规格&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>GPU&lt;/th>
+&lt;th>Kepler GK180&lt;/th>
+&lt;th>Maxwell GM200&lt;/th>
+&lt;th>Pascal GP100&lt;/th>
+&lt;th>Volta GV100&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Compute Capability&lt;/td>
+&lt;td>3.5&lt;/td>
+&lt;td>5.2&lt;/td>
+&lt;td>6.0&lt;/td>
+&lt;td>7.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Threads / Warp&lt;/td>
+&lt;td>32&lt;/td>
+&lt;td>32&lt;/td>
+&lt;td>32&lt;/td>
+&lt;td>32&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Max Warps / SM&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>64&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Max Threads / SM&lt;/td>
+&lt;td>2048&lt;/td>
+&lt;td>2048&lt;/td>
+&lt;td>2048&lt;/td>
+&lt;td>2048&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Max Thread Blocks / SM&lt;/td>
+&lt;td>32&lt;/td>
+&lt;td>32&lt;/td>
+&lt;td>32&lt;/td>
+&lt;td>32&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Max 32-bit Registers / SM&lt;/td>
+&lt;td>65536&lt;/td>
+&lt;td>65536&lt;/td>
+&lt;td>65536&lt;/td>
+&lt;td>65536&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Max Registers / Block&lt;/td>
+&lt;td>65536&lt;/td>
+&lt;td>65536&lt;/td>
+&lt;td>65536&lt;/td>
+&lt;td>65536&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Max Registers / Thread&lt;/td>
+&lt;td>255&lt;/td>
+&lt;td>255&lt;/td>
+&lt;td>255&lt;/td>
+&lt;td>255&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Max Thread Block Size&lt;/td>
+&lt;td>1024&lt;/td>
+&lt;td>1024&lt;/td>
+&lt;td>1024&lt;/td>
+&lt;td>1024&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP32 Cores / SM&lt;/td>
+&lt;td>192&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>64&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Ratio of SM Registers to FP32 Cores&lt;/td>
+&lt;td>341&lt;/td>
+&lt;td>512&lt;/td>
+&lt;td>1024&lt;/td>
+&lt;td>1024&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Shared Memory Size / SM&lt;/td>
+&lt;td>16 KB/32 KB/ 48 KB&lt;/td>
+&lt;td>96 KB&lt;/td>
+&lt;td>64 KB&lt;/td>
+&lt;td>Configurable up to 96 KB&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>系统规格&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Specification&lt;/th>
+&lt;th>DGX-1 (Tesla P100)&lt;/th>
+&lt;th>DGX-1 (Tesla V100)&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>GPU&lt;/td>
+&lt;td>8x Tesla P100 GPUs&lt;/td>
+&lt;td>8x Tesla V100 GPUs&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>TFLOPS&lt;/td>
+&lt;td>170 (GPU FP16) + 3 (CPU FP32)&lt;/td>
+&lt;td>1 (GPU Tensor PFLOP)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GPU Memory&lt;/td>
+&lt;td>16 GB per GPU / 128 GB per DGX-1 Node&lt;/td>
+&lt;td>16 GB or 32 GB per GPU / 128-256 GB per DGX-1 Node&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>CPU&lt;/td>
+&lt;td>Dual 20-core Intel® Xeon® E5-2698 v4&lt;/td>
+&lt;td>Dual 20-core Intel® Xeon® E5-2698 v4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP32 CUDA Cores&lt;/td>
+&lt;td>28,672 Cores&lt;/td>
+&lt;td>40,960 Cores&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>System Memory&lt;/td>
+&lt;td>Up to 512 GB 2133 MHz DDR4 LRDIMM&lt;/td>
+&lt;td>Up to 512 GB 2133 MHz DDR4 LRDIMM&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Storage&lt;/td>
+&lt;td>4x 1.92 TB SSD RAID 0&lt;/td>
+&lt;td>4x 1.92 TB SSD RAID 0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Network Interconnect&lt;/td>
+&lt;td>Dual 10 GbE, 4 IB EDR&lt;/td>
+&lt;td>Dual 10 GbE, 4 IB EDR&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>System Dimensions&lt;/td>
+&lt;td>866 D x 444 W x 131 H (mm)&lt;/td>
+&lt;td>866 D x 444 W x 131 H (mm)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>System Weight&lt;/td>
+&lt;td>80 lbs&lt;/td>
+&lt;td>80 lbs&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Max Power TDP&lt;/td>
+&lt;td>3200 W&lt;/td>
+&lt;td>3200 W&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Operating Temp&lt;/td>
+&lt;td>10 - 35°C&lt;/td>
+&lt;td>10 - 35°C&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="a100">&lt;a href="#a100" class="header-anchor">&lt;/a>A100
+&lt;/h2>&lt;h3 id="a100-关键改进">&lt;a href="#a100-%e5%85%b3%e9%94%ae%e6%94%b9%e8%bf%9b" class="header-anchor">&lt;/a>A100 关键改进
+&lt;/h3>&lt;ul>
+&lt;li>Ampere 架构：使用 MIG 来将 A100 切分为更小的实例或者链接更多 GPU&lt;/li>
+&lt;li>Tensor Cores: 312 TFLOPs/s&lt;/li>
+&lt;li>NVLink: 更高的 throughput&lt;/li>
+&lt;li>MIG (multi-instance GPU): 一个 A100 可以切分为至多 7 个硬件层面隔离的实例&lt;/li>
+&lt;li>HBM2e: 更大的 HBM, 更快的 bandwidth, 更高的 DRAM 使用效率&lt;/li>
+&lt;li>structure sparsity: 稀疏运算可以带来 2 倍的算力提升&lt;/li>
+&lt;/ul>
+&lt;h3 id="a100-技术规格">&lt;a href="#a100-%e6%8a%80%e6%9c%af%e8%a7%84%e6%a0%bc" class="header-anchor">&lt;/a>A100 技术规格
+&lt;/h3>&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>&lt;/th>
+&lt;th>A100 80GB PCIe&lt;/th>
+&lt;th>A100 80GB SXM&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>FP64&lt;/td>
+&lt;td>9.7 TFLOPS&lt;/td>
+&lt;td>9.7 TFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP64 Tensor Core&lt;/td>
+&lt;td>19.5 TFLOPS&lt;/td>
+&lt;td>19.5 TFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP32&lt;/td>
+&lt;td>19.5 TFLOPS&lt;/td>
+&lt;td>19.5 TFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Tensor Float 32 (TF32)&lt;/td>
+&lt;td>156 TFLOPS | 312 TFLOPS&lt;/td>
+&lt;td>156 TFLOPS | 312 TFLOPS*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>BFLOAT16 Tensor Core&lt;/td>
+&lt;td>312 TFLOPS | 624 TFLOPS*&lt;/td>
+&lt;td>312 TFLOPS | 624 TFLOPS*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP16 Tensor Core&lt;/td>
+&lt;td>312 TFLOPS | 624 TFLOPS*&lt;/td>
+&lt;td>312 TFLOPS | 624 TFLOPS*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>INT8 Tensor Core&lt;/td>
+&lt;td>624 TOPS | 1248 TOPS*&lt;/td>
+&lt;td>624 TOPS | 1248 TOPS*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GPU Memory&lt;/td>
+&lt;td>80GB HBM2e&lt;/td>
+&lt;td>80GB HBM2e&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GPU Memory Bandwidth&lt;/td>
+&lt;td>1,935 GB/s&lt;/td>
+&lt;td>2,039 GB/s&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Max Thermal Design Power (TDP)&lt;/td>
+&lt;td>300W&lt;/td>
+&lt;td>400W ***&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Multi-Instance GPU&lt;/td>
+&lt;td>Up to 7 MIGs @ 10GB&lt;/td>
+&lt;td>Up to 7 MIGs @ 10GB&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Form Factor&lt;/td>
+&lt;td>PCIe &lt;br>Dual-slot air-cooled or single-slot liquid-cooled&lt;/td>
+&lt;td>SXM&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Interconnect&lt;/td>
+&lt;td>NVIDIA® NVLink® Bridge &lt;br>for 2 GPUs: 600 GB/s ** &lt;br>PCIe Gen4: 64 GB/s&lt;/td>
+&lt;td>NVLink: 600 GB/s &lt;br>PCIe Gen4: 64 GB/s&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Server Options&lt;/td>
+&lt;td>Partner and NVIDIA-Certified Systems™ with 1-8 GPUs&lt;/td>
+&lt;td>NVIDIA HGX™ A100-Partner and NVIDIA-Certified Systems with 4,8, or 16 GPUs NVIDIA DGX™ A100 with 8 GPUs&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="h100">&lt;a href="#h100" class="header-anchor">&lt;/a>H100
+&lt;/h2>&lt;h3 id="h100-关键改进">&lt;a href="#h100-%e5%85%b3%e9%94%ae%e6%94%b9%e8%bf%9b" class="header-anchor">&lt;/a>H100 关键改进
+&lt;/h3>&lt;ul>
+&lt;li>Hopper 架构&lt;/li>
+&lt;li>Tensor Core: 更强的 tensor core&lt;/li>
+&lt;li>transformer engine: 加速基于 transformer 架构模型的训练&lt;/li>
+&lt;li>NVLink: 900GB/s 的 bandwidth&lt;/li>
+&lt;li>2nd MIG: 支持 multi-tenant, multi-user 使用&lt;/li>
+&lt;li>DPX: 基于 DPX 指令集加速动态规划算法&lt;/li>
+&lt;/ul>
+&lt;h3 id="h100-技术规格">&lt;a href="#h100-%e6%8a%80%e6%9c%af%e8%a7%84%e6%a0%bc" class="header-anchor">&lt;/a>H100 技术规格
+&lt;/h3>&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>&lt;/th>
+&lt;th>H100 SXM&lt;/th>
+&lt;th>H100 NVL&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>FP64&lt;/td>
+&lt;td>34 teraFLOPS&lt;/td>
+&lt;td>30 teraFLOPs&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP64 Tensor Core&lt;/td>
+&lt;td>67 teraFLOPS&lt;/td>
+&lt;td>60 teraFLOPs&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP32&lt;/td>
+&lt;td>67 teraFLOPS&lt;/td>
+&lt;td>60 teraFLOPs&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>TF32 Tensor Core*&lt;/td>
+&lt;td>989 teraFLOPS&lt;/td>
+&lt;td>835 teraFLOPs&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>BFLOAT16 Tensor Core*&lt;/td>
+&lt;td>1,979 teraFLOPS&lt;/td>
+&lt;td>1,671 teraFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP16 Tensor Core*&lt;/td>
+&lt;td>1,979 teraFLOPS&lt;/td>
+&lt;td>1,671 teraFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP8 Tensor Core*&lt;/td>
+&lt;td>3,958 teraFLOPS&lt;/td>
+&lt;td>3,341 teraFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>INT8 Tensor Core*&lt;/td>
+&lt;td>3,958 teraFLOPS&lt;/td>
+&lt;td>3,341 teraFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GPU Memory&lt;/td>
+&lt;td>80GB&lt;/td>
+&lt;td>94GB&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GPU Memory Bandwidth&lt;/td>
+&lt;td>3.35TB/s&lt;/td>
+&lt;td>3.9TB/s&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Decoders&lt;/td>
+&lt;td>7 NVDEC &lt;br>7 JPEG&lt;/td>
+&lt;td>7 NVDEC &lt;br>7 JPEG&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Max Thermal Design Power (TDP)&lt;/td>
+&lt;td>Up to 700W (configurable)&lt;/td>
+&lt;td>350-400W (configurable)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Multi-Instance GPUs&lt;/td>
+&lt;td>Up to 7 MIGS @ 10GB each&lt;/td>
+&lt;td>Up to 7 MIGS @ 12GB each&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Form Factor&lt;/td>
+&lt;td>SXM&lt;/td>
+&lt;td>PCIe &lt;br>dual-slot air-cooled&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Interconnect&lt;/td>
+&lt;td>NVIDIA NVLink™: 900GB/s &lt;br>PCIe Gen5: 128GB/s&lt;/td>
+&lt;td>NVIDIA NVLink: 600GB/s &lt;br>PCIe Gen5: 128GB/s&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Server Options&lt;/td>
+&lt;td>NVIDIA HGX H100 Partner and NVIDIA- &lt;br>Certified Systems™ with 4 or 8 GPUs &lt;br>NVIDIA DGX H100 with 8 GPUs&lt;/td>
+&lt;td>Partner and NVIDIA-Certified Systems with 1–8 GPUs&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>NVIDIA AI Enterprise&lt;/td>
+&lt;td>Add-on&lt;/td>
+&lt;td>Included&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="h200">&lt;a href="#h200" class="header-anchor">&lt;/a>H200
+&lt;/h2>&lt;h3 id="h200-关键改进">&lt;a href="#h200-%e5%85%b3%e9%94%ae%e6%94%b9%e8%bf%9b" class="header-anchor">&lt;/a>H200 关键改进
+&lt;/h3>&lt;ul>
+&lt;li>更高的 HBM 内存和带宽&lt;/li>
+&lt;li>更高的 LLM inference 速度&lt;/li>
+&lt;/ul>
+&lt;h3 id="h200-技术规格">&lt;a href="#h200-%e6%8a%80%e6%9c%af%e8%a7%84%e6%a0%bc" class="header-anchor">&lt;/a>H200 技术规格
+&lt;/h3>&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>&lt;/th>
+&lt;th>H200 SXM&lt;/th>
+&lt;th>H200 NVL&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>FP64&lt;/td>
+&lt;td>34 teraFLOPS&lt;/td>
+&lt;td>30 teraFLOPs&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP64 Tensor Core&lt;/td>
+&lt;td>67 teraFLOPS&lt;/td>
+&lt;td>60 teraFLOPs&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP32&lt;/td>
+&lt;td>67 teraFLOPS&lt;/td>
+&lt;td>60 teraFLOPs&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>TF32 Tensor Core*&lt;/td>
+&lt;td>989 teraFLOPS&lt;/td>
+&lt;td>835 teraFLOPs&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>BFLOAT16 Tensor Core*&lt;/td>
+&lt;td>1,979 teraFLOPS&lt;/td>
+&lt;td>1,671 teraFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP16 Tensor Core*&lt;/td>
+&lt;td>1,979 teraFLOPS&lt;/td>
+&lt;td>1,671 teraFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP8 Tensor Core*&lt;/td>
+&lt;td>3,958 teraFLOPS&lt;/td>
+&lt;td>3,341 teraFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>INT8 Tensor Core*&lt;/td>
+&lt;td>3,958 teraFLOPS&lt;/td>
+&lt;td>3,341 teraFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GPU Memory&lt;/td>
+&lt;td>&lt;strong>141GB&lt;/strong>&lt;/td>
+&lt;td>&lt;strong>141GB&lt;/strong>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GPU Memory Bandwidth&lt;/td>
+&lt;td>&lt;strong>4.8TB/s&lt;/strong>&lt;/td>
+&lt;td>&lt;strong>4.8TB/s&lt;/strong>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Decoders&lt;/td>
+&lt;td>7 NVDEC &lt;br>7 JPEG&lt;/td>
+&lt;td>7 NVDEC &lt;br>7 JPEG&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Confidential Computing&lt;/td>
+&lt;td>Supported&lt;/td>
+&lt;td>Supported&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Max Thermal Design Power (TDP)&lt;/td>
+&lt;td>Up to 700W (configurable)&lt;/td>
+&lt;td>Up to &lt;strong>600W&lt;/strong> (configurable)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Multi-Instance GPUs&lt;/td>
+&lt;td>Up to 7 MIGS @ &lt;strong>18GB&lt;/strong> each&lt;/td>
+&lt;td>Up to 7 MIGS @ &lt;strong>18GB&lt;/strong> each&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Form Factor&lt;/td>
+&lt;td>SXM&lt;/td>
+&lt;td>PCIe &lt;br>dual-slot air-cooled&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Interconnect&lt;/td>
+&lt;td>NVIDIA NVLink™: 900GB/s &lt;br>PCIe Gen5: 128GB/s&lt;/td>
+&lt;td>2- or 4-way NVIDIA NVLink bridge: ** 900GB/s** per GPU&lt;br>PCIe Gen5: 128GB/s&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Server Options&lt;/td>
+&lt;td>NVIDIA HGX H200 Partner and NVIDIA- &lt;br>Certified Systems™ with 4 or 8 GPUs&lt;/td>
+&lt;td>NVIDIA MGX™ H200 NVL partner and &lt;br>NVIDIA-Certified Systems with up to 8 GPUs&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>NVIDIA AI Enterprise&lt;/td>
+&lt;td>Add-on&lt;/td>
+&lt;td>Included&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>相比于 H100, H200 升级了 HBM 和 bandwidth&lt;/p>
+&lt;h2 id="b200">&lt;a href="#b200" class="header-anchor">&lt;/a>B200
+&lt;/h2>&lt;h3 id="b200-关键改进">&lt;a href="#b200-%e5%85%b3%e9%94%ae%e6%94%b9%e8%bf%9b" class="header-anchor">&lt;/a>B200 关键改进
+&lt;/h3>&lt;ul>
+&lt;li>blackwell 架构： GPU 之间的通信效率大幅度提升&lt;/li>
+&lt;li>Grace CPU: GPU 可以与 Grace CPu 之间达到 900GB/s 的 bidirectional bandwidth&lt;/li>
+&lt;li>5th NVIDIA NVLink: 可以链接 576 块 GPU 来支持计算，NVlink 的带宽可以达到 130TB/s&lt;/li>
+&lt;li>RAS engine: 自动识别故障来提高效率&lt;/li>
+&lt;li>NVIDIA networking&lt;/li>
+&lt;/ul>
+&lt;h3 id="b2100-技术规格">&lt;a href="#b2100-%e6%8a%80%e6%9c%af%e8%a7%84%e6%a0%bc" class="header-anchor">&lt;/a>B2100 技术规格
+&lt;/h3>&lt;p>system specification 如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Specification&lt;/th>
+&lt;th>GB200 NVL72&lt;/th>
+&lt;th>GB200 NVL4&lt;/th>
+&lt;th>HGX B200&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>NVIDIA Blackwell GPUs | Grace CPUs&lt;/td>
+&lt;td>72 | 36&lt;/td>
+&lt;td>4 | 2&lt;/td>
+&lt;td>8 | 0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>CPU Cores&lt;/td>
+&lt;td>2,592 Arm® Neoverse V2 Cores&lt;/td>
+&lt;td>144 Arm Neoverse V2 Cores&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Total NVFP4 Tensor Core²&lt;/td>
+&lt;td>1,440 | 720 PFLOPS&lt;/td>
+&lt;td>80 | 40 PFLOPS&lt;/td>
+&lt;td>144 | 72 PFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Total FP8/FP6 Tensor Core²&lt;/td>
+&lt;td>720 PFLOPS&lt;/td>
+&lt;td>40 PFLOPS&lt;/td>
+&lt;td>72 PFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Total Fast Memory&lt;/td>
+&lt;td>31 TB&lt;/td>
+&lt;td>1.8 TB&lt;/td>
+&lt;td>1.4 TB&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Total Memory Bandwidth&lt;/td>
+&lt;td>576 TB/s&lt;/td>
+&lt;td>32 TB/s&lt;/td>
+&lt;td>62 TB/s&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Total NVLink Bandwidth&lt;/td>
+&lt;td>130 TB/s&lt;/td>
+&lt;td>7.2 TB/s&lt;/td>
+&lt;td>14.4 TB/s&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>individual specification 如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Specification&lt;/th>
+&lt;th>GB200 NVL72&lt;/th>
+&lt;th>GB200 NVL4&lt;/th>
+&lt;th>HGX B200&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>FP4 Tensor Core&lt;/td>
+&lt;td>20 PFLOPS&lt;/td>
+&lt;td>20 PFLOPS&lt;/td>
+&lt;td>18 PFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP8/FP6 Tensor Core²&lt;/td>
+&lt;td>10 PFLOPS&lt;/td>
+&lt;td>10 PFLOPS&lt;/td>
+&lt;td>9 PFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>INT8 Tensor Core²&lt;/td>
+&lt;td>10 POPS&lt;/td>
+&lt;td>10 POPS&lt;/td>
+&lt;td>9 POPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP16/BF16 Tensor Core²&lt;/td>
+&lt;td>5 PFLOPS&lt;/td>
+&lt;td>5 PFLOPS&lt;/td>
+&lt;td>4.5 PFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>TF32 Tensor Core²&lt;/td>
+&lt;td>2.5 PFLOPS&lt;/td>
+&lt;td>2.5 PFLOPS&lt;/td>
+&lt;td>2.2 PFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP32&lt;/td>
+&lt;td>80 TFLOPS&lt;/td>
+&lt;td>80 TFLOPS&lt;/td>
+&lt;td>75 TFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP64 / FP64 Tensor Core&lt;/td>
+&lt;td>40 TFLOPS&lt;/td>
+&lt;td>40 TFLOPS&lt;/td>
+&lt;td>37 TFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GPU Memory &lt;br>Bandwidth&lt;/td>
+&lt;td>186 GB HBM3E &lt;br>8 TB/s&lt;/td>
+&lt;td>186 GB HBM3E &lt;br>8 TB/s&lt;/td>
+&lt;td>180 GB HBM3E &lt;br>7.7 TB/s&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Multi-Instance GPU (MIG)&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>7&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Decompression Engine&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>Yes&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Decoders&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>7 NVDEC³ &lt;br>7 nvJPEG&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Max Thermal Design Power (TDP)&lt;/td>
+&lt;td>Configurable up to 1,200 W&lt;/td>
+&lt;td>Configurable up to 1,200 W&lt;/td>
+&lt;td>Configurable up to 1,000 W&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Interconnect&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>Fifth-generation NVLink: 1.8 TB/s &lt;br>PCIe Gen5: 128 GB/s&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Server Options&lt;/td>
+&lt;td>NVIDIA GB200 NVL72 partner and NVIDIA-Certified Systems™ with 72 GPUs&lt;/td>
+&lt;td>NVIDIA MGX partner and NVIDIA-Certified Systems&lt;/td>
+&lt;td>NVIDIA HGX B200 partner and NVIDIA-Certified Systems with 8 GPUs&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="b300">&lt;a href="#b300" class="header-anchor">&lt;/a>B300
+&lt;/h2>&lt;h3 id="b300-关键改进">&lt;a href="#b300-%e5%85%b3%e9%94%ae%e6%94%b9%e8%bf%9b" class="header-anchor">&lt;/a>B300 关键改进
+&lt;/h3>&lt;ul>
+&lt;li>Blackwell 架构&lt;/li>
+&lt;li>AI reasoning inference: 支持 test-time scaling, 对 attention layer 和 FLOPs 都有加速&lt;/li>
+&lt;li>HBM3e: 支持更大的 batch size 和 throughput&lt;/li>
+&lt;li>ConnectX-8 SuperNIC, 一个 host2 个 ConnectX-8 设备，支持 800Gb/s 的 GPU 之间通信&lt;/li>
+&lt;li>Grace-CPU: 更强的表现和带宽&lt;/li>
+&lt;li>5th NVIDIA NVLink: 更高的通信效率&lt;/li>
+&lt;/ul>
+&lt;h3 id="b3100-技术规格">&lt;a href="#b3100-%e6%8a%80%e6%9c%af%e8%a7%84%e6%a0%bc" class="header-anchor">&lt;/a>B3100 技术规格
+&lt;/h3>&lt;p>system specification 如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>&lt;/th>
+&lt;th>GB300 NVL72&lt;/th>
+&lt;th>HGX B300&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Blackwell Ultra GPUs| Grace CPUs&lt;/td>
+&lt;td>72 | 36&lt;/td>
+&lt;td>8 | 0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>CPU Cores&lt;/td>
+&lt;td>2,592 Arm Neoverse V2 Cores&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Total FP4 Tensor Core&lt;/td>
+&lt;td>1 1,440 PFLOPS | 1,080 PFLOPS&lt;/td>
+&lt;td>144 PFLOPS | 108 PFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Total FP8/FP6 Tensor Core&lt;/td>
+&lt;td>2 720 PFLOPS&lt;/td>
+&lt;td>72 PFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Total Fast Memory&lt;/td>
+&lt;td>37 TB&lt;/td>
+&lt;td>2.1 TB&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Total Memory Bandwidth&lt;/td>
+&lt;td>576 TB/s&lt;/td>
+&lt;td>62 TB/s&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Total NVLink Switch Bandwidth&lt;/td>
+&lt;td>130 TB/s&lt;/td>
+&lt;td>14.4 TB/s&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>individual specification 如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>&lt;/th>
+&lt;th>GB300 NVL72&lt;/th>
+&lt;th>HGX B300&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>FP4 Tensor Core&lt;/td>
+&lt;td>20 PFLOPS | 15 PFLOPS&lt;/td>
+&lt;td>18 PFLOPS | 14 PFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP8/FP6 Tensor Core2&lt;/td>
+&lt;td>10 PFLOPS&lt;/td>
+&lt;td>9 PFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>INT8 Tensor Core2&lt;/td>
+&lt;td>330 TOPS&lt;/td>
+&lt;td>307 TOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP16/BF16 Tensor Core&lt;/td>
+&lt;td>5 PFLOPS&lt;/td>
+&lt;td>4.5 PLFOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>TF32 Tensor Core2&lt;/td>
+&lt;td>2.5 PFLOPS&lt;/td>
+&lt;td>2.2 PFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP32&lt;/td>
+&lt;td>80 TFLOPS&lt;/td>
+&lt;td>75 TFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FP64/FP64 Tensor Core&lt;/td>
+&lt;td>1.3 TFLOPS&lt;/td>
+&lt;td>1.2 TFLOPS&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GPU Memory | Bandwidth&lt;/td>
+&lt;td>279 GB HBM3E | 8 TB/s&lt;/td>
+&lt;td>270 GB HBM3E | 7.7 TB/s&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Multi-Instance GPU (MIG)&lt;/td>
+&lt;td>7&lt;/td>
+&lt;td>7&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Decompression Engine&lt;/td>
+&lt;td>Yes&lt;/td>
+&lt;td>Yes&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Decoders&lt;/td>
+&lt;td>7 NVDEC3 &lt;br>7 nvJPEG&lt;/td>
+&lt;td>7 NVDEC3 &lt;br>7 nvJPEG&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Max Thermal Design Power (TDP)&lt;/td>
+&lt;td>Configurable up to 1,400 W&lt;/td>
+&lt;td>Configurable up to 1,100 W&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Interconnect&lt;/td>
+&lt;td>Fifth-Generation NVLink: 1.8 TB/s &lt;br>PCIe Gen6: 256 GB/s&lt;/td>
+&lt;td>Fifth-Generation NVLink: 1.8 TB/s &lt;br>PCIe Gen6: 256 GB/s&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Server Options&lt;/td>
+&lt;td>NVIDIA GB300 NVL72 partner and &lt;br>NVIDIA-Certified Systems™&lt;/td>
+&lt;td>NVIDIA HGX B300 partner and &lt;br>NVIDIA-Certified Systems&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://images.nvidia.com/content/volta-architecture/pdf/volta-architecture-whitepaper.pdf" target="_blank" rel="noopener"
+>V100 white paper&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://www.nvidia.com/en-us/data-center/a100/" target="_blank" rel="noopener"
+>A100&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://resources.nvidia.com/en-us-hopper-architecture/nvidia-h100-tensor-c" target="_blank" rel="noopener"
+>Hopper Architecture&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://www.nvidia.com/en-us/data-center/h100/" target="_blank" rel="noopener"
+>H100&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://www.nvidia.com/en-us/data-center/h200/" target="_blank" rel="noopener"
+>H200&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://www.nvidia.com/en-us/data-center/gb200-nvl72/" target="_blank" rel="noopener"
+>B200&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://resources.nvidia.com/en-us-blackwell-architecture/blackwell-ultra-datasheet" target="_blank" rel="noopener"
+>B300&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://resources.nvidia.com/en-us-gpu-resources/blackwell-ultra-datasheet?lx=CPwSfP" target="_blank" rel="noopener"
+>blackwell&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

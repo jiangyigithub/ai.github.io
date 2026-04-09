@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Omni on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/omni/</link><description>Recent content in Omni on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/omni/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on Qwen2.5 omni</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-qwen2.5-omni/</link><pubDate>Tue, 01 Apr 2025 10:29:00 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-qwen2.5-omni/</guid><description>&lt;h1 id="介绍">&lt;a href="#%e4%bb%8b%e7%bb%8d" class="header-anchor">&lt;/a>介绍
+&lt;/h1>&lt;p>2025年3月26号，Qwen团队发布了Qwen2.5 omni，Qwen2.5 omni是一个多模态模型，支持文本、音频、视频、图像等多个模态的输入，支持文本，音频的输出。
+作者提出了TMRoPE来对齐不同的模态，然后还是用了Thinker-Talker的架构来同时生成文本和音频。
+Thinker是一个大语言模型，Talker是一个dual-track自回归模型，Talker基于Thinker的hideen states来生成audio token，最后通过一个sliding-window DiT来解码audio token&lt;/p>
+&lt;p>现有omni-model存在的问题：&lt;/p>
+&lt;ol>
+&lt;li>缺乏一个系统的，联合训练多个不同模态的方法&lt;/li>
+&lt;li>需要处理不同模态输出时互相干扰的问题&lt;/li>
+&lt;li>不能实时理解或者流式输出多模态信息&lt;/li>
+&lt;/ol>
+&lt;p>Qwen2.5 omni的解决方法：&lt;/p>
+&lt;ol>
+&lt;li>使用TMRoPE来对齐不同的模态。作者将audio以及video frame按照时间顺序组织成一个交替的架构，然后使用TMRoPE来对齐&lt;/li>
+&lt;li>使用Thinker-Talker的架构来同时生成文本和音频。Thinker负责文本输出，Talker负责音频的流式输出。&lt;/li>
+&lt;li>在multimodal encoder中使用Block-wise streaming处理技巧来实现实时理解；在输出时，实现了一个dual-track自回归架构来生成audio token，以及一个DiT模型来解码audio token&lt;/li>
+&lt;/ol>
+&lt;p>Qwen2.5 omni的贡献：&lt;/p>
+&lt;ol>
+&lt;li>提出了Qwen2.5-omni,可以实时理解多模态信息，并流式输出文本和音频&lt;/li>
+&lt;li>提出了TMRoPE，一个可以对齐不同模态的RoPE算法&lt;/li>
+&lt;li>提出了Thinker-Talker的架构，来完成实时理解和音频输出&lt;/li>
+&lt;li>在多个benchmark上取得了SOTA&lt;/li>
+&lt;/ol>
+&lt;h1 id="架构">&lt;a href="#%e6%9e%b6%e6%9e%84" class="header-anchor">&lt;/a>架构
+&lt;/h1>&lt;h2 id="总览">&lt;a href="#%e6%80%bb%e8%a7%88" class="header-anchor">&lt;/a>总览
+&lt;/h2>&lt;p>Qwen2.5-omni的架构如下图所示
+&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-qwen2.5-omni/architecture.png"
+width="1346"
+height="1110"
+loading="lazy"
+alt="architecture of Qwen2.5-omni"
+class="gallery-image"
+data-flex-grow="121"
+data-flex-basis="291px"
+>&lt;/p>
+&lt;p>其中Talker类似于人的嘴，负责基于脑中的信息来生成对话；Thinker类似于人的大脑，负责理解输入的信息，并生成对话的上下文。&lt;/p>
+&lt;h2 id="输入">&lt;a href="#%e8%be%93%e5%85%a5" class="header-anchor">&lt;/a>输入
+&lt;/h2>&lt;ul>
+&lt;li>text: Qwen的tokenizer&lt;/li>
+&lt;li>audio： Qwen2-Audio的tokenizer&lt;/li>
+&lt;li>vision： Qwen2.5-VL的vision tokenizer&lt;/li>
+&lt;/ul>
+&lt;p>视频以及TMRoPE。 对于视频来说，Qwen2.5-omni采取了和Qwen2.5-VL一样的MRoPE算法。只是这里的temporal ID对应40ms&lt;/p>
+&lt;p>音频：对于音频来说，Qwen2.5-omni也是以40ms进行采样然后encoding。&lt;/p>
+&lt;p>视频+音频：对于视频+音频来说，Qwen2.5-omni将视频和音频的token进行交替的排列，来保证时间上信息一致&lt;/p>
+&lt;h2 id="输出">&lt;a href="#%e8%be%93%e5%87%ba" class="header-anchor">&lt;/a>输出
+&lt;/h2>&lt;ul>
+&lt;li>Text：text由Thinker直接输出，这和LLM的输出方式是一样的。&lt;/li>
+&lt;li>Speech：Qwen2.5-omni首先构建了&lt;code>qwen-tts-tokenizer&lt;/code>，一个speech codec，用于表示speech的关键信息。
+然后基于这些关键信息，Talker通过自回归的方式生成audio tokens以及text tokens。&lt;/li>
+&lt;/ul>
+&lt;h2 id="流式输出">&lt;a href="#%e6%b5%81%e5%bc%8f%e8%be%93%e5%87%ba" class="header-anchor">&lt;/a>流式输出
+&lt;/h2>&lt;p>对于流式输出来说，现在的模型存在latency，具体影响因素如下：&lt;/p>
+&lt;ol>
+&lt;li>处理多模态输入的延迟&lt;/li>
+&lt;li>TTFT （time to first token）&lt;/li>
+&lt;li>将第一段speech token解码为audio的时间&lt;/li>
+&lt;li>模型架构导致的latency，如模型参数等&lt;/li>
+&lt;/ol>
+&lt;p>为了解决这个问题，Qwen2.5-omni采取了以下措施：&lt;/p>
+&lt;ol>
+&lt;li>Support prefilling. 作者修改了audio以及vision encoder来在temporal dimension上支持block-wise attention.
+具体来讲，audio encoder只关注2秒内的信息，而vision encoder和Qwen2.5-VL一样，使用了一个MLP patch merger来压缩视觉token&lt;/li>
+&lt;li>Streaming Codec generation. 为了提高流式输出的效率，作者还是用了基于Flow-Matching的DiT，输出的code收线使用Flow-Matching转化为一个mel-spectrogram.
+然后再通过一个BigVGAN来重建得到对应的waveform. 作者在这里修改了DiT的attention，将其receptive field 限制为4个block，包括lookback of 2 blocks以及lookahead of 1 block.&lt;/li>
+&lt;/ol>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-qwen2.5-omni/DiT-sliding-window.png"
+width="410"
+height="433"
+loading="lazy"
+alt="Sliding Window DiT"
+class="gallery-image"
+data-flex-grow="94"
+data-flex-basis="227px"
+>&lt;/p>
+&lt;h1 id="pre-training">&lt;a href="#pre-training" class="header-anchor">&lt;/a>Pre Training
+&lt;/h1>&lt;p>模型参数初始化：&lt;/p>
+&lt;ul>
+&lt;li>LLM： 从Qwen2.5进行初始化&lt;/li>
+&lt;li>vision encoder：从Qwen2.5-VL的vision encoder进行初始化&lt;/li>
+&lt;li>audio encoder：从Whisper-large-v3进行初始化&lt;/li>
+&lt;/ul>
+&lt;p>Pretraining和Qwen2.5-VL的训练过程类似，分成了3个stage：&lt;/p>
+&lt;ol>
+&lt;li>冻结LLM的参数，仅训练vision encoder和audio encoder， 该阶段使用了audio-text以及image-text pairs来进行训练。 数据：image-text, video-text, video-audio, audio-text以及text corpus，
+跟Qwen2-Audio类似，作者将hierarchical tags用自然语言prompt进行替换&lt;/li>
+&lt;li>训练所有参数，使用更多的多模态数据进行训练。数据包括800B token的image和Video相关数据，300B token的audio数据，100B token的video-audio相关数据。&lt;/li>
+&lt;li>将模型的上下文扩展到32K。前两个阶段的上下文长度为8192，本阶段使用了long video data等数据来将模型的上下文扩展到32K。&lt;/li>
+&lt;/ol>
+&lt;h1 id="post-training">&lt;a href="#post-training" class="header-anchor">&lt;/a>Post Training
+&lt;/h1>&lt;h2 id="thinker">&lt;a href="#thinker" class="header-anchor">&lt;/a>Thinker
+&lt;/h2>&lt;p>数据格式为ChatML，数据类型包括pure text-based dialogue data, visual-modality conversation data, audio-modality conversation data and mix-modality conversation data.&lt;/p>
+&lt;h2 id="talker">&lt;a href="#talker" class="header-anchor">&lt;/a>Talker
+&lt;/h2>&lt;p>包括三个阶段&lt;/p>
+&lt;ol>
+&lt;li>ICL training: 训练Talker学习context continuation&lt;/li>
+&lt;li>&lt;a class="link" href="https://maosong.website/p/notes-on-dpo/" target="_blank" rel="noopener"
+>DPO&lt;/a> training: 提升speech generation的stability&lt;/li>
+&lt;li>multi-speaker instruction fine-tuning: 提升模型的naturalness和controllability&lt;/li>
+&lt;/ol>
+&lt;h1 id="evaluation">&lt;a href="#evaluation" class="header-anchor">&lt;/a>Evaluation
+&lt;/h1>&lt;p>Qwen2.5-omni在两类benchmark上进行来的评测，分别时多模态理解（X-&amp;gt;text）以及音频生成(X-&amp;gt; Speech)&lt;/p>
+&lt;p>我们这里主要关注一下speech understanding以及speech generation的benchmark.&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-qwen2.5-omni/audio-to-text-performance.png"
+width="1093"
+height="1125"
+loading="lazy"
+alt="Audio-to-Text Performance"
+class="gallery-image"
+data-flex-grow="97"
+data-flex-basis="233px"
+>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-qwen2.5-omni/zero-shot-speech-generation.png"
+width="904"
+height="685"
+loading="lazy"
+alt="Speech Generation Performance"
+class="gallery-image"
+data-flex-grow="131"
+data-flex-basis="316px"
+>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-qwen2.5-omni/single-speaker-speech-generation.png"
+width="864"
+height="513"
+loading="lazy"
+alt="single speaker speech generation"
+class="gallery-image"
+data-flex-grow="168"
+data-flex-basis="404px"
+>&lt;/p>
+&lt;h1 id="总结">&lt;a href="#%e6%80%bb%e7%bb%93" class="header-anchor">&lt;/a>总结
+&lt;/h1>&lt;p>Qwen2.5-omni相当于是结合了Qwen2.5-VL以及Mini-omni，跟mini-omni2的输入输出是类似的。不同的点在于，Qwen2.5-omni使用了Thinker-Talker的架构，然后还使用了TMRoPE来对齐不同的模态。总的来说，感觉模型还是更偏重于audio的理解与生成。&lt;/p>
+&lt;h1 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2503.20215" target="_blank" rel="noopener"
+>Qwen2.5-omni&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://arxiv.org/abs/2408.16725" target="_blank" rel="noopener"
+>Mini-omni&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://arxiv.org/pdf/2410.11190" target="_blank" rel="noopener"
+>Mini-omni2&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

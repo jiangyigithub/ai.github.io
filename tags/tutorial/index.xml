@@ -1,0 +1,500 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Tutorial on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/tutorial/</link><description>Recent content in Tutorial on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/tutorial/index.xml" rel="self" type="application/rss+xml"/><item><title>(RL series 3) Policy evaluation</title><link>https://github.com/jiangyigithub/ai.github.io/p/rl-series-3-policy-evaluation/</link><pubDate>Wed, 18 Mar 2026 17:43:57 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/rl-series-3-policy-evaluation/</guid><description>&lt;p>这一节我们讨论如何评估 (evaluate) 一个 policy. 要评估一个 policy $\pi$, 我们需要求出对应的 value function $V^\pi$.&lt;/p>
+&lt;h2 id="value-function">&lt;a href="#value-function" class="header-anchor">&lt;/a>Value Function
+&lt;/h2>&lt;h3 id="monte-carlo">&lt;a href="#monte-carlo" class="header-anchor">&lt;/a>Monte Carlo
+&lt;/h3>&lt;p>注意到&lt;/p>
+$$
+V^\pi(s) = \mathbb{E}^\pi\left[\sum_{t=0}^{T-1}\gamma^tr_t\mid s_0=s\right]
+$$&lt;p>我们可以利用 Monte Carlo (MC) 方法来进行估计，即从 $s_0=s$ 出发，独立随机采样 $N$ 条轨迹&lt;/p>
+$$
+\{s, a_0^{(i)},r_0^{(i)},\dots,a_{T^{(i)}-1}^{(i)},r_{T^{(i)}-1}^{(i)}, s^{(i)}_{T^{(i)}}\}, i=1,\dots,N
+$$&lt;p>然后我们使用样本平均来近似期望&lt;/p>
+$$
+V^\pi(s) = \mathbb{E}^\pi\left[\sum_{t=0}^{T-1}\gamma^tr_t\mid s_0=s\right]\approx \frac{1}{N}\sum_{i=1}^N\sum_{t=0}^{T^{(i)}-1}\gamma^tr_t^{(i)}
+$$&lt;p>如果 $\mathcal{S}$ 比较小，我们可以遍历 $s\in\mathcal{S}$ 来估计 $V^\pi$.&lt;/p>
+&lt;p>当 $\mathcal{S}$ 非常大或者连续时，我们需要使用神经网络 $V_\phi$ 来近似 $V^\pi$,&lt;/p>
+$$
+\min_{\phi} \mathcal{L}(\phi) =\mathbb{E}_{s\sim p_0}\left[\frac12\left(V_\phi(s)-V^\pi(s)\right)^2\right]
+$$&lt;p>对上面的目标函数求导得到&lt;/p>
+$$
+\begin{align}
+\nabla_\phi \mathcal{L}(\phi) &amp;= \mathbb{E}_{s\sim p_0}\left[\left(V_\phi(s)-V^\pi(s)\right)\nabla_\phi V_\phi(s)\right]\\
+&amp;= \mathbb{E}_{s\sim p_0}\left[\left(V_\phi(s)- \mathbb{E}^\pi\left[\sum_{t=0}^{T-1}\gamma^tr_t\mid s_0=s\right]\right)\nabla_\phi V_\phi(s)\right]\\
+&amp;=\mathbb{E}_{s\sim p_0}\left[\mathbb{E}^\pi\left[\left(V_\phi(s)- \sum_{t=0}^{T-1}\gamma^tr_t\right)\nabla_\phi V_\phi(s)\mid s_0=s\right]\right]\\
+&amp;= \mathbb{E}_{s\sim p_0}^\pi\left[\left(V_\phi(s)- \sum_{t=0}^{T-1}\gamma^tr_t\right)\nabla_\phi V_\phi(s)\mid s_0=s\right]\\
+\end{align}
+$$&lt;p>这样，我们可以结合 SGD 与 MC 来近似 $V^\pi$&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/rl-series-3-policy-evaluation/value-function-MC.png"
+width="653"
+height="255"
+loading="lazy"
+alt="Value function approximation with MC"
+class="gallery-image"
+data-flex-grow="256"
+data-flex-basis="614px"
+>&lt;/p>
+&lt;h3 id="temporal-difference">&lt;a href="#temporal-difference" class="header-anchor">&lt;/a>Temporal Difference
+&lt;/h3>&lt;p>Temporal difference (TD) learning 通过相邻两步的转换关系来近似函数。注意到，&lt;/p>
+$$
+V^\pi(s) =\mathbb{E}^\pi[r_0 + \gamma V^\pi(s_1)\mid s_0=s]
+$$&lt;p>与前面的方法类似，我们先采样然后使用 MC 来进行估计&lt;/p>
+$$
+V^\pi(s) =\mathbb{E}^\pi[r_0 + \gamma V^\pi(s_1)\mid s_0=s]\approx \frac{1}N\sum_{i=1}^N\left(r_0^{(i)} + \gamma V^\pi(s_1^{(i)})\right)
+$$&lt;p>同样的，当 $\mathcal{S}$ 比较大或者连续时，我们构造损失函数&lt;/p>
+$$
+\min_{\phi} \mathcal{L}(\phi) =\mathbb{E}_{s\sim p_0}\left[\frac12\left(V_\phi(s)-V^\pi(s)\right)^2\right]
+$$&lt;p>对应的梯度为&lt;/p>
+$$
+\nabla_\phi \mathcal{L}(\phi) =\mathbb{E}_{s\sim p_0}^\pi\left[\left(V_\phi(s)- r_0-\gamma V^\pi(s_1)\right)\nabla_\phi V_\phi(s)\mid s_0=s\right]
+$$&lt;p>但是，这里存在的问题在于，我们使用了 $V^\pi(s_1)$, 而这个值是未知的，因此，一个做法是使用当前的 value function $V_\phi$ 来进行代替，即&lt;/p>
+$$
+\nabla_\phi \mathcal{L}(\phi) \approx \mathbb{E}_{s\sim p_0}^\pi\left[\left(V_\phi(s)- r_0-\gamma V_\phi(s_1)\right)\nabla_\phi V_\phi(s)\mid s_0=s\right]
+$$&lt;p>这样，我们结合 TD 和 GSD 的算法就变成了&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/rl-series-3-policy-evaluation/value-function-1-TD-wrong.png"
+width="656"
+height="171"
+loading="lazy"
+alt="Value function approximation with TD (wrong)"
+class="gallery-image"
+data-flex-grow="383"
+data-flex-basis="920px"
+>&lt;/p>
+&lt;p>接下来，我们需要关注如何计算 $g$, 直接通过 $g=\left(V_\phi(s)- r_0-\gamma V_\phi(s_1)\right)\nabla_\phi V_\phi(s)$ 来进行计算，这在数学上是没有问题的，但是从自动微分的角度不对，比如 Pytorch 对应的实现应该是&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="n">pred&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">V_phi&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">s0&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">target&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">r&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">gamma&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">V_phi&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">s1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">td_error&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">pred&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">target&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">loss&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mf">0.5&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">td_error&lt;/span> &lt;span class="o">**&lt;/span> &lt;span class="mi">2&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">loss&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">backward&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>可以看到，我们实际上求的梯度是&lt;/p>
+$$
+\nabla_\phi\left[\frac12\left(V_\phi(s)-(r+\gamma V_\phi(s'))\right)^2\right]=(V_\phi(s)-(r+\gamma V_\phi(s'))(\nabla_\phi V_\phi(s)-\nabla_\phi V_\phi(s'))
+$$&lt;p>这显然与 $g$ 不相等。&lt;/p>
+&lt;p>为了解决这个问题，我们需要使用 &lt;a class="link" href="stop-gradient.md" >stop-gradient&lt;/a> 的技巧来避免 $V_\phi(s')$ 参与反向传播，这个时候，我们的目标函数就变成了&lt;/p>
+$$
+\frac12\left(V_\phi(s)-(r+\gamma\ \mathrm{sg}[V_\phi(s')])\right)^2
+$$&lt;p>其中 $\mathrm{sg}[\cdot]$ 是 stop-gradient operator, 满足&lt;/p>
+$$
+\mathrm{sg}[x] = \begin{cases}
+x &amp;\text{forward pass}\\
+0 &amp;\text{backward pass}
+\end{cases}
+$$&lt;p>这样其梯度就是&lt;/p>
+$$
+\nabla_\phi\left[\frac12\left(V_\phi(s)-(r+\gamma\ \mathrm{sg}[V_\phi(s')])\right)^2\right]=(V_\phi(s)-(r+\gamma V_\phi(s'))\nabla_\phi V_\phi(s)=g
+$$&lt;p>对应的 python 代码为&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="n">pred&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">V_phi&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">s0&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">target&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">r&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">gamma&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">V_phi&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">s1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">td_error&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">pred&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">target&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">detach&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="c1"># sop gradient operator&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">loss&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mf">0.5&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">td_error&lt;/span> &lt;span class="o">**&lt;/span> &lt;span class="mi">2&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">loss&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">backward&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>最终，我们的算法实现为&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/rl-series-3-policy-evaluation/value-function-1-TD.png"
+width="650"
+height="171"
+loading="lazy"
+alt="Value function approximation with TD"
+class="gallery-image"
+data-flex-grow="380"
+data-flex-basis="912px"
+>&lt;/p>
+&lt;p>上述这种做法其实是 semi-gradient methods, 这类方法在参数更新时，只计算部分梯度的方法。虽然这种方法牺牲了严格的梯度下降性质，但是其能够保证更好的表现。&lt;/p>
+&lt;h3 id="k-step-td">&lt;a href="#k-step-td" class="header-anchor">&lt;/a>K-step TD
+&lt;/h3>&lt;p>我们可以进一步推广 TD 到多步的场景，注意到&lt;/p>
+$$
+\begin{align}
+V^\pi(s) &amp;=\mathbb{E}^\pi[r_0 + \gamma V^\pi(s_1)\mid s_0=s]\\
+&amp;=\mathbb{E}^\pi[r_0 + \gamma \mathbb{E}^\pi[r_1 + \gamma V^\pi(s_1)\mid s_1]\mid s_0=s]\\
+&amp;= \mathbb{E}^\pi[\mathbb{E}^\pi[r_0 + \gamma r_1 + \gamma^2 V^\pi(s_2) \mid s_1] \mid s_0=s]
+\end{align}
+$$&lt;p>由重期望定理（Law of Total Expectation）：&lt;/p>
+$$
+\mathbb{E}^\pi[\mathbb{E}^\pi[X \mid s_1] \mid s_0=s] = \mathbb{E}^\pi[X \mid s_0=s]
+$$&lt;p>因此：&lt;/p>
+$$
+V^\pi(s) = \mathbb{E}^\pi[r_0 + \gamma r_1 + \gamma^2 V^\pi(s_2) \mid s_0=s]
+$$&lt;p>重复这个过程 k 次,得到 k 步展开：&lt;/p>
+$$
+\begin{align} V^\pi(s) &amp;= \mathbb{E}^\pi\left[\sum_{i=0}^{k-1} \gamma^i r_i + \gamma^k V^\pi(s_k) \mid s_0=s\right] \end{align}
+$$&lt;p>现在，我们可以基于 k-step transition 构建目标函数&lt;/p>
+$$
+\min_{\phi} \mathcal{L}(\phi) =\mathbb{E}_{s\sim p_0}\left[\frac12\left(V_\phi(s)-\left(\sum_{i=0}^{k-1} \gamma^i r_i + \gamma^k V^\pi(s_k)\right)\right)^2\right]
+$$&lt;p>使用前面分析的方法，我们就可以写出类似的算法&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/rl-series-3-policy-evaluation/value-function-k-TD.png"
+width="646"
+height="230"
+loading="lazy"
+alt="value function approximation with k-step TD"
+class="gallery-image"
+data-flex-grow="280"
+data-flex-basis="674px"
+>&lt;/p>
+&lt;p>一般来说，我们会令 $k=5$.&lt;/p>
+&lt;h3 id="mc-vs-td">&lt;a href="#mc-vs-td" class="header-anchor">&lt;/a>MC v.s. TD
+&lt;/h3>&lt;p>TD 本质上一种 bootstrapping, 当需要使用 $V^\pi$ 时，我们使用 $V_\phi$ 来代替。两者对比如下&lt;/p>
+&lt;ol>
+&lt;li>MC 需要完整的一次采样，但是 TD 可以通过 bootstrap 提高采样效率。&lt;/li>
+&lt;li>当 $V_\phi$ 与 $V^\pi$ 差距较大时，boostraping 会导致训练不稳定，而 MC 则相对稳定&lt;/li>
+&lt;/ol>
+&lt;h2 id="q-function">&lt;a href="#q-function" class="header-anchor">&lt;/a>Q-function
+&lt;/h2>&lt;p>对于 Q-function, 我们也可以设计类似的算法。&lt;/p>
+&lt;p>对于 MC, 我们有&lt;/p>
+$$
+Q^{\pi}(s,a) = \mathbb{E}^{\pi}\left[\sum_{t=0}^{T-1}\gamma^tr_t\mid s_0=s, a_0=a\right]\approx \frac1N\sum_{i=1}^N\sum_{t=0}^{T^{(i)}-1}\gamma^tr_t^{(i)}
+$$&lt;p>当使用模型来近似时，我们的目标函数为&lt;/p>
+$$
+\min_{\phi} \mathcal{L}(\phi) =\mathbb{E}_{s\sim p_0, a\sim\pi(\cdot\mid s)}\left[\frac12\left(Q_\phi(s,a)-Q^\pi(s,a)\right)^2\right]
+$$&lt;p>对应的梯度&lt;/p>
+$$
+\nabla_\phi \mathcal{L}(\phi)= \mathbb{E}_{s\sim p_0}^\pi\left[\left(Q_\phi(s_0,a_0)-\sum_{t=0}^{T-1}\gamma^tr_t\right)\nabla_\phi Q_\phi(s_0,a_0)\right]
+$$&lt;p>下面是对应的算法&lt;/p>
+&lt;p>MC&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/rl-series-3-policy-evaluation/q-function-1-TD.png"
+width="647"
+height="178"
+loading="lazy"
+alt="Q function approximation with TD"
+class="gallery-image"
+data-flex-grow="363"
+data-flex-basis="872px"
+>&lt;/p>
+&lt;p>1-step Q-function TD learning&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/rl-series-3-policy-evaluation/q-function-1-TD.png"
+width="647"
+height="178"
+loading="lazy"
+alt="Q function approximation with TD"
+class="gallery-image"
+data-flex-grow="363"
+data-flex-basis="872px"
+>&lt;/p>
+&lt;p>k-step Q-function TD learning&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/rl-series-3-policy-evaluation/q-function-k-TD.png"
+width="651"
+height="231"
+loading="lazy"
+alt="Q function approximation with k-step TD"
+class="gallery-image"
+data-flex-grow="281"
+data-flex-basis="676px"
+>&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>在本节中，我们介绍了给定 policy $\pi$, 我们如何求解对应的 value function 和 Q-function.&lt;/p></description></item><item><title>(RL series 2) Bellman Equation</title><link>https://github.com/jiangyigithub/ai.github.io/p/rl-series-2-bellman-equation/</link><pubDate>Wed, 18 Mar 2026 17:39:45 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/rl-series-2-bellman-equation/</guid><description>&lt;h2 id="bellman-equations">&lt;a href="#bellman-equations" class="header-anchor">&lt;/a>Bellman Equations
+&lt;/h2>&lt;p>本节中，我们将要定义 value function, Q-function 以及这两个函数与 policy 之间的关系，这是我们介绍不同 RL 算法的基础。这一节需要使用到 &lt;a class="link" href="https://maosong.website/p/fix-point-theorem/" target="_blank" rel="noopener"
+>不动点定理&lt;/a>.&lt;/p>
+&lt;p>我们定义 Value function 如下：&lt;/p>
+$$
+V^{\pi}(s) = \mathbb{E}^{\pi}[G_0\mid s_0=s]
+$$&lt;p>value function 的具体含义为：&lt;em>agent 从当前状态 $s$ 出发，一直遵循当前策略 $\pi$， 最后获取到的 expected discounted return&lt;/em>.&lt;/p>
+&lt;p>state-action value function, 或者 Q-value function 定义如下：&lt;/p>
+$$
+Q^{\pi}(s,a) = \mathbb{E}^{\pi}[G_0\mid s_0=s, a_0=a]
+$$&lt;p>其具体含义为：&lt;em>agent 从当前状态 $s$ 出发，执行 action $a$, 再遵循当前策略 $\pi$, 最后获取到的 expected discounted return&lt;/em>.&lt;/p>
+&lt;blockquote>
+&lt;p>注意
+这里为了方便，我们令 $V^{\pi}(\langle term\rangle)=0$, $Q^{\pi}(\langle term\rangle,a)=0,\forall a\in\mathcal{A}$.&lt;/p>
+&lt;/blockquote>
+&lt;p>由全概率公式，我们有&lt;/p>
+$$
+\mathbb{E}[G_0\mid s_0=s] = \sum_{a\in\mathcal{A}}\mathbb{E}\left[G_0\mid s_t=s, a_0=a\right]\pi(a\mid s_0=s)
+$$&lt;p>即&lt;/p>
+$$
+\boxed{V^{\pi}(s) = \mathbb{E}_{a_0\sim \pi(\cdot\mid s_0)}[Q^{\pi}(s,a)]}
+$$&lt;p>一般来说，我们会使用 value function 和 Q-value function 的如下递推性质：&lt;/p>
+$$
+\boxed{
+\begin{aligned}V^\pi(s) &amp;= \mathbb{E}_{a_0\sim \pi(\cdot\mid s),\ (r_0,s_0)\sim p(\cdot,\cdot\mid s,a_0)}[r_0 + \gamma V^\pi(s_1)\mid s_0=s]\\
+Q^\pi(s,a) &amp;= \mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a),\ a'\sim \pi(\cdot\mid s')}[r + \gamma Q^\pi(s',a')\mid s,a]
+\end{aligned}}
+$$&lt;p>证明需要利用 Markov property:&lt;/p>
+$$
+\begin{aligned}
+V^{\pi}(s) &amp;= \mathbb{E}^{\pi}\left[r_0 + \gamma\sum_{t=1}^{T-1}\gamma^{t-1}r_t\mid s_0=s\right]\\
+&amp;= \mathbb{E}^{\pi}[r_0+\gamma G_1\mid s_0=s]\\
+&amp;= \mathbb{E}_{a_0\sim \pi(\cdot\mid s,\ (r_0,s_0)\sim p(\cdot,\cdot\mid s,a_0))}\left[\mathbb{E}^\pi[r_0 + \gamma G_1\mid s_0,a_0,r_0,s_1]\mid s_0=s\right]\\
+&amp;= \mathbb{E}_{a_0\sim \pi(\cdot\mid s,\ (r_0,s_0)\sim p(\cdot,\cdot\mid s,a_0))}\left[r_0 + \gamma \mathbb{E}^\pi[G_1\mid s_1]\mid s_0=s\right]\\
+&amp;= \mathbb{E}_{a_0\sim \pi(\cdot\mid s,\ (r_0,s_0)\sim p(\cdot,\cdot\mid s,a_0))}\left[r_0 + \gamma V^\pi[s_1)\mid s_0=s\right]
+\end{aligned}
+$$&lt;p>对于 $Q^\pi(s,a)$ 的推导同理。&lt;/p>
+&lt;p>我们接下来介绍 RL 的核心：Bellman equation Theorem, 其阐述了策略 $\pi$ 与 value function 所满足的充分必要条件。&lt;/p>
+&lt;p>&lt;strong>Theorem&lt;/strong>&lt;/p>
+&lt;blockquote>
+&lt;p>令 $\pi$ 为一个策略，假设 $\gamma\in(0,1)$, $|\mathcal{S}|&lt;\infty$ 以及 $|r|\leq R&lt;\infty, \mathrm{a.s.}$. 那么 $\pi$ 对应的 value function $V^\pi:\mathcal{S}^+\to\mathbb{R}$ 存在，且满足 Bellman equation:&lt;/p>
+&lt;/blockquote>
+$$
+\boxed{
+V^\pi(s) = \mathbb{E}_{a\sim \pi(\cdot\mid s),\ (r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[r+\gamma V(s')\mid s\right]
+}
+$$&lt;blockquote>
+&lt;p>反之，如果存在函数 $V:\mathcal{S}^+\to\mathbb{R}$ 满足 Bellman equation, 则 $V=V^\pi$.&lt;/p>
+&lt;/blockquote>
+&lt;p>&lt;strong>证明&lt;/strong>&lt;/p>
+&lt;p>由 $V^\pi$ 定义，我们有&lt;/p>
+$$
+\left|\sum_{t=0}^{\infty}\gamma^tr_t\right|\leq \sum_{t=0}^\infty \gamma^t R=\frac{R}{1-\gamma}&lt;\infty
+$$&lt;p>因此，$\sum_{t=0}^{\infty}\gamma^tr_t$ 是一个绝对收敛的序列，从而其期望存在且有界。&lt;/p>
+&lt;p>对于 $V^\pi(s)=\mathbb{E}^{\pi}[G_0\mid s_0=s]$ , 我们有&lt;/p>
+$$
+\begin{aligned}
+V^\pi(s)&amp;=\mathbb{E}^{\pi}\left[G_0\mid s_0=s\right]\\
+&amp;= \mathbb{E}^{\pi}\left[r_0+\gamma G_1\mid s_0=s\right]\\
+&amp;=\mathbb{E}_{a\sim\pi(\cdot\mid s), (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[\mathbb{E}^\pi\left[r_0+\gamma G_1\mid s_0,a_0,r_0,s'\right]\right]\\
+&amp;= \mathbb{E}_{a\sim\pi(\cdot\mid s), (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[r_0+\gamma\mathbb{E}^\pi\left[ G_1\mid s_0,a_0,r_0,s'\right]\right]\\
+&amp;= \mathbb{E}_{a\sim\pi(\cdot\mid s), (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[r_0+\gamma\mathbb{E}^\pi\left[ G_1\mid s_1\right]\right]\\
+&amp;=\mathbb{E}_{a\sim\pi(\cdot\mid s'), (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[r_0+V^{\pi}(s')\right]
+\end{aligned}
+$$&lt;p>其中第 5 个等式为 Markov property.&lt;/p>
+&lt;p>最后，我们证明方程解的唯一性，假设存在函数 $V:\mathcal{S}^+\to\mathbb{R}$ 满足 Bellman equation. 我们定义 Bellman 算子 $\mathcal{T}^\pi$ 为&lt;/p>
+$$
+(\mathcal{T}^\pi V)(s) := \mathbb{E}_{a\sim \pi(\cdot\mid s),\ (r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[r+\gamma V(s')\mid s\right]
+$$&lt;p>我们证明该算子是一个 contraction mapping, 考虑范数 $\|V\|_\infty = \max_{s\in\mathcal{S}} |V(s)|$, 我们有&lt;/p>
+$$
+\begin{aligned}
+\left|(\mathcal{T}^\pi V_1)(s)-(\mathcal{T}^\pi V_2)(s)\right| &amp;= \left|\mathbb{E}_{a\sim\pi(\cdot\mid s'), (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[\gamma V_1^{\pi}(s')-\gamma V_2^{\pi}(s')\right]\right|\\
+&amp;\leq \gamma \mathbb{E}_{a\sim\pi(\cdot\mid s'), (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left|V_1^{\pi}(s')-V_2^{\pi}(s')\right|\\
+&amp;\leq \gamma \max_{s''\in\mathcal{S}}\left|V_1(s'')-V_2(s'')\right|\\
+&amp;= \gamma \left\|V_1-V_2\right\|_\infty
+\end{aligned}
+$$&lt;p>上式对于任意 $s\in\mathcal{S}$ 都成立，因此&lt;/p>
+$$
+\left\|\mathcal{T}^\pi V_1-\mathcal{T}^\pi V_2\right\|_\infty \leq \gamma \left\|V_1-V_2\right\|_\infty
+$$&lt;p>由于 $\gamma &lt; 1$, 从而 $\mathcal{T}^\pi$ 是一个 contraction mapping.&lt;/p>
+&lt;p>根据不动点定理，已知 $V^\pi$ 是一个不动点，而不动点唯一，因此我们有 $V=V^\pi$. $\blacksquare$&lt;/p>
+&lt;p>同理，我们可以推导出关于 Q-function 的 Bellman equation:&lt;/p>
+&lt;p>&lt;strong>Theorem&lt;/strong>&lt;/p>
+&lt;blockquote>
+&lt;p>令 $\pi$ 为一个策略，假设 $\gamma\in(0,1)$, $|\mathcal{S}|&lt;\infty$ $|\mathcal{A}|&lt;\infty$ 以及 $|r|\leq R&lt;\infty, \mathrm{a.s.}$. 那么 $\pi$ 对应的 Q-function $Q^\pi:\mathcal{S}^+\times\mathcal{A}\to\mathbb{R}$ 存在，且满足 Bellman equation:&lt;/p>
+&lt;/blockquote>
+$$
+\boxed{
+Q^\pi(s, a) = \mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a),\ a'\sim \pi(\cdot\mid s')}\left[r+\gamma Q(s', a')\mid s, a\right]
+}
+$$&lt;blockquote>
+&lt;p>反之，如果存在函数 $Q:\mathcal{S}^+\times\mathcal{A}\to\mathbb{R}$ 满足 Bellman equation, 则 $Q=Q^\pi$.&lt;/p>
+&lt;/blockquote>
+&lt;p>&lt;strong>证明&lt;/strong>&lt;/p>
+&lt;p>证明与 value function 的证明基本类似，我们这里略过。&lt;/p>
+&lt;h2 id="bellman-optimal-equation">&lt;a href="#bellman-optimal-equation" class="header-anchor">&lt;/a>Bellman Optimal Equation
+&lt;/h2>&lt;p>前面介绍了针对一般策略的 Bellman equation, 特别地，对于我们的目标最优策略，我们也可以而推导出对应的 Bellman equation.&lt;/p>
+&lt;p>首先我们定义最优策略如下&lt;/p>
+&lt;p>&lt;strong>Definition&lt;/strong>&lt;/p>
+&lt;blockquote>
+&lt;p>如果策略 $\pi^*$ 满足&lt;/p>
+&lt;/blockquote>
+$$
+V^{\pi^*}(s)\geq V^{\pi}(s), \forall s\in\mathcal{S}^+, \forall \pi
+$$&lt;blockquote>
+&lt;p>则我们称策略 $\pi^*$ 是 &lt;strong>optimal policy&lt;/strong>. 对应的 $V^{\pi^*}$ 和 $Q^{\pi^*}$ 分别称之为 &lt;strong>optimal value function&lt;/strong> 以及 &lt;strong>optimal Q-function&lt;/strong>, 我们简记为 $V^*=V^{\pi^*}$, $Q^*=Q^{\pi^*}$.
+注意 optimal policy 与状态 $s$ 无关，并且 optimal policy 是不唯一的，但是所有的 optimal policy 对应的 optimal value function 是同一个。
+$V^*$ 与 $Q^*$ 之间存在如下关系&lt;/p>
+&lt;/blockquote>
+$$
+V^*(s) = \max_{a\sim\pi^*} Q^*(s, a)
+$$&lt;p>&lt;strong>证明&lt;/strong>&lt;/p>
+&lt;p>我们先证明左边小于右边，再证明右边小于左边。&lt;/p>
+$$
+V^*(s) =\mathbb{E}_{a_0\sim \pi^*(\cdot\mid s_0)}[Q^*(s,a)]\leq \mathbb{E}_{a_0\sim \pi^*(\cdot\mid s_0)}[\max_{a\sim\pi^*}Q^*(s,a)] = \max_{a\sim\pi^*} Q^*(s, a)
+$$&lt;p>其次，令 $a^*\in\arg\max_{a}Q^*(s,a)$, 令策略 $\pi'$ 为确定性策略 $\pi'(a^*\mid s)=1$, 则&lt;/p>
+$$
+\max_aQ^*(s,a^*) = Q^{\pi'}(s,a^*)=V^{\pi'}(s)\leq V^*(s)
+$$&lt;p>这样，我们就证明了上面的等式。$\blacksquare$&lt;/p>
+&lt;p>&lt;strong>Theorem&lt;/strong>&lt;/p>
+&lt;blockquote>
+&lt;p>假设 $\gamma\in(0,1)$, $|\mathcal{S}|&lt;\infty$ $|\mathcal{A}|&lt;\infty$ 以及 $|r|\leq R&lt;\infty, \mathrm{a.s.}$. 那么 optimal value function $V^\pi:\mathcal{S}^+\to\mathbb{R}$ 存在，且满足 &lt;strong>Bellman optimality equation&lt;/strong>:&lt;/p>
+&lt;/blockquote>
+$$
+\boxed{
+V^*(s) = \max_{a\in\mathcal{A}}\mathbb{E}_{\ (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[r+\gamma V^*(s')\mid s, a\right]
+}
+$$&lt;blockquote>
+&lt;p>反之，如果存在函数 $V:\mathcal{S}^+\to\mathbb{R}$ 满足 Bellman optimality equation, 则 $V=V^*$, 最终&lt;/p>
+&lt;/blockquote>
+$$
+\pi^*(s) = \arg\max_{a\in\mathcal{A}}\mathbb{E}_{\ (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[r+\gamma V^*(s')\mid s, a\right]=\arg\max_{a\in\mathcal{A}} Q^*(s,a)
+$$&lt;blockquote>
+&lt;p>是一个 optimal deterministic policy.&lt;/p>
+&lt;/blockquote>
+&lt;p>&lt;strong>证明&lt;/strong>&lt;/p>
+&lt;p>我们首先证明存在性，我们定义&lt;/p>
+$$
+(\mathcal{T}^* V)(s) := \max_{a\in\mathcal{A}}\mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[r+\gamma V(s')\mid s, a\right]
+$$&lt;p>我们证明 $\mathcal{T}^*V$ 是一个 contraction mapping.&lt;/p>
+$$
+\begin{aligned}
+\left|(\mathcal{T}^* V_1)(s)-(\mathcal{T}^* V_2)(s)\right| &amp;= \left|\max_{a\in\mathcal{A}}\mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[r+\gamma V_1(s')\mid s, a\right]- \max_{a\in\mathcal{A}}\mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[r+\gamma V_2(s')\mid s, a\right]\right|\\
+&amp;\leq \max_{a\in\mathcal{A}}\left|\mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[r+\gamma V_1(s')\mid s, a\right]- \mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[r+\gamma V_2(s')\mid s, a\right]\right|\\
+&amp;= \max_{a\in\mathcal{A}}\left|\mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[\gamma V_1(s')-V_2(s')\mid s, a\right]- \mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[r+\gamma V_2(s')\mid s, a\right]\right|\\
+&amp;\leq \gamma \max_{a\in\mathcal{A}}\left|\mathbb{E}_{a\sim\pi(\cdot\mid s'), (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[V_1^{\pi}(s')-V_2^{\pi}(s')\mid s,a\right]\right|\\
+&amp;\leq \gamma \max_{a\in\mathcal{A}}\mathbb{E}_{a\sim\pi(\cdot\mid s'), (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[\left|V_1^{\pi}(s')-V_2^{\pi}(s')\right|\mid s,a\right]\\
+&amp;\leq \gamma \max_{a\in\mathcal{A}}\max_{s''\in\mathcal{S}}\left|V_1(s'')-V_2(s'')\right|\\
+&amp;= \gamma \left\|V_1-V_2\right\|_\infty
+\end{aligned}
+$$&lt;p>这里第一个不等式我们使用了结论&lt;/p>
+$$
+\left|\max_s v(s)-\max_s u(s)\right|\leq \max_s|u(s)-v(s)|
+$$&lt;p>上式对于任意 $s\in\mathcal{S}$ 都成立，因此&lt;/p>
+$$
+\left\|\mathcal{T}^* V_1-\mathcal{T}^* V_2\right\|_\infty \leq \gamma \left\|V_1-V_2\right\|_\infty
+$$&lt;p>由于 $\gamma &lt; 1$, 从而 $\mathcal{T}^*$ 是一个 contraction mapping.&lt;/p>
+&lt;p>根据不动点定理，$\mathcal{T}^*$ 存在一个不动点，我们将其记为 $V^*$ .&lt;/p>
+&lt;p>接下来，我们定义 $\pi^*$ 为&lt;/p>
+$$
+\pi^*(s) = \arg\max_{a\in\mathcal{A}}\mathbb{E}_{\ (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[r+\gamma V^*(s')\mid s, a\right]
+$$&lt;p>此时，我们有&lt;/p>
+$$
+\begin{aligned}
+V^*(s) &amp;= \max_{a\in\mathcal{A}}\mathbb{E}_{\ (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[r+\gamma V^*(s')\mid s, a\right]\\
+&amp;= \mathbb{E}_{a\sim\pi^*(s),\ (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[r+\gamma V^*(s')\mid s\right]\\
+&amp;= \mathbb{E}^{\pi^*}\left[r_0+\gamma V^*(s_1)\mid s_0=s\right]\\
+&amp;= \mathbb{E}^{\pi^*}\left[r_0+\gamma \mathbb{E}^{\pi^*}\left[r_1+\gamma V^*(s_2)\mid s_0=s_1\right]\\\mid s_0=s\right]\\
+&amp;= \mathbb{E}^{\pi^*}\left[r_0+\gamma \mathbb{E}^{\pi^*}\left[r_1+\gamma V^*(s_2)\mid s_0=s_1, r_0\right]\\\mid s_0=s\right]\\
+&amp;= \mathbb{E}^{\pi^*}\left[\mathbb{E}^{\pi^*}\left[r_0+\gamma (r_1+\gamma V^*(s_2))\mid s_0=s_1, r_0\right]\\\mid s_0=s\right]\\
+&amp;= \mathbb{E}^{\pi^*}\left[r_0+\gamma r_1+\gamma^2 V^*(s_2)\mid s_0=s\right]\\
+&amp;= \mathbb{E}^{\pi^*}\left[r_0+\gamma r_1+\gamma^2r_2+\cdots\mid s_0=s\right]\\
+&amp;= V^{\pi^*}(s)
+\end{aligned}
+$$&lt;p>即 $V^*=V^{\pi^*}$.&lt;/p>
+&lt;p>现在我们证明 $\pi^*$ 是最优策略，令 $\pi$ 为任意一个策略，我们有&lt;/p>
+$$
+V^\pi \leq V^*= \mathcal{T}^*(V^\pi)\leq ( \mathcal{T}^*)^2(V^\pi) \leq\cdots\leq (\mathcal{T}^*)^k(V^\pi) \to V^*=V^{\pi^*}
+$$&lt;p>这里第一个等式是 Bellman equation, 第一个不等式是由于下面的 Lemma,最后的极限使用了不动点定理。因此我们有 $V^\pi\leq V^*$, 从而 $\pi^*$ 是最优策略，且 $V^*$ 是对应的 optimal value function. $\blacksquare$&lt;/p>
+&lt;p>&lt;strong>Lemma&lt;/strong>&lt;/p>
+&lt;blockquote>
+&lt;p>令 $\pi$ 为一个策略， $\mathcal{T}^\pi$ 和 $\mathcal{T}^*$ 分别是 Bellman operator 和 Bellman optimality operator. 对任意 $V:\mathcal{S}^+\to\mathbb{R}$, 我们有&lt;/p>
+&lt;/blockquote>
+$$
+\mathcal{T}^\pi(V) \leq \mathcal{T}^*(V)
+$$&lt;blockquote>
+&lt;p>进一步，对任意 $U:\mathcal{S}^+\to\mathbb{R}$, $V:\mathcal{S}^+\to\mathbb{R}$, 如果 $U\leq V$, 则&lt;/p>
+&lt;/blockquote>
+$$
+\mathcal{T}^*(U) \leq \mathcal{T}^*(V)
+$$&lt;p>&lt;strong>证明&lt;/strong>&lt;/p>
+$$
+\begin{aligned}
+\mathcal{T}^\pi(V)(s) &amp;= \mathbb{E}_{a\sim \pi(\cdot\mid s),\ (r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[r+\gamma V(s')\mid s\right]\\
+&amp;\leq \mathbb{E}_{a\sim \pi(\cdot\mid s)}\left[\max_{a'} \mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a')}\left[r+\gamma V(s')\mid s\right]\right]\\
+&amp;= \max_{a'} \mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a')}\left[r+\gamma V(s')\mid s\right]\\
+&amp;= \mathcal{T}^*(V)
+\end{aligned}
+$$&lt;p>其次，令 $a^*\in\arg\max_{a}\mathbb{E}[r+\gamma U(s')]$, 那么&lt;/p>
+$$
+\begin{aligned}
+\mathcal{T}^*(U)(s) &amp;= \mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a'))}\left[r+\gamma U(s')\mid s\right]\\
+&amp;\leq \mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a'))}\left[r+\gamma V(s')\mid s\right]\\
+&amp;\leq \max_a\mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a'))}\left[r+\gamma V(s')\mid s\right]\\
+&amp;= \mathcal{T}^*(V)
+\end{aligned}
+$$&lt;p>证毕。 $\blacksquare$&lt;/p>
+&lt;p>对于 Q-function, 我们也有类似结论&lt;/p>
+&lt;p>&lt;strong>Theorem&lt;/strong>&lt;/p>
+&lt;blockquote>
+&lt;p>假设 $\gamma\in(0,1)$, $|\mathcal{S}|&lt;\infty$ $|\mathcal{A}|&lt;\infty$ 以及 $|r|\leq R&lt;\infty, \mathrm{a.s.}$. 那么 optimal Q-function $Q^*:\mathcal{S}^+\times\mathcal{A}\to\mathbb{R}$ 存在，且满足 &lt;strong>Bellman optimality equation&lt;/strong>:&lt;/p>
+&lt;/blockquote>
+$$
+\boxed{
+Q^*(s, a) = \mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a)}\left[r+\gamma \max_{a'\in\mathcal{A}}Q(s', a')\mid s, a\right]
+}
+$$&lt;blockquote>
+&lt;p>反之，如果存在函数 $Q:\mathcal{S}^+\times\mathcal{A}\to\mathbb{R}$ 满足 Bellman optimality equation, 则 $Q=Q^*$.&lt;/p>
+&lt;/blockquote>
+&lt;p>&lt;strong>证明&lt;/strong>&lt;/p>
+&lt;p>证明与 value function 类似，我们这里略过。&lt;/p></description></item><item><title>(RL series 1) Reinforcement Learning basic definitions</title><link>https://github.com/jiangyigithub/ai.github.io/p/rl-series-1-reinforcement-learning-basic-definitions/</link><pubDate>Wed, 18 Mar 2026 17:35:25 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/rl-series-1-reinforcement-learning-basic-definitions/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>RL 的基本思想是通过与环境进行交互，获取奖励来进行学习&lt;/p>
+&lt;p>RL 的定义如下&lt;/p>
+&lt;blockquote>
+&lt;p>强化学习是一个通过构建可以与环境进行交互的 agent 来解决控制和决策任务的学习框架，交互的方式为 agent 执行 action, 然后环境给予奖励&lt;/p>
+&lt;/blockquote>
+&lt;p>RL 的执行过程如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/rl-series-1-reinforcement-learning-basic-definitions/RL-process.png"
+width="1400"
+height="787"
+loading="lazy"
+alt="The RL process (source from sutton)"
+class="gallery-image"
+data-flex-grow="177"
+data-flex-basis="426px"
+>&lt;/p>
+&lt;h2 id="rl-basics">&lt;a href="#rl-basics" class="header-anchor">&lt;/a>RL Basics
+&lt;/h2>&lt;p>RL 的数学建模依赖于 Markov decision process, 下面我们先介绍相关概念&lt;/p>
+&lt;h3 id="definition">&lt;a href="#definition" class="header-anchor">&lt;/a>Definition
+&lt;/h3>&lt;blockquote>
+&lt;p>一个 Markov decision process (MDP) 包含如下模块：&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;ol>
+&lt;li>时间 $t=0,1,\dots,T$.&lt;/li>
+&lt;li>状态 $s_t\in\mathcal{S}\cup\{\langle term\rangle\}$, 其中 $\mathcal{S}$ 是状态空间 (state space)&lt;/li>
+&lt;li>动作 $a_t\in\mathcal{A}$ , 其中 $\mathcal{A}$ 是动作空间 (action space)&lt;/li>
+&lt;li>奖励 $r_t\in\mathbb{R}$, 环境对 agent 当前 action $a_t$ 给予的反馈&lt;/li>
+&lt;li>终止时间 $T$, 额外定义 $s_T=\langle term\rangle$ 为终止状态&lt;/li>
+&lt;li>初始状态分布 $s_o\sim p_0$.&lt;/li>
+&lt;li>转换概率 (transition probability): $r_t,s_{t+1}\sim p(\cdot,\cdot\mid s_t,a_t)$.&lt;/li>
+&lt;li>轨迹 $\tau=(s_0,a_0,r_0,s_1,a_1,r_1,\dots,s_{T-1},a_{T-1}, r_{T-1}, s_T)$.&lt;/li>
+&lt;li>&lt;strong>Markov property&lt;/strong>. $t+1$ 时刻的状态仅与 $t$ 时刻的状态与动作相关，即 $p(s_{t+1}\mid s_t,a_t,\dots,a_0,a_0)=p(s_{t+1}\mid s_t,a_t)$ 以及 $p(r_{t}\mid s_t,a_t,\dots,s_0,a_t)=p(r_t\mid s_t,a_t)$.&lt;/li>
+&lt;/ol>
+&lt;/blockquote>
+&lt;p>我们会对一些表达式进行简化：&lt;/p>
+&lt;ol>
+&lt;li>当 $r_t$ 完全由 $(s_t,a_t)$ 决定时，我们记为 $r_t=r(s_t,a_t)$&lt;/li>
+&lt;li>我们假设状态转移函数是平稳的 (stationary), 即 $p_t(r,s'\mid s,a)=p(r,s'\mid s,a)$。&lt;/li>
+&lt;li>$a_t$ 通常由一个策略 $\pi$ 决定， 当 $\pi$ 完全由 $s_t$ 决定时，我们记为 $a_t=\pi(s_t)$, 反之，$a_t$ 从 $\pi$ 中采样得到，即 $a_t\sim\pi(\cdot\mid s_t)$.&lt;/li>
+&lt;li>一般我们会使用一个神经网络来表示 $\pi$, 即 $\pi=\pi_\theta$, 这里 $\theta$ 就是神经网络的参数。&lt;/li>
+&lt;/ol>
+&lt;p>&lt;strong>state and observation&lt;/strong>&lt;/p>
+&lt;p>通常来说，state 包含了当前进行决策所需要的所有信息（环境信息，历史信息，agent 自身信息），这种情况下 MDP 的 Markov 性质成立。实际上 agent 获取的可能只是一部分信息，即 agent 获取的为 observation, 这种情况下 MDP 特化为 Partially Observable Markov Decision Process (POMDP), 此时我们的 Markov 性质就不再对 observation 成立，我们的问题也变的更加困难。&lt;/p>
+&lt;blockquote>
+&lt;p>Takeaway
+State 表示整个环境的完整表示，而 observation 则是环境的部分表示&lt;/p>
+&lt;/blockquote>
+&lt;p>对于 LLM 来说，我们可以获取历史状态的所有信息，因此我们可以将 RL for LLM 视作一个 MDP 问题。&lt;/p>
+&lt;p>&lt;strong>action space&lt;/strong>&lt;/p>
+&lt;p>action space $\mathcal{A}$ 可以是连续的，比如上下左右四个方向，也可以是连续的，比如方向盘的角度&lt;/p>
+&lt;p>&lt;strong>episodic and continuing&lt;/strong>&lt;/p>
+&lt;p>根据任务的终止时间 $T$，我们可以将任务分为 episodic task 和 continuing task, 当 $T=\infty$ 时， 我们的任务称为 continual task，比如游戏, 否则称之为 episodic task, 比如股票预测.&lt;/p>
+&lt;p>除了 POMDP 之外，MDP 也有一些其他的推广形式：&lt;/p>
+&lt;ol>
+&lt;li>non-stationary dynamics, 即不同时间步的状态转移函数不同&lt;/li>
+&lt;li>pre-determined terminal time $T$. 终止时间指定，因为 $p_{T-1}(\langle term\rangle\mid s_{T-1}, a_{T-1})=1$ 且 $p_{t+1}(\langle term\rangle\mid s_{t}, a_{t})=0$, $\forall t\in[T-2]$, 所以此时 MDP 为 non-stationary,&lt;/li>
+&lt;li>policy $\pi_t$ may be time-dependent, 一般来说仅在 non-stationary dynamics 中有必要&lt;/li>
+&lt;li>actions may depend on states, 即 $a_t\in\mathcal{A}(s_t)$.&lt;/li>
+&lt;/ol>
+&lt;p>由于 $T$ 也是一个随机变量，因此 $\mathbb{E}[\sum_{t=0}^T\cdot]\neq\sum_{t=0}^T\mathbb{E}[\cdot]$.&lt;/p>
+&lt;p>为了简化，我们一般会使用一个等价的，不会停止的 MDP:&lt;/p>
+&lt;ol>
+&lt;li>the MDP never stops, 即 $T=\infty$&lt;/li>
+&lt;li>$s_t\in\mathcal{S}\cup\{\langle term\rangle\}$, 这里 $\langle term\rangle$ 是一个 normal state.&lt;/li>
+&lt;li>absorbing state: 当 $s_t=\langle term\rangle$ 时， $r_t=0, s_{t+1}=\langle term\rangle$, 即状态不会离开 $\langle term\rangle$.&lt;/li>
+&lt;li>$\pi(\cdot\mid\langle term\rangle)$ 不产生任何影响&lt;/li>
+&lt;/ol>
+&lt;h3 id="rl-objective">&lt;a href="#rl-objective" class="header-anchor">&lt;/a>RL Objective
+&lt;/h3>&lt;p>RL 的最终目标为最大化累计奖励，称为 expected return, 这个目标基于&lt;strong>reward hypothesis&lt;/strong>, 即&lt;em>所有的目标都可以被描述为最大化 expected return&lt;/em>. 目标函数表达式如下&lt;/p>
+$$
+\max_{\pi}\quad \mathbb{E}_{s_0\sim p_0}^\pi\left[\sum_{t=0}^{T-1}r_t\right]
+$$&lt;p>由于未来存在不确定性，我们会对这种不确定性施加惩罚，即时间越远，其对于当前的 reward 就越低，这其实就是经济学中的现值 (present value, PV), 因此我们实际上优化的目标函数是 expected discounted return:&lt;/p>
+$$
+\max_{\pi}\quad \mathbb{E}_{s_0\sim p_0}^\pi\left[\sum_{t=0}^{T-1}\gamma^tr_t\right]
+$$&lt;p>这里 $\gamma\in(0, 1]$ 是一个超参数，我们定义&lt;/p>
+$$
+G_t = r_t +\gamma r_{t+1}+\cdots+\gamma^{T-1-t}r_{T-1}=\sum_{t'=t}^{T-1}\gamma^{t'-t}r_{t'}
+$$&lt;p>$G_t$ 被称为 &lt;strong>discounted return&lt;/strong>.&lt;/p></description></item></channel></rss>

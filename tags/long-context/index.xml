@@ -1,0 +1,889 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Long Context on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/long-context/</link><description>Recent content in Long Context on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/long-context/index.xml" rel="self" type="application/rss+xml"/><item><title>Base of RoPE Bounds Context Length</title><link>https://github.com/jiangyigithub/ai.github.io/p/base-of-rope-bounds-context-length/</link><pubDate>Mon, 22 Dec 2025 11:34:42 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/base-of-rope-bounds-context-length/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>&lt;a class="link" href="https://maosong.website/p/notes-on-position-encoding/" target="_blank" rel="noopener"
+>RoPE&lt;/a> 已经成为了大多数 LLM 使用的 position encoding 范式，但是，RoPE 与 LLM long context 之间的关系还没有被探索清楚。在本文中，作者就探究了 base frequency 与 LLM context capability 之间的关系，并给出了一个达到指定上下文长度所需要的 base frequency 的 lower bound.&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;p>首先作者回顾了 attention 与 &lt;a class="link" href="https://maosong.website/p/notes-on-position-encoding/" target="_blank" rel="noopener"
+>RoPE&lt;/a> 的定义， 关键就是 RoPE 这部分，如下所示&lt;/p>
+$$
+A_{ij} = (R_{i,\theta}q_i)^T(R_{j,\theta}k_j) = q_i^TR_{i-j,\theta}k_j
+$$&lt;p>这里 $\theta$ 就是 base frequency, 作者总结不同模型的 base frequency 配置如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Llama-7B&lt;/th>
+&lt;th>Llama2-7B&lt;/th>
+&lt;th>Llama3-8B&lt;/th>
+&lt;th>Mistral-7B&lt;/th>
+&lt;th>Baichuan2-7B&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Base frequency&lt;/td>
+&lt;td>10,000&lt;/td>
+&lt;td>10,000&lt;/td>
+&lt;td>500,000&lt;/td>
+&lt;td>1,000,000&lt;/td>
+&lt;td>10,000&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Context length&lt;/td>
+&lt;td>2048&lt;/td>
+&lt;td>4096&lt;/td>
+&lt;td>8192&lt;/td>
+&lt;td>32,768&lt;/td>
+&lt;td>4,096&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>接下来，作者回顾了 &lt;a class="link" href="https://maosong.website/p/notes-on-yarn/" target="_blank" rel="noopener"
+>YARN&lt;/a>. 其核心思想在于，预训练阶段所有可能的 $\cos(t-s)\theta_i$ 都见过，才能保证模型的 OOD 表现&lt;/p>
+&lt;p>作者认为 base frequency 的设置应该满足两个条件：&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>The closer token gets more attention&lt;/strong>: 当前的 token 应该给邻近的 token 更高的注意力&lt;/li>
+&lt;li>&lt;strong>The similar token gets more attention&lt;/strong>: 当前的 token 应该给相似的 token 更高的注意力&lt;/li>
+&lt;/ol>
+&lt;p>在 &lt;a class="link" href="https://maosong.website/p/notes-on-position-encoding/" target="_blank" rel="noopener"
+>RoPE&lt;/a> 中，作者已经给出了 $A_{ij}$ 与相对距离 $|i-j|$ 之间的关系。因此第一个性质已经满足了。&lt;/p>
+&lt;p>接下来，作者分析了相似 token 的性质，作者定义 token 的相似性如下：&lt;/p>
+$$
+\mathbb{E}_{q,k^*}[q^TR_{m,\theta}k^*] - \mathbb{E}_{q,k}[q^TR_{m,\theta}k]
+$$&lt;p>这里 $k^*=q+\epsilon$ 代表了相似的 token, 而 $k$ 是一个随机 token. 作者给出的结论如下&lt;/p>
+&lt;p>&lt;strong>Theorem&lt;/strong>
+假设 $q,k\in\mathbb{R}^d$ 独立同分布，它们的标准差为 $\sigma\in\mathbb{R}$, 则对于 $k^*=q+\epsilon$, $\epsilon$ 是一个随机变量满足 $\mathbb{E}[\epsilon]=0$, 则我们有&lt;/p>
+$$
+\mathbb{E}_{q,k^*}[q^TR_{m,\theta}k^*] - \mathbb{E}_{q,k}[q^TR_{m,\theta}k] = 2\sigma^2\sum_{i=0}^{d/2-1}\cos(m\theta_i)
+$$&lt;p>作者定义 $B_{m,\theta}=\sum_{i=0}^{d/2-1}\cos(m\theta_i)$, 作者认为给定 $\theta$, 模型的上下文长度 $L_\theta$ 满足&lt;/p>
+$$
+L_\theta = \sup\{L\mid B_{m,\theta}\geq 0, \forall m\in[L]\}
+$$&lt;p>也就是说，base frequency 决定了 LLM 的上下文长度。作者给出了不同的上下文长度对应的 base frequency 如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Context Len.&lt;/th>
+&lt;th>1k&lt;/th>
+&lt;th>2k&lt;/th>
+&lt;th>4k&lt;/th>
+&lt;th>8k&lt;/th>
+&lt;th>16k&lt;/th>
+&lt;th>32k&lt;/th>
+&lt;th>64k&lt;/th>
+&lt;th>128k&lt;/th>
+&lt;th>256k&lt;/th>
+&lt;th>512k&lt;/th>
+&lt;th>1M&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Lower Bound&lt;/td>
+&lt;td>4.3e3&lt;/td>
+&lt;td>1.6e4&lt;/td>
+&lt;td>2.7e4&lt;/td>
+&lt;td>8.4e4&lt;/td>
+&lt;td>3.1e5&lt;/td>
+&lt;td>6.4e5&lt;/td>
+&lt;td>2.1e6&lt;/td>
+&lt;td>7.8e6&lt;/td>
+&lt;td>3.6e7&lt;/td>
+&lt;td>6.4e7&lt;/td>
+&lt;td>5.1e8&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>总的来说，远距离衰减性保证了模型会更关注邻近的 token, 而相似 token 保证了模型能够区分出真正有意义的 token.&lt;/p>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>作者首先分析了 base frequency 在 fine-tuning 阶段对模型上下文能力的影响，实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/base-of-rope-bounds-context-length/base-frequency-fine-tuning-impact.png"
+width="1072"
+height="465"
+loading="lazy"
+alt="impact of base frequency on fine-tuning stage"
+class="gallery-image"
+data-flex-grow="230"
+data-flex-basis="553px"
+>&lt;/p>
+&lt;p>从实验结果可以看到，当 base frequency 低于阈值时，模型的表现急剧下降。&lt;/p>
+&lt;p>作者进一步探讨了 base frequency 对于模型 pre-training 阶段的影响，结果也是一样的，即非常小的 base frequency 会限制模型的 context 能力，结果下图所示 （三行分别代表了 base frequency 为 1e2, 1e4 和 1e6 的情况）&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/base-of-rope-bounds-context-length/base-frequency-pre-training-stage.png"
+width="1044"
+height="725"
+loading="lazy"
+alt="impact of base frequency on pre-training stage"
+class="gallery-image"
+data-flex-grow="144"
+data-flex-basis="345px"
+>&lt;/p>
+&lt;p>可以看到，尽管 perplexity 都差不多，但是使用更大的 base frequency 其长上下文能力明显更好。&lt;/p>
+&lt;p>作者进一步分析了为什么较小的 base frequency 会影响模型的长上下文能力。作者认为较小的 base frequency 会导致 $B_{m,\theta}$ 接近于 0， 从而模型难以区分随机 token 和相似 token, 这样模型只能依赖于邻近 token 进行学习，这样就限制了模型的长上下文能力&lt;/p>
+&lt;p>作者还进一步对比了提高 base frequency 与 Interpolation 两种做法，实验结果如下表所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/base-of-rope-bounds-context-length/base-frequency-comparison-interpolation.png"
+width="865"
+height="180"
+loading="lazy"
+alt="comparison with interpolation"
+class="gallery-image"
+data-flex-grow="480"
+data-flex-basis="1153px"
+>&lt;/p>
+&lt;p>实验结果说明，Interpolation 在上下文超过 30K 之后，其 $B_{m,\theta}\leq0$ 的 次数显著增加，表明了其和上下文能力之间的关系。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者在本文中，探究了 RoPE 中 base frequency 与 LLM 上下文能力之间的关系，发现了提高模型的上下文能力需要关注 RoPE 的 base frequency 超参数，并给出了对应的 lower bound. 作者通过实验验证了这个观点。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2405.14591" target="_blank" rel="noopener"
+>arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on RNoPE-SWA</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-rnope-swa/</link><pubDate>Tue, 02 Sep 2025 11:24:10 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-rnope-swa/</guid><description>&lt;p>作者系统性分析了已有的 attention 机制，然后作者提出了混合的 attention 机制，来提高模型在长上下文的表现以及维持模型在短上下文场景下的表现。&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>作者首先强调了提升 LLM 上下文长度面临的问题：&lt;/p>
+&lt;ol>
+&lt;li>如何有效处理长上下文输入&lt;/li>
+&lt;li>如何训练长上下文 LLM&lt;/li>
+&lt;li>如何降低长上下文 LLM 在 inference 时的 latency 以及 memory usage&lt;/li>
+&lt;/ol>
+&lt;p>对于建模长上下文输入，我们可以从 attention 机制或者位置编码来入手。前者类似的工作有 Landmark Attention 和 Focused Transformer, 但是这些方法的问题在于训练不稳定。 &lt;a class="link" href="https://maosong.website/p/notes-on-qk-norm/" target="_blank" rel="noopener"
+>QK norm&lt;/a> 可以比较好解决 softmax 分布过于极端的问题，但是其问题在于训练时的数值不稳定性，并且可能会影响模型的长上下文能力。&lt;/p>
+&lt;p>另一方面，对于位置编码，已有的工作如 APE, AliBi, &lt;a class="link" href="https://maosong.website/p/notes-on-position-encoding/" target="_blank" rel="noopener"
+>RoPE&lt;/a> 等都可以提供位置信息。但是，这些方法很有可能回影响模型最终的 attention score 分布。另外，&lt;a class="link" href="https://maosong.website/p/notes-on-nope/" target="_blank" rel="noopener"
+>NoPE&lt;/a> 探究了移除 position encoding 的可能性。&lt;/p>
+&lt;p>还有一些工作目的是降低 softmax attention 的时间复杂度和空间复杂度。比如 sliding window attention, sparse attention, &lt;a class="link" href="https://maosong.website/p/notes-on-streamingllm/" target="_blank" rel="noopener"
+>attention sink&lt;/a> 等都可以降低整体的时间/空间复杂度。但是这些方法最终的表现都有所下降。&lt;/p>
+&lt;h2 id="observation">&lt;a href="#observation" class="header-anchor">&lt;/a>Observation
+&lt;/h2>&lt;p>作者首先对比了以下不同方法对模型长上下文能力的影响。&lt;/p>
+&lt;p>作者训练了一个 8B 的模型，然后分别对比了三种方法：&lt;/p>
+&lt;ol>
+&lt;li>RoPE: base frequency 设置为 10,000, SFT 阶段扩展到 2M&lt;/li>
+&lt;li>QK-Norm: 在 RoPE 的基础上，对 query 和 key 先进行 normalization 再进行 RoPE&lt;/li>
+&lt;li>NoPE: 移除 attention 中的位置编码信息&lt;/li>
+&lt;/ol>
+&lt;p>作者分别评估了三种方法的表现，实验结果如下表&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Val Loss&lt;/th>
+&lt;th>MMLU&lt;/th>
+&lt;th>HellaSwag&lt;/th>
+&lt;th>CommonsenseQA&lt;/th>
+&lt;th>ARC-E&lt;/th>
+&lt;th>ARC-C&lt;/th>
+&lt;th>Needles 65k&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>RoPE&lt;/td>
+&lt;td>1.52&lt;/td>
+&lt;td>48.55&lt;/td>
+&lt;td>73.74&lt;/td>
+&lt;td>68.30&lt;/td>
+&lt;td>81.05&lt;/td>
+&lt;td>39.13&lt;/td>
+&lt;td>9.82&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>QK-Norm&lt;/td>
+&lt;td>1.53&lt;/td>
+&lt;td>48.21&lt;/td>
+&lt;td>73.68&lt;/td>
+&lt;td>68.23&lt;/td>
+&lt;td>80.54&lt;/td>
+&lt;td>38.98&lt;/td>
+&lt;td>7.93&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>NoPE&lt;/td>
+&lt;td>1.58&lt;/td>
+&lt;td>47.61&lt;/td>
+&lt;td>72.16&lt;/td>
+&lt;td>66.42&lt;/td>
+&lt;td>76.94&lt;/td>
+&lt;td>37.12&lt;/td>
+&lt;td>9.03&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>实验结果显示，对于通用任务，RoPE 和 QK-Norm 的表现差不多，而 NoPE 的表现较差。对于长上下文任务，QK-Norm 的表现最差。&lt;/p>
+&lt;p>接下来，作者分析了三种方法的 attention 分布情况。作者将上下文分为四个 segments：&lt;/p>
+&lt;ul>
+&lt;li>begin: 开始的 10 个 token&lt;/li>
+&lt;li>needle: 与 needle 相关的 tokens&lt;/li>
+&lt;li>context: 通用的上下文 token&lt;/li>
+&lt;li>qc: question/completion token, 语文题答案相关的 token&lt;/li>
+&lt;/ul>
+&lt;p>作者将 needle 放置在 50% 深度的位置。评测的实验结果如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Context Length&lt;/th>
+&lt;th>Model Variants&lt;/th>
+&lt;th>begin&lt;/th>
+&lt;th>needle&lt;/th>
+&lt;th>context&lt;/th>
+&lt;th>qc&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>8k&lt;/td>
+&lt;td>RoPE&lt;/td>
+&lt;td>0.3863&lt;/td>
+&lt;td>0.0328&lt;/td>
+&lt;td>0.3809&lt;/td>
+&lt;td>0.2000&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>QK-Norm&lt;/td>
+&lt;td>0.0242&lt;/td>
+&lt;td>0.0173&lt;/td>
+&lt;td>0.8020&lt;/td>
+&lt;td>0.1565&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>NoPE&lt;/td>
+&lt;td>0.3058&lt;/td>
+&lt;td>0.0454&lt;/td>
+&lt;td>0.4501&lt;/td>
+&lt;td>0.1987&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>32k&lt;/td>
+&lt;td>RoPE&lt;/td>
+&lt;td>0.3541&lt;/td>
+&lt;td>0.0201&lt;/td>
+&lt;td>0.4343&lt;/td>
+&lt;td>0.1915&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>QK-Norm&lt;/td>
+&lt;td>0.0064&lt;/td>
+&lt;td>0.0056&lt;/td>
+&lt;td>0.8517&lt;/td>
+&lt;td>0.1364&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>NoPE&lt;/td>
+&lt;td>0.2807&lt;/td>
+&lt;td>0.0325&lt;/td>
+&lt;td>0.4981&lt;/td>
+&lt;td>0.1886&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>128k&lt;/td>
+&lt;td>RoPE&lt;/td>
+&lt;td>0.3463&lt;/td>
+&lt;td>0.0010&lt;/td>
+&lt;td>0.4751&lt;/td>
+&lt;td>0.1776&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>QK-Norm&lt;/td>
+&lt;td>0.0010&lt;/td>
+&lt;td>0.0004&lt;/td>
+&lt;td>0.8993&lt;/td>
+&lt;td>0.0994&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>NoPE&lt;/td>
+&lt;td>0.0846&lt;/td>
+&lt;td>0.0073&lt;/td>
+&lt;td>0.8156&lt;/td>
+&lt;td>0.0925&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>实验结果显示：&lt;/p>
+&lt;ol>
+&lt;li>NoPE 是最关注 needle token 信息的，RoPE 次之，QK-Norm 最差&lt;/li>
+&lt;li>QK-Norm 更关注上下文信息，对其他的信息关注度较少&lt;/li>
+&lt;/ol>
+&lt;p>作者发现 QK-Norm 对初始的 token 信息关注度较少，作者认为这是因为 normalization 会让模型更关注邻近的 token 信息。为了验证这个观点，作者在不同的上下文长度下，分别计算了不同方法的 attention 分布情况，为了避免噪声，作者将开始的 10 个 token 以及最后的 $3\%$ token 排除在外，实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-rnope-swa/RNoPE-SWA-8k-attention.png"
+width="700"
+height="496"
+loading="lazy"
+alt="Attention distribution on 8K context length"
+class="gallery-image"
+data-flex-grow="141"
+data-flex-basis="338px"
+>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-rnope-swa/RNoPE-SWA-32k-attention.png"
+width="692"
+height="482"
+loading="lazy"
+alt="Attention distribution on 32K context length"
+class="gallery-image"
+data-flex-grow="143"
+data-flex-basis="344px"
+>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-rnope-swa/RNoPE-SWA-128k-attention.png"
+width="693"
+height="564"
+loading="lazy"
+alt="Attention distribution on 128K context length"
+class="gallery-image"
+data-flex-grow="122"
+data-flex-basis="294px"
+>&lt;/p>
+&lt;p>实验结果说明，相比于 softmax attention, QK-Norm 的 attention score 分布更平滑，其对于 need token 的注意力不如 RoPE, 这也说明了为什么 QK-Norm 的长上下文能力比较差。并且，QK-Norm 的 recency bias 更严重。&lt;/p>
+&lt;p>作者通过计算 RoPE 和 QK-Norm 的 attention distribution 的 entropy 来进一步说明这一点，结果如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>8k&lt;/th>
+&lt;th>32k&lt;/th>
+&lt;th>128k&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>RoPE&lt;/td>
+&lt;td>6.02&lt;/td>
+&lt;td>6.95&lt;/td>
+&lt;td>7.62&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>QK-Norm&lt;/td>
+&lt;td>10.71&lt;/td>
+&lt;td>12.46&lt;/td>
+&lt;td>14.14&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>结果显示 QK-Norm 的熵更高，这意味着 QK-Norm 的 attention score 分布更分散，也就证明了 Qk-Norm retrieval 能力比较差。&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;p>考虑到 &lt;a class="link" href="https://maosong.website/p/notes-on-nope/" target="_blank" rel="noopener"
+>NoPE&lt;/a> 和 RopE 各自的优点，作者提出了一个混合架构，来结合 NoPE 与 RoPE. 具体做法就是 NoPE layer 和 RoPE layer 交替进行。作者将这个模型架构记为 RNoPE.&lt;/p>
+&lt;p>RNoPE 不同 layer 与不同 base frequency 产生的 attention score 分布如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>NoPE Layers - begin&lt;/th>
+&lt;th>NoPE Layers - needle&lt;/th>
+&lt;th>NoPE Layers - context&lt;/th>
+&lt;th>NoPE Layers - qc&lt;/th>
+&lt;th>RoPE Layers - begin&lt;/th>
+&lt;th>RoPE Layers - needle&lt;/th>
+&lt;th>RoPE Layers - context&lt;/th>
+&lt;th>RoPE Layers - qc&lt;/th>
+&lt;th>needles-128k&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>RoPE&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>0.3541&lt;/td>
+&lt;td>0.0201&lt;/td>
+&lt;td>0.4343&lt;/td>
+&lt;td>0.1915&lt;/td>
+&lt;td>7.395&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>RNoPE-10k&lt;/td>
+&lt;td>0.3275&lt;/td>
+&lt;td>0.0765&lt;/td>
+&lt;td>0.5672&lt;/td>
+&lt;td>0.0287&lt;/td>
+&lt;td>0.0049&lt;/td>
+&lt;td>0.0004&lt;/td>
+&lt;td>0.6805&lt;/td>
+&lt;td>0.3142&lt;/td>
+&lt;td>8.036&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>RNoPE-100k&lt;/td>
+&lt;td>0.3263&lt;/td>
+&lt;td>0.0778&lt;/td>
+&lt;td>0.5633&lt;/td>
+&lt;td>0.0327&lt;/td>
+&lt;td>0.0241&lt;/td>
+&lt;td>0.0005&lt;/td>
+&lt;td>0.6782&lt;/td>
+&lt;td>0.2972&lt;/td>
+&lt;td>7.461&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>RNoPE-2M&lt;/td>
+&lt;td>0.3250&lt;/td>
+&lt;td>0.0712&lt;/td>
+&lt;td>0.5735&lt;/td>
+&lt;td>0.0303&lt;/td>
+&lt;td>0.1111&lt;/td>
+&lt;td>0.0046&lt;/td>
+&lt;td>0.6233&lt;/td>
+&lt;td>0.2611&lt;/td>
+&lt;td>7.022&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>RNoPE-4M&lt;/td>
+&lt;td>0.3486&lt;/td>
+&lt;td>0.0369&lt;/td>
+&lt;td>0.5981&lt;/td>
+&lt;td>0.0165&lt;/td>
+&lt;td>0.0960&lt;/td>
+&lt;td>0.0039&lt;/td>
+&lt;td>0.6774&lt;/td>
+&lt;td>0.2227&lt;/td>
+&lt;td>6.203&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>RNoPE-10k-swa&lt;/td>
+&lt;td>0.3303&lt;/td>
+&lt;td>0.0742&lt;/td>
+&lt;td>0.5634&lt;/td>
+&lt;td>0.0321&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>9.562&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>实验结果显示，在 RNoPE 架构中，&lt;/p>
+&lt;ol>
+&lt;li>提升 base frequency 带来的增益逐渐递减&lt;/li>
+&lt;li>NoPE layer 的 retrieval 能力比较强，表现在 attention sink 现象以及对于 needle token 的 spike. 但是其 recency bias 比较弱&lt;/li>
+&lt;li>RoPE 的 retrieval 能力比较弱，但是其 attention sink 现象比较小&lt;/li>
+&lt;li>当 base frequency 增加止呕，RoPE 的 recency bias 会降低，表现在 qc token 的权重降低&lt;/li>
+&lt;/ol>
+&lt;p>作者发现，RoPE 的 receptive field 会影响 NoPE layer 的 retrieval 能力。作者总结得到两个 insight&lt;/p>
+&lt;ol>
+&lt;li>NoPE layer 对于 retrieval 任务比较擅长，而 RoPE layer 对于处理 local Information 比较擅长&lt;/li>
+&lt;li>限制 RoPE 的 receptive field 可以保证 NoPE layer 的 retrieval 能力&lt;/li>
+&lt;/ol>
+&lt;p>基于这两个 insight, 作者构建了 RNoPE-SWA 架构，RNoPE-SWA 相比于 RNoPE, 将 full attention 变成了 sliding window attention, 来避免 RoPE layer 对下游的 NoPE layer 产生影响。&lt;/p>
+&lt;p>最终，作者基于 Command R+ 构建了模型，作者去除了 QK-Norm, 对于 NoPE layer, 作者使用了 full attention, 对于 RoPE layer, 作者使用了 window size 为 4096 的 sliding window attention. 作者通过实验验证了 NoPE layer 和 RoPElayer 的比例，实验结果发现 $1:3$ 的比例是最优的。最终每 4 个 layer 为一组，前三组为 SWA, 最后一层为 full attention.&lt;/p>
+&lt;p>最终，在通用任务上评测的结果如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>MMLU&lt;/th>
+&lt;th>HellaSwag&lt;/th>
+&lt;th>ARC-E&lt;/th>
+&lt;th>ARC-C&lt;/th>
+&lt;th>SATEn&lt;/th>
+&lt;th>SATMath&lt;/th>
+&lt;th>GSM8K&lt;/th>
+&lt;th>Winogrande&lt;/th>
+&lt;th>MBPP&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Baseline&lt;/td>
+&lt;td>57.5&lt;/td>
+&lt;td>75.8&lt;/td>
+&lt;td>84.6&lt;/td>
+&lt;td>48.5&lt;/td>
+&lt;td>70.0&lt;/td>
+&lt;td>30.9&lt;/td>
+&lt;td>40.9&lt;/td>
+&lt;td>68.5&lt;/td>
+&lt;td>39.1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>RNope-SWA&lt;/td>
+&lt;td>59.5&lt;/td>
+&lt;td>76.2&lt;/td>
+&lt;td>82.5&lt;/td>
+&lt;td>48.8&lt;/td>
+&lt;td>71.9&lt;/td>
+&lt;td>30.5&lt;/td>
+&lt;td>42.7&lt;/td>
+&lt;td>69.5&lt;/td>
+&lt;td>39.3&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>在 Ruler retrieval 上评测的结果如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>8k&lt;/th>
+&lt;th>16k&lt;/th>
+&lt;th>32k&lt;/th>
+&lt;th>64k&lt;/th>
+&lt;th>128k&lt;/th>
+&lt;th>256k&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Baseline&lt;/td>
+&lt;td>96.6&lt;/td>
+&lt;td>94.4&lt;/td>
+&lt;td>95.1&lt;/td>
+&lt;td>89.1&lt;/td>
+&lt;td>83.0&lt;/td>
+&lt;td>57.1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>RNope-SWA&lt;/td>
+&lt;td>96.1&lt;/td>
+&lt;td>96.1&lt;/td>
+&lt;td>94.9&lt;/td>
+&lt;td>92.0&lt;/td>
+&lt;td>90.0&lt;/td>
+&lt;td>74.8&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>在 Ruler QA 上评测的结果如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>8k&lt;/th>
+&lt;th>16k&lt;/th>
+&lt;th>32k&lt;/th>
+&lt;th>64k&lt;/th>
+&lt;th>128k&lt;/th>
+&lt;th>256k&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Baseline&lt;/td>
+&lt;td>53.5&lt;/td>
+&lt;td>50.0&lt;/td>
+&lt;td>52.5&lt;/td>
+&lt;td>45.5&lt;/td>
+&lt;td>36.0&lt;/td>
+&lt;td>30.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>RNope-SWA&lt;/td>
+&lt;td>55.5&lt;/td>
+&lt;td>52.5&lt;/td>
+&lt;td>55.5&lt;/td>
+&lt;td>49.0&lt;/td>
+&lt;td>46.0&lt;/td>
+&lt;td>42.5&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>实验结果说明，模型在通用任务任务上与 baseline 模型表现差不多，且长上下文能力更强&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者提出了 RNope-SWA, 一个混合 NoPE, RoPE position embedding 和 sliding window attention 的 attention 机制。RNope-SWA 可以在保持模型表现的同时提高计算效率和降低 KV cache 占用。&lt;/p>
+&lt;p>尽管本文和已有的工作如 YoCo, Jamba-1.5 和 &lt;a class="link" href="https://maosong.website/p/notes-on-minimax-01/" target="_blank" rel="noopener"
+>MiniMax-01&lt;/a> 均证明了混合 attention 架构的有效性。但是，目前对于其工作机制尚缺乏一个比较系统性的理解。作者认为这是一个需要探究的方向。另外，作者还认为如何更好的汇总上下文信息与位置信息也是一个可以探究的方向。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://arxiv.org/pdf/2501.18795" target="_blank" rel="noopener"
+>arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on Gemma3</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-gemma3/</link><pubDate>Sat, 15 Mar 2025 11:15:29 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-gemma3/</guid><description>&lt;img src="https://github.com/jiangyigithub/ai.github.io/p/notes-on-gemma3/cover.png" alt="Featured image of post Notes on Gemma3" />&lt;p>作者提出了Gemma3系列大模型，包括1B, 4B, 12B, 27B四个size。4B, 12B, 27B三个size均支持多模态，128K的上下文长度以及140种语言。&lt;/p>
+&lt;h1 id="方法">&lt;a href="#%e6%96%b9%e6%b3%95" class="header-anchor">&lt;/a>方法
+&lt;/h1>&lt;h2 id="数据处理">&lt;a href="#%e6%95%b0%e6%8d%ae%e5%a4%84%e7%90%86" class="header-anchor">&lt;/a>数据处理
+&lt;/h2>&lt;h3 id="数据格式">&lt;a href="#%e6%95%b0%e6%8d%ae%e6%a0%bc%e5%bc%8f" class="header-anchor">&lt;/a>数据格式
+&lt;/h3>&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;span class="lnt">8
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&lt;span class="line">&lt;span class="cl">[BOS]&amp;lt;start_of_turn&amp;gt;user
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Who are you?&amp;lt;end_of_turn&amp;gt;
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&amp;lt;start_of_turn&amp;gt;model
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">My name is Gemma!&amp;lt;end_of_turn&amp;gt;
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&amp;lt;start_of_turn&amp;gt;user
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">What is 2+2?&amp;lt;end_of_turn&amp;gt;
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&amp;lt;start_of_turn&amp;gt;model
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">2+2=4.&amp;lt;end_of_turn&amp;gt;
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>pretrain和SFT的区别在于,pretrain时模型输出以&lt;code>&amp;lt;eos&amp;gt;&lt;/code>结束,SFT时模型输出以&lt;code>&amp;lt;end_of_turn&amp;gt;&lt;/code>结束.&lt;/p>
+&lt;h3 id="图片处理">&lt;a href="#%e5%9b%be%e7%89%87%e5%a4%84%e7%90%86" class="header-anchor">&lt;/a>图片处理
+&lt;/h3>&lt;p>输入的图片都会被resize到896x896，如果图片精度过大或者不是正方形，则会通过Pan &amp;amp; Scan技巧裁剪为多个子图，然后每个子图分别进行resize。核心处理代码为：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="n">crop_size_w&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">math&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">ceil&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">width&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="n">num_crops_w&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">crop_size_h&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">math&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">ceil&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">height&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="n">num_crops_h&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># Don&amp;#39;t apply PaS if crop size is too small.&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">if&lt;/span> &lt;span class="nb">min&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">crop_size_w&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">crop_size_h&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">&amp;lt;&lt;/span> &lt;span class="n">pan_and_scan_min_crop_size&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="p">[]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">crop_positions_w&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="n">crop_size_w&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">num_crops_w&lt;/span>&lt;span class="p">)]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">crop_positions_h&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="n">crop_size_h&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="k">for&lt;/span> &lt;span class="n">i&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="nb">range&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">num_crops_h&lt;/span>&lt;span class="p">)]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">image_crops&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">image&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">pos_h&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">pos_h&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">crop_size_h&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">pos_w&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="n">pos_w&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">crop_size_w&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">for&lt;/span> &lt;span class="n">pos_h&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">pos_w&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="n">itertools&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">product&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">crop_positions_h&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">crop_positions_w&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h2 id="模型架构">&lt;a href="#%e6%a8%a1%e5%9e%8b%e6%9e%b6%e6%9e%84" class="header-anchor">&lt;/a>模型架构
+&lt;/h2>&lt;p>模型包括4个size，分别是1B, 4B, 12B, 27B。1B的模型是单模态的，4B, 12B, 27B的模型是多模态的。对于多模态模型来说：&lt;/p>
+&lt;ul>
+&lt;li>Vision encoder: Siglip-400M&lt;/li>
+&lt;li>Projection layer: linear layer&lt;/li>
+&lt;li>LLM: Gemma 3&lt;/li>
+&lt;/ul>
+&lt;h2 id="模型参数">&lt;a href="#%e6%a8%a1%e5%9e%8b%e5%8f%82%e6%95%b0" class="header-anchor">&lt;/a>模型参数
+&lt;/h2>&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Vision Encoder&lt;/th>
+&lt;th>Embedding Parameters&lt;/th>
+&lt;th>Non-embedding Parameters&lt;/th>
+&lt;th>context length&lt;/th>
+&lt;th>multilingual&lt;/th>
+&lt;th>training data&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>1B&lt;/td>
+&lt;td>0&lt;/td>
+&lt;td>302M&lt;/td>
+&lt;td>698M&lt;/td>
+&lt;td>32K&lt;/td>
+&lt;td>English&lt;/td>
+&lt;td>2T tokens&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>4B&lt;/td>
+&lt;td>417M&lt;/td>
+&lt;td>675M&lt;/td>
+&lt;td>3,209M&lt;/td>
+&lt;td>128K&lt;/td>
+&lt;td>140+ languages&lt;/td>
+&lt;td>4T tokens&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>12B&lt;/td>
+&lt;td>417M&lt;/td>
+&lt;td>1,012M&lt;/td>
+&lt;td>10,759M&lt;/td>
+&lt;td>128K&lt;/td>
+&lt;td>140+ languages&lt;/td>
+&lt;td>12T tokens&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>27B&lt;/td>
+&lt;td>417M&lt;/td>
+&lt;td>1,416M&lt;/td>
+&lt;td>25,600M&lt;/td>
+&lt;td>128K&lt;/td>
+&lt;td>140+ languages&lt;/td>
+&lt;td>14T tokens&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="attention-layers">&lt;a href="#attention-layers" class="header-anchor">&lt;/a>Attention layers
+&lt;/h2>&lt;p>为了提高效率，作者将部分layer的self-attention替换为sliding window attention。论文里是将6 layers为一组，替换一组中最后一层为sliding window attention，其余层为self attention。判断某layer是否为sliding window attention的代码为：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># config.sliding_window_pattern = 6&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">is_sliding&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="nb">bool&lt;/span>&lt;span class="p">((&lt;/span>&lt;span class="n">layer_idx&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">%&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">sliding_window_pattern&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h2 id="long-context">&lt;a href="#long-context" class="header-anchor">&lt;/a>Long context
+&lt;/h2>&lt;p>作者将global self-attention的RoPE的base frequency从10K提升到了1M，对于sliding window attention，RoPE的base frequency保持10k不变。&lt;/p>
+&lt;h2 id="预训练">&lt;a href="#%e9%a2%84%e8%ae%ad%e7%bb%83" class="header-anchor">&lt;/a>预训练
+&lt;/h2>&lt;ol>
+&lt;li>数据在模型参数里进行了汇总&lt;/li>
+&lt;li>tokenizer使用的是Gemini2.0的tokenizer，基于SentencePiece，vocab大小为262K&lt;/li>
+&lt;li>使用知识蒸馏的方法进行训练，每个token按照教师模型的概率采样256个logits，然后使用cross-entropy loss进行训练&lt;/li>
+&lt;li>4B, 12B, 27B的模型先在32K的context length上进行训练，然后在128K的context length上进行训练&lt;/li>
+&lt;/ol>
+&lt;h2 id="quantization-aware-training">&lt;a href="#quantization-aware-training" class="header-anchor">&lt;/a>Quantization Aware training
+&lt;/h2>&lt;p>作者提供了quantized版本的模型，模型基于预训练好的模型使用QAT方法进行SFT 5000 steps左右。最后是各个模型的内存占用情况&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>&lt;/th>
+&lt;th>Raw (GB)&lt;/th>
+&lt;th>&lt;/th>
+&lt;th>Quantized (GB)&lt;/th>
+&lt;th>&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Model&lt;/td>
+&lt;td>bf16&lt;/td>
+&lt;td>Int4&lt;/td>
+&lt;td>Int4(blocks=32)&lt;/td>
+&lt;td>SFP8&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>1B&lt;/td>
+&lt;td>2.0&lt;/td>
+&lt;td>0.5&lt;/td>
+&lt;td>0.7&lt;/td>
+&lt;td>1.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>+KV&lt;/td>
+&lt;td>2.9&lt;/td>
+&lt;td>1.4&lt;/td>
+&lt;td>1.6&lt;/td>
+&lt;td>1.9&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>4B&lt;/td>
+&lt;td>8.0&lt;/td>
+&lt;td>2.6&lt;/td>
+&lt;td>2.9&lt;/td>
+&lt;td>4.4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>+KV&lt;/td>
+&lt;td>12.7&lt;/td>
+&lt;td>7.3&lt;/td>
+&lt;td>7.6&lt;/td>
+&lt;td>9.1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>12B&lt;/td>
+&lt;td>24.0&lt;/td>
+&lt;td>6.6&lt;/td>
+&lt;td>7.1&lt;/td>
+&lt;td>12.4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>+KV&lt;/td>
+&lt;td>38.9&lt;/td>
+&lt;td>21.5&lt;/td>
+&lt;td>22.0&lt;/td>
+&lt;td>27.3&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>27B&lt;/td>
+&lt;td>54.0&lt;/td>
+&lt;td>14.1&lt;/td>
+&lt;td>15.3&lt;/td>
+&lt;td>27.4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>+KV&lt;/td>
+&lt;td>72.7&lt;/td>
+&lt;td>32.8&lt;/td>
+&lt;td>34.0&lt;/td>
+&lt;td>46.1&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="后训练">&lt;a href="#%e5%90%8e%e8%ae%ad%e7%bb%83" class="header-anchor">&lt;/a>后训练
+&lt;/h2>&lt;p>数据过滤：筛选掉包含PII，不安全的或者有毒的输出等。留下上下文依赖高，幻觉小的数据&lt;/p>
+&lt;p>训练包括升级版的知识蒸馏和基于RL的finetuning，其中RL的reward来自于weight averaged reward models, code execution feedback, ground-truth rewards&lt;/p>
+&lt;h1 id="实验">&lt;a href="#%e5%ae%9e%e9%aa%8c" class="header-anchor">&lt;/a>实验
+&lt;/h1>&lt;h2 id="表现">&lt;a href="#%e8%a1%a8%e7%8e%b0" class="header-anchor">&lt;/a>表现
+&lt;/h2>&lt;p>Gemma3的表现如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gemma3/performance.png"
+width="1762"
+height="767"
+loading="lazy"
+alt="performance of Gemma3"
+class="gallery-image"
+data-flex-grow="229"
+data-flex-basis="551px"
+>&lt;/p>
+&lt;p>与PaliGemma 2的表现对比&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gemma3/comparison_with_pali_gemma_2.png"
+width="843"
+height="933"
+loading="lazy"
+alt="Comparison with PaliGemma 2"
+class="gallery-image"
+data-flex-grow="90"
+data-flex-basis="216px"
+>&lt;/p>
+&lt;h2 id="消融实验">&lt;a href="#%e6%b6%88%e8%9e%8d%e5%ae%9e%e9%aa%8c" class="header-anchor">&lt;/a>消融实验
+&lt;/h2>&lt;h3 id="local-attention-layers">&lt;a href="#local-attention-layers" class="header-anchor">&lt;/a>Local attention layers
+&lt;/h3>&lt;ol>
+&lt;li>&lt;code>sliding_window_pattern&lt;/code>对模型的表现影响不大&lt;/li>
+&lt;li>sliding window size对模型的表现也不是很大，如下图&lt;/li>
+&lt;li>使用sliding window attention可以降低KV cache的内存占用&lt;/li>
+&lt;/ol>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gemma3/sliding_window_size.png"
+width="865"
+height="618"
+loading="lazy"
+alt="sliding window size"
+class="gallery-image"
+data-flex-grow="139"
+data-flex-basis="335px"
+>&lt;/p>
+&lt;h3 id="long-context-ablation">&lt;a href="#long-context-ablation" class="header-anchor">&lt;/a>Long context ablation
+&lt;/h3>&lt;p>结论为long context会降低模型的性能&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gemma3/long_context.png"
+width="864"
+height="887"
+loading="lazy"
+alt="long context"
+class="gallery-image"
+data-flex-grow="97"
+data-flex-basis="233px"
+>&lt;/p>
+&lt;h3 id="知识蒸馏">&lt;a href="#%e7%9f%a5%e8%af%86%e8%92%b8%e9%a6%8f" class="header-anchor">&lt;/a>知识蒸馏
+&lt;/h3>&lt;p>训练token个数比较少的时候，使用小的教师模型效果更好；训练token个数比较多的时候，使用大的教师模型效果更好。&lt;/p>
+&lt;h3 id="pan--scan">&lt;a href="#pan--scan" class="header-anchor">&lt;/a>Pan &amp;amp; Scan
+&lt;/h3>&lt;p>使用图片原始的aspect ratio训练的模型效果更好。&lt;/p>
+&lt;h3 id="memorization">&lt;a href="#memorization" class="header-anchor">&lt;/a>memorization
+&lt;/h3>&lt;p>memorization指模型输出的文本与训练数据中文本的重复率。结果发现Gemma3的memorization要更低一些。&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gemma3/memorization.png"
+width="865"
+height="824"
+loading="lazy"
+alt="memorization"
+class="gallery-image"
+data-flex-grow="104"
+data-flex-basis="251px"
+>&lt;/p>
+&lt;h1 id="结论">&lt;a href="#%e7%bb%93%e8%ae%ba" class="header-anchor">&lt;/a>结论
+&lt;/h1>&lt;ol>
+&lt;li>sliding window attention在Qwen2.5-VL里已经验证过有效,这里在Gemma3上同样验证了有效性.&lt;/li>
+&lt;li>模型架构与PaliGemma系列基本一致，只是attention改变了，然后LLM从Gemma 2升级到了Gemma 3。&lt;/li>
+&lt;/ol>
+&lt;h1 id="参考文献">&lt;a href="#%e5%8f%82%e8%80%83%e6%96%87%e7%8c%ae" class="header-anchor">&lt;/a>参考文献
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="https://storage.googleapis.com/deepmind-media/gemma/Gemma3Report.pdf" target="_blank" rel="noopener"
+>Gemma3 Technical Report&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://github.com/huggingface/transformers/tree/main/src/transformers/models/gemma3" target="_blank" rel="noopener"
+>transformers-Gemma3 code&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

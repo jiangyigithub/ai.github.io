@@ -1,0 +1,2006 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Google on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/google/</link><description>Recent content in Google on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/google/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on GLaM</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-glam/</link><pubDate>Tue, 06 Jan 2026 18:07:29 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-glam/</guid><description>&lt;p>Google 在 2022 年 8 提出了 GLaM，一个基于 MoE 架构的大语言模型系列，模型超过了 GPT-3 的表现&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>作者在本文中证明了基于 MoE 架构的大语言模型可以达到与 dense 模型相同的性能，且计算更加高效。作者构建了 GLaM 大语言模型系列，包括 1.9B-A0.1B, 105B-A1.9B, 143B-A9.8B 以及 1.2T-A96.6B 等模型，尽管只激活了不到 $8\%$ 的参数，模型的 zero-shot, one-shot 和 few-shot 表现均超过了 GPT-3.&lt;/p>
+&lt;p>作者认为，在相同的算力下，MoE 模型比 dense 模型的表现更好，MoE 模型是一个非常具有前景的方向。&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;p>训练数据集包括 1.6T token, 具体分布如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Dataset&lt;/th>
+&lt;th>Tokens (B)&lt;/th>
+&lt;th>Weight in mixture&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Filtered Webpages&lt;/td>
+&lt;td>143&lt;/td>
+&lt;td>0.42&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Wikipedia&lt;/td>
+&lt;td>3&lt;/td>
+&lt;td>0.06&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Conversations&lt;/td>
+&lt;td>174&lt;/td>
+&lt;td>0.28&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Forums&lt;/td>
+&lt;td>247&lt;/td>
+&lt;td>0.02&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Books&lt;/td>
+&lt;td>390&lt;/td>
+&lt;td>0.20&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>News&lt;/td>
+&lt;td>650&lt;/td>
+&lt;td>0.02&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>模型架构如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-glam/GLaM-architecture.png"
+width="554"
+height="681"
+loading="lazy"
+alt="GLaM model architecture"
+class="gallery-image"
+data-flex-grow="81"
+data-flex-basis="195px"
+>&lt;/p>
+&lt;p>GLaM 的模型架构与 &lt;a class="link" href="https://maosong.website/p/gshard/" target="_blank" rel="noopener"
+>GShard&lt;/a> 基本相同，作者将 transformer block 按照两个为一组，一组中一个 block 为 dense FFN, 另一个为 MoE layer, 交替进行。MoE layer 中，总专家个数为 64 个，激活专家个数为 2 个。&lt;/p>
+&lt;p>模型配置如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>GLaM Model&lt;/th>
+&lt;th>Type&lt;/th>
+&lt;th>$n_{\text{params}}$&lt;/th>
+&lt;th>$n_{\text{act-params}}$&lt;/th>
+&lt;th>$L$&lt;/th>
+&lt;th>$M$&lt;/th>
+&lt;th>$H$&lt;/th>
+&lt;th>$n_{\text{heads}}$&lt;/th>
+&lt;th>$d_{\text{head}}$&lt;/th>
+&lt;th>$E$&lt;/th>
+&lt;th>&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>0.1B&lt;/td>
+&lt;td>Dense&lt;/td>
+&lt;td>130M&lt;/td>
+&lt;td>130M&lt;/td>
+&lt;td>12&lt;/td>
+&lt;td>768&lt;/td>
+&lt;td>3,072&lt;/td>
+&lt;td>12&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>$-$&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>0.1B/64E&lt;/td>
+&lt;td>MoE&lt;/td>
+&lt;td>1.9B&lt;/td>
+&lt;td>145M&lt;/td>
+&lt;td>12&lt;/td>
+&lt;td>768&lt;/td>
+&lt;td>3,072&lt;/td>
+&lt;td>12&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>1.7B&lt;/td>
+&lt;td>Dense&lt;/td>
+&lt;td>1.7B&lt;/td>
+&lt;td>1.700B&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>$-$&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>1.7B/32E&lt;/td>
+&lt;td>MoE&lt;/td>
+&lt;td>20B&lt;/td>
+&lt;td>1.878B&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>32&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>1.7B/64E&lt;/td>
+&lt;td>MoE&lt;/td>
+&lt;td>27B&lt;/td>
+&lt;td>1.879B&lt;/td>
+&lt;td>24&lt;/td>
+&lt;td>2,048&lt;/td>
+&lt;td>8,192&lt;/td>
+&lt;td>16&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>1.7B/128E&lt;/td>
+&lt;td>MoE&lt;/td>
+&lt;td>53B&lt;/td>
+&lt;td>1.881B&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>1.7B/256E&lt;/td>
+&lt;td>MoE&lt;/td>
+&lt;td>105B&lt;/td>
+&lt;td>1.886B&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>256&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>8B&lt;/td>
+&lt;td>Dense&lt;/td>
+&lt;td>8.7B&lt;/td>
+&lt;td>8.7B&lt;/td>
+&lt;td>32&lt;/td>
+&lt;td>4,096&lt;/td>
+&lt;td>16,384&lt;/td>
+&lt;td>32&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>$-$&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>8B/64E&lt;/td>
+&lt;td>MoE&lt;/td>
+&lt;td>143B&lt;/td>
+&lt;td>9.8B&lt;/td>
+&lt;td>32&lt;/td>
+&lt;td>4,096&lt;/td>
+&lt;td>16,384&lt;/td>
+&lt;td>32&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>137B&lt;/td>
+&lt;td>Dense&lt;/td>
+&lt;td>137B&lt;/td>
+&lt;td>137B&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>8,192&lt;/td>
+&lt;td>65,536&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>$-$&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>64B/64E&lt;/td>
+&lt;td>MoE&lt;/td>
+&lt;td>1.2T&lt;/td>
+&lt;td>96.6B&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>8,192&lt;/td>
+&lt;td>32,768&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>作者用 GLaM(8B/64E) 来表示一个 8B 参数的 dense model 中每隔一层被转换为 MoE layer&lt;/p>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>训练时，作者设置模型的上下文为 1024 token, batch size 为 1M, 优化器为 Adafactor, 作者还使用了 &lt;a class="link" href="https://maosong.website/p/gshard/" target="_blank" rel="noopener"
+>GShard&lt;/a> 中提出来的 load balancing loss, tokenizer 为 SentencePiece&lt;/p>
+&lt;p>GLaM 与 GPT-3 的对比如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>&lt;/th>
+&lt;th>&lt;/th>
+&lt;th>GPT-3&lt;/th>
+&lt;th>GLAM&lt;/th>
+&lt;th>relative&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>cost&lt;/td>
+&lt;td>FLOPs / token (G)&lt;/td>
+&lt;td>350&lt;/td>
+&lt;td>&lt;strong>180&lt;/strong>&lt;/td>
+&lt;td>-48.6%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>Train energy (MWh)&lt;/td>
+&lt;td>1287&lt;/td>
+&lt;td>&lt;strong>456&lt;/strong>&lt;/td>
+&lt;td>-64.6%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>accuracy on average&lt;/td>
+&lt;td>Zero-shot&lt;/td>
+&lt;td>56.9&lt;/td>
+&lt;td>&lt;strong>62.7&lt;/strong>&lt;/td>
+&lt;td>+10.2%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>One-shot&lt;/td>
+&lt;td>61.6&lt;/td>
+&lt;td>&lt;strong>65.5&lt;/strong>&lt;/td>
+&lt;td>+6.3%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>Few-shot&lt;/td>
+&lt;td>65.2&lt;/td>
+&lt;td>&lt;strong>68.1&lt;/strong>&lt;/td>
+&lt;td>+4.4%&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>实验结果显示，GLaM 的训练效率更高，且表现更好&lt;/p>
+&lt;p>作者还探究了提升 expert 个数对最终表现的影响，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-glam/GLaM-performance-vs-num-experts.png"
+width="686"
+height="354"
+loading="lazy"
+alt="Performance vs number of experts"
+class="gallery-image"
+data-flex-grow="193"
+data-flex-basis="465px"
+>&lt;/p>
+&lt;p>可以看到，随着专家个数提升，模型的表现逐渐增强，但是当专家个数超过 64 个之后，模型的表现反而有所下降。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者在本文中提出了 GLaM 大语言模型系列，验证了 MoE 模型的有效性和效率，结果发现，MoE 模型可以在相同的算力下达到更好的表现，并且学习效率更高。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://arxiv.org/abs/2112.06905" target="_blank" rel="noopener"
+>arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on Gemini3.0</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-gemini3.0/</link><pubDate>Tue, 06 Jan 2026 10:26:39 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-gemini3.0/</guid><description>&lt;p>Gemini 3.0 是是 Google 新一代最强模型，model card 介绍了 Gemini 3.0 系列的评估结果以及基本能力&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>Gemini 3.0 系列包含&lt;/p>
+&lt;ul>
+&lt;li>Gemini 3.0 Pro&lt;/li>
+&lt;li>Gemini 3.0 Flash&lt;/li>
+&lt;li>Gemini 3.0 Pro Image
+三个模型&lt;/li>
+&lt;/ul>
+&lt;p>Gemini 3.0 Pro 拥有原生多模态以及 reasoning 能力，可以处理 text, audio, images, video 以及 code repositories 等模态。&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>&lt;/th>
+&lt;th>modalities&lt;/th>
+&lt;th>context&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>input&lt;/td>
+&lt;td>text, images, audio, video&lt;/td>
+&lt;td>1M&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>output&lt;/td>
+&lt;td>text&lt;/td>
+&lt;td>64K&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>Gemini 3.0 Flash 与 Gemini 3.0 Pro 基本一致，与 &lt;a class="link" href="https://maosong.website/p/notes-on-gemini2.5/" target="_blank" rel="noopener"
+>Gemini2.5&lt;/a> 相同，应该是采取了蒸馏的方式来实现更高的吞吐速度以及效率&lt;/p>
+&lt;p>Gemini 3.0 Pro Image 基于 Gemini 3.0 Pro 开发，是一个支持 text, image prompt 的图片生成模型&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;p>模型从零开始训练，使用了 MoE 架构和 Transformer 架构&lt;/p>
+&lt;p>模型使用 TPU 进行训练，训练架构为 JAX 和 ML Pathways.&lt;/p>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>Gemini 3.0 Pro 对比了 &lt;a class="link" href="https://maosong.website/p/notes-on-gemini2.5/" target="_blank" rel="noopener"
+>Gemini2.5&lt;/a> , Claude Sonnet 4.5 和 GPT-5.1&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gemini3.0/Gemini-3-0-pro-performance.png"
+width="1081"
+height="963"
+loading="lazy"
+alt="Performance of Gemini 3.0 Pro"
+class="gallery-image"
+data-flex-grow="112"
+data-flex-basis="269px"
+>&lt;/p>
+&lt;p>Gemini 3.0 Flash 对比了 Gemini 3.0 Pro, Gemini 2.5 Flash, Gemini 2.5 Pro, Claude Sonnet 4.5, GPT-5.2 和 Grok 4.1 Fast.&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gemini3.0/Gemini-3-0-Flash-performance.png"
+width="1082"
+height="1073"
+loading="lazy"
+alt="Performance of Gemini 3.0 Flash"
+class="gallery-image"
+data-flex-grow="100"
+data-flex-basis="242px"
+>&lt;/p>
+&lt;p>Gemini 3.0 Pro Image 对比了 Gemini 2.5 Flash Image, GPT-Image 1, Seedream v4, Flux Pro Kontext Max&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gemini3.0/Gemini-3-0-Pro-Image-performance.png"
+width="1372"
+height="795"
+loading="lazy"
+alt="Performance of Gemini 3.0 Pro Image on existing capabilities"
+class="gallery-image"
+data-flex-grow="172"
+data-flex-basis="414px"
+>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gemini3.0/Gemini-3-0-Pro-Image-performance-new.png"
+width="1332"
+height="721"
+loading="lazy"
+alt="Performance of Gemini 3.0 Pro Image on new capabilities"
+class="gallery-image"
+data-flex-grow="184"
+data-flex-basis="443px"
+>&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://storage.googleapis.com/deepmind-media/Model-Cards/Gemini-3-Pro-Model-Card.pdf" target="_blank" rel="noopener"
+>Gemini 3.0 Pro Model Card&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://storage.googleapis.com/deepmind-media/Model-Cards/Gemini-3-Flash-Model-Card.pdf" target="_blank" rel="noopener"
+>Gemini 3.0 Flash Model Card&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://storage.googleapis.com/deepmind-media/Model-Cards/Gemini-3-Pro-Image-Model-Card.pdf" target="_blank" rel="noopener"
+>Gemini 3.0 Pro Image Model Card&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on T5</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-t5/</link><pubDate>Wed, 24 Dec 2025 15:07:08 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-t5/</guid><description>&lt;p>google 在 2020 年发表了 T5 (Text-to-Text Transfer Transformer), 一个使用统一框架来将所有 NLP 任务转换为 text-to-text 格式的迁移学习框架。&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>作者首先回顾了迁移学习和 pre-training, 迁移学习是提高模型在下游任务上表现的一类方法，但是目前还没有一个能够对比各种方法的框架。pre-training 通过在大量数据上进行预训练然后再进行微调，可以有效提高模型在下游任务上的表现。&lt;/p>
+&lt;p>为了解决这两个问题，作者首先将所有的文本处理任务统一为 &amp;ldquo;text-to-text&amp;rdquo; 的形式，这样我们就可以对比不同架构，训练方式以及数据对模型表现的影响&lt;/p>
+&lt;p>作者提到，本文并不是提供一个新的方法，而是详细对比不同方法，为后续研究提供基础。&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;h3 id="model">&lt;a href="#model" class="header-anchor">&lt;/a>Model
+&lt;/h3>&lt;p>在架构上，作者使用了 Transformer 的 encoder-decoder 架构，但是作者做了几点修改&lt;/p>
+&lt;ol>
+&lt;li>作者提出了 T5 bias, 一个用于替换原始 transformer 绝对位置编码的相对位置编码形式&lt;/li>
+&lt;li>作者使用了 RMSNorm 替换了 Transformer 中的 LayerNorm.&lt;/li>
+&lt;/ol>
+&lt;h3 id="data">&lt;a href="#data" class="header-anchor">&lt;/a>Data
+&lt;/h3>&lt;p>作者基于 Common Crawl 构建训练数据集，作者对数据进行了清洗，最终数据集大小为 750GB. 作者将这个数据集记为 C4 (Clean Crawled Corpus).&lt;/p>
+&lt;h3 id="downstream-tasks">&lt;a href="#downstream-tasks" class="header-anchor">&lt;/a>Downstream Tasks
+&lt;/h3>&lt;p>下游任务包括：&lt;/p>
+&lt;ol>
+&lt;li>text classification: GLUE, SuperGLUE&lt;/li>
+&lt;li>abstractive summarization: CNN/Daily Mail&lt;/li>
+&lt;li>question answering: SQuAD&lt;/li>
+&lt;li>translation: WMT English to German, French and Romanian&lt;/li>
+&lt;/ol>
+&lt;h3 id="input-and-output-format">&lt;a href="#input-and-output-format" class="header-anchor">&lt;/a>Input and Output Format
+&lt;/h3>&lt;p>所有任务的输入输出都被转换为 text-to-text 格式。&lt;/p>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>作者使用的 baseline 模型是一个基于 encoder-decoder 架构的 transformer 模型，其大小以及 configuration 与 BERT base 差不多，最终模型参数量为 220M。&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>field&lt;/th>
+&lt;th>num layers&lt;/th>
+&lt;th>hidden size&lt;/th>
+&lt;th>MLP hidden size&lt;/th>
+&lt;th>num heads&lt;/th>
+&lt;th>head dim&lt;/th>
+&lt;th>dropout&lt;/th>
+&lt;th>seq len&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>value&lt;/td>
+&lt;td>12&lt;/td>
+&lt;td>768&lt;/td>
+&lt;td>3072&lt;/td>
+&lt;td>12&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>0.1&lt;/td>
+&lt;td>512&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>训练时，作者使用了 AdaFactor 优化器，batch size 为 512， 训练使用了 34B token. 学习率作者使用了 inverse square root learning schedule: $1/\sqrt{\max(n,k)}$, $n$ 和 $k$ 分别代表当前 step 和 warming up steps.&lt;/p>
+&lt;p>作者基于 sentencepiece (见 &lt;a class="link" href="https://maosong.website/p/hands-on-llm1-tokenizer/" target="_blank" rel="noopener"
+>LLM tokenizer&lt;/a>) 构建了 Tokenizer, 覆盖 English, German, French 和 Romanian 四种语言。&lt;/p>
+&lt;p>模型训练的目标函数为 BERT 使用的 &amp;ldquo;masked language modeling&amp;rdquo;, 格式如下所示&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;span class="lnt">8
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&lt;span class="line">&lt;span class="cl"># original text
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Thank you for inviting me to your party last week.
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"># inputs
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Thank you &amp;lt;X&amp;gt; me to your party &amp;lt;Y&amp;gt; week.
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"># targets
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&amp;lt;X&amp;gt; for inviting &amp;lt;Y&amp;gt; last &amp;lt;Z&amp;gt;
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>首先，作者对比了不同的架构。作者对比了如下三种 transformer 的变体：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-t5/T5-architecture-variants.png"
+width="887"
+height="410"
+loading="lazy"
+alt="variants of transformer architecture"
+class="gallery-image"
+data-flex-grow="216"
+data-flex-basis="519px"
+>&lt;/p>
+&lt;p>实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-t5/T5-ablation-architecture-variants.png"
+width="1234"
+height="363"
+loading="lazy"
+alt="Performance of different architecture variants"
+class="gallery-image"
+data-flex-grow="339"
+data-flex-basis="815px"
+>&lt;/p>
+&lt;p>结果显示，encoder-decoder 架构，denoising 训练目标的效果最好。并且，当 layers 减少一半之后，模型的表现大幅度下降。共享参数的 encoder-decoder 架构表现比 prefix LM 效果更好&lt;/p>
+&lt;p>接下来作者针对 denoising 的配置进行了测试，实验结果发现 BERT-style 的训练目标效果最好，并且 corruption 比例对模型的表现影响有限，作者使用了 BERT 的配置，即 $15\%$ 的 token 被 masked 掉。对于 span length, 作者通过实验发现不同的 span length 对结果影响不大。因此，作者将 span length 设置为 $3$.&lt;/p>
+&lt;p>在数据上，作者发现：&lt;/p>
+&lt;ol>
+&lt;li>对数据进行过滤可以提高模型的表现&lt;/li>
+&lt;li>使用 in-domain 的数据可以提高模型在该 domain 上的表现，但是问题在于 In-domain 的数据往往比较少&lt;/li>
+&lt;li>数据量过少时，模型会出现 memorization，也就是过拟合的情况&lt;/li>
+&lt;/ol>
+&lt;h2 id="overall">&lt;a href="#overall" class="header-anchor">&lt;/a>Overall
+&lt;/h2>&lt;p>作者总结前面的发现，构建了 5 个 size 的模型：&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>layers&lt;/th>
+&lt;th>hidden size&lt;/th>
+&lt;th>FFN hidden size&lt;/th>
+&lt;th>num heads&lt;/th>
+&lt;th>head dimension&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Small&lt;/td>
+&lt;td>6&lt;/td>
+&lt;td>512&lt;/td>
+&lt;td>2048&lt;/td>
+&lt;td>8&lt;/td>
+&lt;td>64&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Base&lt;/td>
+&lt;td>12&lt;/td>
+&lt;td>768&lt;/td>
+&lt;td>3072&lt;/td>
+&lt;td>12&lt;/td>
+&lt;td>64&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Large&lt;/td>
+&lt;td>24&lt;/td>
+&lt;td>1024&lt;/td>
+&lt;td>4096&lt;/td>
+&lt;td>16&lt;/td>
+&lt;td>64&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>3B&lt;/td>
+&lt;td>24&lt;/td>
+&lt;td>1024&lt;/td>
+&lt;td>16384&lt;/td>
+&lt;td>32&lt;/td>
+&lt;td>128&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>11B&lt;/td>
+&lt;td>24&lt;/td>
+&lt;td>1024&lt;/td>
+&lt;td>65536&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>128&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者在本文中提出了 T5, 一个统一所有文本处理任务的迁移学习框架，作者系统性探究了架构，数据以及训练对模型最终表现的影响。最终作者基于 encoder-decoder transformer 架构以及 denoising training objective 训练得到了 T5 系列大语言模型。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://jmlr.org/papers/v21/20-074.html" target="_blank" rel="noopener"
+>Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>GPipe</title><link>https://github.com/jiangyigithub/ai.github.io/p/gpipe/</link><pubDate>Tue, 23 Dec 2025 16:49:25 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/gpipe/</guid><description>&lt;p>google 在 2018 年提出了 GPipe, 一个使用 pipeline parallelism 来训练大规模神经网络的并行策略&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>大规模神经网络已经在计算机视觉和自然语言处理等任务上取得了突破性进展。但是目前训练大规模神经网络存在的问题时，我们无法在单一 GPU 上训练我们的模型。基于多 GPU 训练模型需要考虑模型的切分以及通信优化。&lt;/p>
+&lt;p>为了解决这个问题，作者提出了 GPipe, 一个用于将大规模性模型分割部署到不同设备上的并行计算策略。&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;h3 id="notation">&lt;a href="#notation" class="header-anchor">&lt;/a>Notation
+&lt;/h3>&lt;p>作者首先定义 notation 如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>notation&lt;/th>
+&lt;th>description&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$L$&lt;/td>
+&lt;td>number of layers&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$w_i$&lt;/td>
+&lt;td>weights of a layer&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$f_i$&lt;/td>
+&lt;td>forward function of a layer&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$F_k=f_j\circ\cdots\circ f_i$&lt;/td>
+&lt;td>forward of a partition&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$B_k$&lt;/td>
+&lt;td>backward of a partition&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$K$&lt;/td>
+&lt;td>number of partitions&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$N$&lt;/td>
+&lt;td>batch size&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$M$&lt;/td>
+&lt;td>micro batch size&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="gpipe">&lt;a href="#gpipe" class="header-anchor">&lt;/a>GPipe
+&lt;/h3>&lt;p>首先是 naive pipeline parallelism (naive PP), 我们的输入为一个 batch, 然后我们依次计算 $F_1$, 通信传输，计算 $F_2$, 计算完成之后，我们再进行反向传播，更新参数。最后继续下一个 batch 的计算。&lt;/p>
+&lt;p>总体的过程如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/gpipe/GPipe-PP-illustration.png"
+width="528"
+height="700"
+loading="lazy"
+alt="illustration of pipeline parallelism"
+class="gallery-image"
+data-flex-grow="75"
+data-flex-basis="181px"
+>&lt;/p>
+&lt;p>下面是一个按照时间轴给出的例子&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/gpipe/GPipe-naive-PP-example.png"
+width="1173"
+height="318"
+loading="lazy"
+alt="an example of naive PP with 4 devices"
+class="gallery-image"
+data-flex-grow="368"
+data-flex-basis="885px"
+>&lt;/p>
+&lt;p>naive PP 的问题在于，每个时刻只有一个 GPU 在工作，GPU 的利用效率很低。因此，GPipe 的做法在于将一个 batch 切分为 $M$ 个更小的 micro-batch, 下面是一个 $M=4$ 的例子&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/gpipe/GPipe-micro-batch-example.png"
+width="713"
+height="288"
+loading="lazy"
+alt="An example of pipeline parallelism with 4 devices and 4 micro batches"
+class="gallery-image"
+data-flex-grow="247"
+data-flex-basis="594px"
+>&lt;/p>
+&lt;p>通过切分更小的 batch，我们可以提高 GPU 的利用率&lt;/p>
+&lt;h3 id="analysis">&lt;a href="#analysis" class="header-anchor">&lt;/a>Analysis
+&lt;/h3>&lt;h4 id="bubble">&lt;a href="#bubble" class="header-anchor">&lt;/a>Bubble
+&lt;/h4>&lt;p>接下来作者分析了 GPipe 的 bubble 情况，bubble 指的是 PP 过程中的 GPU idle time.&lt;/p>
+&lt;p>对于 naive PP 来说，一个 GPU 工作时，其余 GPU 都处于空闲状态，因此其 bubble 为&lt;/p>
+$$
+T_{bubble} = (K-1)(F+B)
+$$&lt;p>总的计算时间为&lt;/p>
+$$
+T_{total} = K(F+B)
+$$&lt;p>从而 bubble rate 为&lt;/p>
+$$
+Bubble_{naive} = \frac{T_{bubble}}{T_{total}} = \frac{K-1}{K}
+$$&lt;p>当 $K=8$ 时，我们有 $Bubble_{naive}=87.5\%$, 也就是说，当前训练的 GPU 空闲率为 $87.5\%$.&lt;/p>
+&lt;p>对于 GPipe 来说，由于我们将一个 batch 拆分为了更小的 batch, 我们可以提高 GPU 的利用率。&lt;/p>
+&lt;p>此时，我们的 bubble time 仍然是 $T_{bubble} = (K-1)(F+B)$. 但是，现在同一时刻工作的 GPU 变多了，从上面的示意图可以看到，前向过程所需要的时间为第一个 micro batch 运行的时间加上 $M-1$ 个 batch 运行所需要的时间，反向同理，因此，GPipe 的总计算时间为&lt;/p>
+$$
+T_{total} = (M+K-1)(F+B)
+$$&lt;p>从而 GPipe 的 bubble rate 为&lt;/p>
+$$
+Bubble_{naive} = \frac{T_{bubble}}{T_{total}} = \frac{K-1}{M+K-1}
+$$&lt;p>当我们令 $M=8, K=8$ 时，我们有 $Bubble_{naive}=46.7\%$, 可以看到，通过提高 micro batch 数量，我们可以显著降低 bubble rate.&lt;/p>
+&lt;h4 id="activation-memory">&lt;a href="#activation-memory" class="header-anchor">&lt;/a>Activation Memory
+&lt;/h4>&lt;p>对于 naive PP 来说，我们需要缓存每一层的输入，因此 activation memory 为 $\mathcal{O}(N\times L/K)$, 而使用 activation checkpointing 之后，我们现在的 activation memory 为&lt;/p>
+$$
+\mathcal{O}(N + \frac{L}{K}\times\frac{N}{M})
+$$&lt;p>其中第一项代表了 boundary activation, 第二项代表了 Internal activation.&lt;/p>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>作者在 image classification, machine translation 任务上进行了实验。&lt;/p>
+&lt;p>作者还进一步分析了影响 GPipe 性能的因素，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/gpipe/GPipe-performance-analysis.png"
+width="541"
+height="348"
+loading="lazy"
+alt="Time step breakdown"
+class="gallery-image"
+data-flex-grow="155"
+data-flex-basis="373px"
+>&lt;/p>
+&lt;p>可以看到，activation checkpointing 是 GPipe 的主要开销来源。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者在本文中提出了 GPipe, 一个针对大规模神经网络训练的并行策略。通过将模型切分部署在不同的设备上以及使用 micro batch, 我们可以显著提高硬件的利用效率以及训练稳定性。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://arxiv.org/abs/1811.06965" target="_blank" rel="noopener"
+>GPipe: Efficient Training of Giant Neural Networks using Pipeline Parallelism&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://siboehm.com/articles/22/pipeline-parallel-training" target="_blank" rel="noopener"
+>Pipeline-Parallelism: Distributed Training via Model Partitioning&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on Gemini2.5</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-gemini2.5/</link><pubDate>Sat, 06 Dec 2025 18:14:15 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-gemini2.5/</guid><description>&lt;h2 id="介绍">&lt;a href="#%e4%bb%8b%e7%bb%8d" class="header-anchor">&lt;/a>介绍
+&lt;/h2>&lt;p>DeepMind 在 6 月 17 号发布了 Gemini2.x 系列的技术报告，包括&lt;/p>
+&lt;ul>
+&lt;li>Gemini 2.5 Pro&lt;/li>
+&lt;li>Gemini 2.5 Flash&lt;/li>
+&lt;li>Gemini 2.0 Flash (earlier)&lt;/li>
+&lt;li>Gemini 2.0 Flash-Lite (earlier)&lt;/li>
+&lt;/ul>
+&lt;p>技术报告简单说了一些技术细节，主要还是模型的评估&lt;/p>
+&lt;blockquote>
+&lt;p>注：Gemini 2.0 Flash 和 Gemini 2.0 Flash-Lite 将要被 Gemini 2.5 Flash 和 Gemini 2.5 Flash-Lite 取缔，见最新的 blog&lt;/p>
+&lt;/blockquote>
+&lt;p>Gemini2.x 系列亮点：&lt;/p>
+&lt;ol>
+&lt;li>领先的 coding 和 reasoning 能力&lt;/li>
+&lt;li>超过 1M 的上下文，可以处理超过 3 个小时的 video&lt;/li>
+&lt;li>集成 long context, multimodal 和 reasoning 三种能力的 agentic workflow 能力&lt;/li>
+&lt;/ol>
+&lt;p>模型能力对比&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Gemini 1.5 Flash&lt;/th>
+&lt;th>Gemini 1.5 Pro&lt;/th>
+&lt;th>Gemini 2.0 Flash-Lite&lt;/th>
+&lt;th>Gemini 2.0 Flash&lt;/th>
+&lt;th>Gemini 2.5 Flash&lt;/th>
+&lt;th>Gemini 2.5 Pro&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Input Modalities&lt;/td>
+&lt;td>Text, Image, Video, Audio&lt;/td>
+&lt;td>Text, Image, Video, Audio&lt;/td>
+&lt;td>Text, Image, Video, Audio&lt;/td>
+&lt;td>Text, Image, Video, Audio&lt;/td>
+&lt;td>Text, Image, Video, Audio&lt;/td>
+&lt;td>Text, Image, Video, Audio&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Input length&lt;/td>
+&lt;td>1M&lt;/td>
+&lt;td>2M&lt;/td>
+&lt;td>1M&lt;/td>
+&lt;td>1M&lt;/td>
+&lt;td>1M&lt;/td>
+&lt;td>1M&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Output modalities&lt;/td>
+&lt;td>Text&lt;/td>
+&lt;td>Text&lt;/td>
+&lt;td>Text&lt;/td>
+&lt;td>Text, Image*&lt;/td>
+&lt;td>Text, Audio*&lt;/td>
+&lt;td>Text, Audio&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Output length&lt;/td>
+&lt;td>8K&lt;/td>
+&lt;td>8K&lt;/td>
+&lt;td>8K&lt;/td>
+&lt;td>8K&lt;/td>
+&lt;td>64K&lt;/td>
+&lt;td>64K&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Thinking&lt;/td>
+&lt;td>No&lt;/td>
+&lt;td>No&lt;/td>
+&lt;td>No&lt;/td>
+&lt;td>Yes&lt;/td>
+&lt;td>Dynamic&lt;/td>
+&lt;td>Dynamic&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Supports tool use?&lt;/td>
+&lt;td>No&lt;/td>
+&lt;td>No&lt;/td>
+&lt;td>No&lt;/td>
+&lt;td>Yes&lt;/td>
+&lt;td>Yes&lt;/td>
+&lt;td>Yes&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Knowledge cutoff&lt;/td>
+&lt;td>November 2023&lt;/td>
+&lt;td>November 2023&lt;/td>
+&lt;td>June 2024&lt;/td>
+&lt;td>June 2024&lt;/td>
+&lt;td>January 2025&lt;/td>
+&lt;td>January 2025&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>模型场景使用对比&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Gemini 2.5 Flash-Lite&lt;/th>
+&lt;th>Gemini 2.5 Flash&lt;/th>
+&lt;th>Gemini 2.5&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Thinking&lt;/td>
+&lt;td>No&lt;/td>
+&lt;td>Yes&lt;/td>
+&lt;td>Yes&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>使用场景&lt;/td>
+&lt;td>大规模调用&lt;/td>
+&lt;td>日常使用&lt;/td>
+&lt;td>coding 或者 reasoning 人物&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>速度&lt;/td>
+&lt;td>非常快&lt;/td>
+&lt;td>快&lt;/td>
+&lt;td>一半&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>表现&lt;/td>
+&lt;td>一半&lt;/td>
+&lt;td>强&lt;/td>
+&lt;td>非常强&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>输入价格&lt;/td>
+&lt;td>0.1&lt;/td>
+&lt;td>0.3&lt;/td>
+&lt;td>1.25&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>输出价格&lt;/td>
+&lt;td>0.4&lt;/td>
+&lt;td>2.5&lt;/td>
+&lt;td>10&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>模型表现&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gemini2.5/Gemini_2_5_performance.png"
+width="3840"
+height="2160"
+loading="lazy"
+alt="Gemini_2_5_performance"
+class="gallery-image"
+data-flex-grow="177"
+data-flex-basis="426px"
+>&lt;/p>
+&lt;p>模型吞吐量对比&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gemini2.5/Gemini_2_5_throughput.png"
+width="2156"
+height="960"
+loading="lazy"
+alt="Gemini_2_5_throughput"
+class="gallery-image"
+data-flex-grow="224"
+data-flex-basis="539px"
+>&lt;/p>
+&lt;h2 id="架构数据与训练">&lt;a href="#%e6%9e%b6%e6%9e%84%e6%95%b0%e6%8d%ae%e4%b8%8e%e8%ae%ad%e7%bb%83" class="header-anchor">&lt;/a>架构，数据与训练
+&lt;/h2>&lt;h3 id="架构">&lt;a href="#%e6%9e%b6%e6%9e%84" class="header-anchor">&lt;/a>架构
+&lt;/h3>&lt;p>Gemini2.5 是一个&lt;strong>基于 MoE 的 transformer 架构&lt;/strong>，支持 text, vision, audio 模态&lt;/p>
+&lt;p>Flash 系列使用的是知识蒸馏的方法训练得到的，训练时使用了 $k$-sparse 的策略，也就是只保留教师模型输出概率最高的 $k$ 的词以及对应的概率。作者认为知识蒸馏可以有效提高小模型的能力。&lt;/p>
+&lt;h3 id="infra">&lt;a href="#infra" class="header-anchor">&lt;/a>Infra
+&lt;/h3>&lt;p>Gemini 系列在 TPUv5p 的架构上进行训练。作者主要提了两点：&lt;/p>
+&lt;ol>
+&lt;li>Slice-Granularity Elasticity：可以在部分 TPU 出现故障时快速切换并继续训练&lt;/li>
+&lt;li>Split-Phase SDC detection：通过轻量级重放和校验机制，在几分钟内就能识别出有问题的硬件设备&lt;/li>
+&lt;/ol>
+&lt;h3 id="post-training">&lt;a href="#post-training" class="header-anchor">&lt;/a>Post-training
+&lt;/h3>&lt;p>post-training 包含 SFT，reward model 以及 RL 的训练。&lt;/p>
+&lt;p>在 RL 阶段，奖励来自 verifiable rewards 和 model-based generative rewards&lt;/p>
+&lt;h3 id="能力提升">&lt;a href="#%e8%83%bd%e5%8a%9b%e6%8f%90%e5%8d%87" class="header-anchor">&lt;/a>能力提升
+&lt;/h3>&lt;p>技术报告提到了几个方面能力的提升&lt;/p>
+&lt;p>&lt;strong>code&lt;/strong>
+pre-training 阶段，加入了大量的代码数据，作者还评估了代码数据的质量
+post-training 阶段，作者基于 reasoning 能力构建了一系列的工程任务，来提高模型解决问题的能力&lt;/p>
+&lt;p>&lt;strong>Factuality&lt;/strong>
+通过 search 和 tool use，reason about output 以及 issue follow-up queries 来验证 factual accuracy&lt;/p>
+&lt;p>&lt;strong>Multilinguality&lt;/strong>
+预训练时使用了 400 多种语言的语料进行训练&lt;/p>
+&lt;p>&lt;strong>Audio&lt;/strong>
+训练模型完成 audio generation 任务，生成的时候使用了&lt;strong>causal audio representation&lt;/strong>，训练数据覆盖了 200 多种语言&lt;/p>
+&lt;p>&lt;strong>Video&lt;/strong>
+通过降低每帧视频对应的 visual token 个数（258-&amp;gt; 66），来让模型可以处理 3 个小时的视频&lt;/p>
+&lt;h2 id="evaluation">&lt;a href="#evaluation" class="header-anchor">&lt;/a>Evaluation
+&lt;/h2>&lt;p>对比了 Claude_4, o3, &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-r1/" target="_blank" rel="noopener"
+>DeepSeek-R1&lt;/a> 和 Grok-1&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gemini2.5/Gemini_2_5_evaluation.png"
+width="1754"
+height="1174"
+loading="lazy"
+alt="Gemini_2_5_evaluation"
+class="gallery-image"
+data-flex-grow="149"
+data-flex-basis="358px"
+>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-gemini2.5/Gemini_2_5_video_understanding_performance.png"
+width="1724"
+height="988"
+loading="lazy"
+alt="Gemini_2_5_video_understanding_performance"
+class="gallery-image"
+data-flex-grow="174"
+data-flex-basis="418px"
+>&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>结论里作者主要提到了两点&lt;/p>
+&lt;ol>
+&lt;li>模型能力的提升已经超过了 benchmark 的构建速度和成本&lt;/li>
+&lt;li>未来如何设计经济的，覆盖广的，能动态调整难度的 benchmark 是一个关键问题&lt;/li>
+&lt;/ol>
+&lt;p>技术报告中作者还提到了 Gemini Plays Pokemon 的 case study，作者提到了两点问题：&lt;/p>
+&lt;ol>
+&lt;li>作者发模型对视觉信息的依赖程度并不是很高&lt;/li>
+&lt;li>尽管模型上下文长度超过了 1M，但是对于这种复杂的 long horizon 问题，当输入超过了 100K token 之后，模型倾向于重复过去的行为，而不是生成新的计划
+因此，未来如何解决 multi-turn, long-horizon 的 agentic task 也是一个值得探究的方向。&lt;/li>
+&lt;/ol>
+&lt;h2 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://blog.google/products/gemini/gemini-2-5-model-family-expands/" target="_blank" rel="noopener"
+>Gemini 2.5 Flash/Flash Lite&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://blog.google/products/gemini/gemini-2-5-model-family-expands/" target="_blank" rel="noopener"
+>Gemini 2.5 Technical Report&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on ViT</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-vit/</link><pubDate>Thu, 04 Dec 2025 11:00:44 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-vit/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>Transformer 架构在 NLP 领域已经成为了事实上的标准。而在 CV 领域，目前还是 CNN 架构占据了主导。&lt;/p>
+&lt;p>在本文中，作者就探究是否可以应用 Transformer 架构来完成图像识别的任务。&lt;/p>
+&lt;p>作者发现，当在小规模数据集上进行训练时，Transformer 架构的表现是不如 CNN 架构的，作者认为原因是 Transformer 架构缺乏如 translation equivariance 和 locality 等 inductive biases. 但是当数据集规模上去之后，作者发现这种 inductive bias 可以通过大规模训练抵消掉。其中，最好的模型在 ImageNet 上达到了 $88.55\%$ 的准确率。&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;p>ViT 的架构如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vit/ViT-architecture.png"
+width="949"
+height="483"
+loading="lazy"
+alt="Architecture of ViT"
+class="gallery-image"
+data-flex-grow="196"
+data-flex-basis="471px"
+>&lt;/p>
+&lt;p>为了能够处理图片，对于输入的图片 $x\in\mathbb{R}^{H\times W\times C}$, 其中 $(H,W)$ 是图片大小，$C$ 是 channel 的个数。作者将其展开为一个 2D patch 序列, $x_p\in\mathbb{R}^{N\times (P^2\times C)}$, 其中 $(P, P)$ 是 image patch 的大小，$N=HW/P^2$ 是 image patch 的的个数，也是 Transformer 输入 token 的个数，Transformer 的 hidden size 为 $D$, 作者使用了一个 linear layer 来将 image patch 转换为 Transformer 的输入。&lt;/p>
+&lt;p>与 BERT 一致，作者使用了一个 &lt;code>[class]&lt;/code> token 来作为输入 patch 序列的 embedding, 即 $z_0^0=x_{class}$, 其对应的输出 $z_L^0$ 作为该图片的表示。作者还使用了 1D 的 position encoding. 最终，ViT 表达式如下所示&lt;/p>
+$$
+\begin{aligned}
+z_0 &amp;= [x_{class};x_p^1\mathbf{E};x_p^2\mathbf{E};\cdots;x_p^N\mathbf{E};]+\mathbf{E}_{pos}, &amp;\mathbf{E}\in\mathbb{R}^{(P^2\cdot C)\times D},\mathbf{E}_{pos}\in\mathbb{R}^{(N+1)\times D}\\
+z_{\ell}'&amp;=\mathrm{MultiHeadAttention}(\mathrm{LayerNorm}(z_{\ell-1}))+z_{\ell-1},&amp;\ell=1,\dots,L\\
+z_{\ell} &amp;= \mathrm{MLP}(\mathrm{LayerNorm}(z_{\ell}'))+z_{\ell}',&amp;\ell=1,\dots,L\\
+y&amp;=\mathrm{LayerNorm}(z_L^0)
+\end{aligned}
+$$&lt;p>作者分析认为，相比于 CNN 架构，Transformer 架构缺乏 inductive bias, 这是因为每个 patch 对其周围的 2D 临近信息用的非常少，ViT 架构必须从零开始学习这些位置以及空间关系。&lt;/p>
+&lt;p>作者还介绍了混合架构，即 patch embedding 由一个 linear layer 替换为一个 CNN 架构&lt;/p>
+&lt;p>在 finetune 时，作者移除了 pre-trained 的 prediction head, 然后加入了一个 $D\times K$ 的 feed forward layer, 其中 $K$ 是分类的类别数。&lt;/p>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>作者使用的数据集如下所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Dataset&lt;/th>
+&lt;th>classes&lt;/th>
+&lt;th>images&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>ImageNet&lt;/td>
+&lt;td>1K&lt;/td>
+&lt;td>1.3M&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>ImageNet-21K&lt;/td>
+&lt;td>21K&lt;/td>
+&lt;td>14M&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>JFT&lt;/td>
+&lt;td>18K&lt;/td>
+&lt;td>303M&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>作者在 ImageNet, CIFAR-10/100, Oxford-IIIT Pets, Oxford Flowers-102 这些数据集上进行评测。&lt;/p>
+&lt;p>模型配置如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Layers&lt;/th>
+&lt;th>$D$&lt;/th>
+&lt;th>$D_{FFN}$&lt;/th>
+&lt;th># heads&lt;/th>
+&lt;th># params&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>ViT-Base&lt;/td>
+&lt;td>12&lt;/td>
+&lt;td>768&lt;/td>
+&lt;td>3072&lt;/td>
+&lt;td>12&lt;/td>
+&lt;td>86M&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>ViT-Large&lt;/td>
+&lt;td>24&lt;/td>
+&lt;td>1024&lt;/td>
+&lt;td>4096&lt;/td>
+&lt;td>16&lt;/td>
+&lt;td>307M&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>ViT-Huge&lt;/td>
+&lt;td>32&lt;/td>
+&lt;td>1280&lt;/td>
+&lt;td>5120&lt;/td>
+&lt;td>16&lt;/td>
+&lt;td>632M&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>为了简便，作者在后续实验过程中，对模型名字进行了改写，比如 ViT-L/16 就代表了 ViT-Large model, 其对应的 patch size 为 16.&lt;/p>
+&lt;p>ViT 的实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vit/ViT-performance.png"
+width="1159"
+height="357"
+loading="lazy"
+alt="Performance of ViT"
+class="gallery-image"
+data-flex-grow="324"
+data-flex-basis="779px"
+>&lt;/p>
+&lt;p>可以看到相比于 CNN 架构，ViT 所需要的训练时间更少，且效果更好。&lt;/p>
+&lt;p>为了验证 ViT 模型具有更高的训练效率，作者在不同的数据集上进行的实验，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vit/ViT-transfer-performance.png"
+width="545"
+height="387"
+loading="lazy"
+alt="Transfer to ImageNet"
+class="gallery-image"
+data-flex-grow="140"
+data-flex-basis="337px"
+>&lt;/p>
+&lt;p>可以看到，当数据集比较小时，大部分 ViT 模型表现都比 ResNet 差，但是当数据集规模增加之后，ViT 的表现逐渐超过了 ResNet. 并且，随着数据集规模的增加，大模型的表现也比小模型好。&lt;/p>
+&lt;p>作者进一步在四个不同大小的随机数据集上进行了验证，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vit/ViT-linear-few-shot-performance.png"
+width="551"
+height="384"
+loading="lazy"
+alt="Linear few-shot evaluation on ImageNet v.s. pre-training size"
+class="gallery-image"
+data-flex-grow="143"
+data-flex-basis="344px"
+>&lt;/p>
+&lt;p>实验结果显示，inductive bias 在小规模数据集上比较有效，但是当数据集规模上去之后，直接从数据集中学习相关的 pattern 更加高效和有效。&lt;/p>
+&lt;p>由于不同的模型参数可能不太一致，为了更加公平地对比，作者使用算力来进行对比，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vit/ViT-cost-vs-performance.png"
+width="1050"
+height="457"
+loading="lazy"
+alt="Performance v.s. cost for different architectures"
+class="gallery-image"
+data-flex-grow="229"
+data-flex-basis="551px"
+>&lt;/p>
+&lt;p>实验结果显示，ViT 的训练效率比 ResNet 更高，其次，hybrid model 在算力比较小的时候，其表现比 ViT 更好，但是当算力提升之后，两者表现差不多。最后，ViT 随着算力的提升，还有进一步提升的空间。&lt;/p>
+&lt;p>作者还对 ViT 的 attention 进行了进一步的分析，结果有以下几点：&lt;/p>
+&lt;ol>
+&lt;li>row-column structure 很明显，同一行同一列的 patches 有比较相似的 embedding&lt;/li>
+&lt;li>ViT 学习到的 position embedding 对于比较近的 patches 其相似度也更高&lt;/li>
+&lt;li>对于 attention 来说，某些 heads 在 early layer 就已经开始关注全局信息，并且随着 layer 的提升，attention distance 也在提升，说明模型关注全局信息的能力逐渐增强&lt;/li>
+&lt;/ol>
+&lt;p>作者尝试了对 Transformer 进行 scaling up, 结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vit/ViT-scaling.png"
+width="1117"
+height="385"
+loading="lazy"
+alt="Scaling of ViT"
+class="gallery-image"
+data-flex-grow="290"
+data-flex-basis="696px"
+>&lt;/p>
+&lt;p>实验结果显示，使用更多的 layer 可以有效提高模型的表现，但是当 layer 数大于 16 之后，其提升有限。另一方面，提高宽度对模型表现影响不大。作者发现，降低 patch size 也可以提高模型的表现。&lt;/p>
+&lt;p>作者还对比了不同类型的 position encoding, 结果发现，使用/不使用 position encoding 对模型表现影响非常大，但是不同的 position encoding 总体来说表现差别不是很大。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者在本文中提出了 ViT, 一个基于 Transformer 架构的图像识别模型，作者通过在大规模数据集上进行训练验证了 ViT 架构的有效性。&lt;/p>
+&lt;p>作者发现目前还存在如下挑战：&lt;/p>
+&lt;ol>
+&lt;li>如何使用自监督的方式进行训练，比如类似 BERT 的 masked patch prediction&lt;/li>
+&lt;li>将 ViT 应用于其他的视觉任务，比如检测和分割&lt;/li>
+&lt;li>进一步 scaling ViT&lt;/li>
+&lt;/ol>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://openreview.net/forum?id=YicbFdNTTy" target="_blank" rel="noopener"
+>openreview&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>GShard</title><link>https://github.com/jiangyigithub/ai.github.io/p/gshard/</link><pubDate>Wed, 29 Oct 2025 11:22:39 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/gshard/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>作者认为，训练大规模的模型存在如下问题：&lt;/p>
+&lt;ol>
+&lt;li>缺乏有效的 Model parallelism 算法&lt;/li>
+&lt;li>随着设备数的增加，训练时间与 model size 呈现超线性增长的关系&lt;/li>
+&lt;li>(tensorflow) 在 nodes 数增多时，构建所需要的时间也大幅度增长&lt;/li>
+&lt;li>在多个设备上 partition model 比较困难&lt;/li>
+&lt;/ol>
+&lt;p>作者在本文中构建了一个基于 sparse MoE 架构的 600B 模型。为了解决这些问题，作者作出了如下贡献：&lt;/p>
+&lt;ol>
+&lt;li>作者提出了基于 MoE 架构的模型，来减少计算和通信开销&lt;/li>
+&lt;li>作者提出了 Gshard, 来自动化实现并行&lt;/li>
+&lt;li>作者提出了 SPMD (single program multiple data) 来减少计算表示和编译的难度&lt;/li>
+&lt;/ol>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;p>架构如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/gshard/GShard-model-architecture.png"
+width="1118"
+height="713"
+loading="lazy"
+alt="architecture of GShard"
+class="gallery-image"
+data-flex-grow="156"
+data-flex-basis="376px"
+>&lt;/p>
+&lt;p>其中激活专家个数为 2 个，MoE layer 和 FFN layer 交替出现。&lt;/p>
+&lt;p>作者对 GATE 函数进行了如下优化：&lt;/p>
+&lt;ol>
+&lt;li>expert capacity. 每个 expert 都有一个处理 token 的上限值，超过该上限值之后 GATE 直接输出 0 进入下一层，假设 batch size 为 $N$, 专家个数为 $E$, 则该阈值定义为 $N/E$&lt;/li>
+&lt;li>group dispatching. 将 token 拆分为 $G$ 个 group, 每个 group 并行处理，每个 group 里每个专家处理的 token 个数上限为 $N/(GE)$.&lt;/li>
+&lt;li>Auxiliary loss. 作者使用了 &lt;a class="link" href="https://maosong.website/p/load-balancing-tutorial/" target="_blank" rel="noopener"
+>Load Balancing loss&lt;/a> 来实现负载均衡&lt;/li>
+&lt;li>Random routing. 作者选取了 top-2 的专家，当第二个专家的权重太小是，作者直接忽略第二个专家，简化为选取 top-1 的专家&lt;/li>
+&lt;/ol>
+&lt;p>算法运行如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/gshard/GShard-expert-computation.png"
+width="1124"
+height="917"
+loading="lazy"
+alt="expert computation of GShard"
+class="gallery-image"
+data-flex-grow="122"
+data-flex-basis="294px"
+>&lt;/p>
+&lt;h2 id="parallel-implementation">&lt;a href="#parallel-implementation" class="header-anchor">&lt;/a>Parallel Implementation
+&lt;/h2>&lt;p>第一步是将算法转化为线性代数的方式，算法的代码如下所示&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;span class="lnt">6
+&lt;/span>&lt;span class="lnt">7
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="n">gates&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">softmax&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">einsum&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;GSM, ME-&amp;gt;GSE&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">inputs&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">wg&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">combine_weights&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dispatch_mask&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">Top2Gating&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">gates&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">dispatched_expert_inputs&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">einsum&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;GSEC, GSM-&amp;gt;EGCM&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dispatch_mask&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">reshaped_inputs&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">h&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">einsum&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;EGCM, EMH-&amp;gt;EGCH&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dispatched_expert_inputs&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">wi&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">h&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">relu&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">h&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">expert_outputs&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">einsum&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;EGCH, EHM-&amp;gt;GECM&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">h&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">wo&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">outputs&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">einsum&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;GSEC, GECM-&amp;gt;GSM&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">combine_weights&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">expert_outputs&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>第二步是通过 API 来实现并行执行&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># Partition inputs along group (G) dim. &lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">inputs&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">split&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">inputs&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">D&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># Replicate the gating weights&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">wg&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">replicate&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">wg&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">gates&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">softmax&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">einsum&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;GSM, ME-&amp;gt;GSE&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">inputs&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">wg&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">combine_weights&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dispatch_mask&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">Top2Gating&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">gating_logits&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">dispatched_expert_inputs&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">einsum&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;GSEC, GSM-&amp;gt;EGCM&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dispatch_mask&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">reshaped_inputs&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># Partition dispatched inputs along expert (E) dim.&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">dispatched_expert_inputs&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">split&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dispatched_expert_inputs&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">D&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">h&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">einsum&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s2">&amp;#34;EGCM, EMH-&amp;gt;EGCH&amp;#34;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dispatched_expert_inputs&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">wi&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>第三部就是基于 compiler infra 来基于 sharding annotation 自动化分割一个 computation graph.&lt;/p>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>作者在机器翻译的任务上训练了若干模型，结果发现：&lt;/p>
+&lt;ol>
+&lt;li>层数更多的模型表现更好&lt;/li>
+&lt;li>提高 expert capacity 有效提高模型的表现&lt;/li>
+&lt;li>使用更多的 expert 可以在 high-resourced 任务上提高表现&lt;/li>
+&lt;li>dense 模型相比于 MoE 模型拥有更强的迁移能力&lt;/li>
+&lt;/ol>
+&lt;p>从训练效率上来看&lt;/p>
+&lt;ol>
+&lt;li>层数更多的模型的 sample efficiency 也更高&lt;/li>
+&lt;li>600B 的模型也可以在 4 天之内训练完毕&lt;/li>
+&lt;/ol>
+&lt;p>从内存使用效率上来看&lt;/p>
+&lt;ol>
+&lt;li>层数相同时，weight memory 以及 activation memory 不随专家个数增加而增加&lt;/li>
+&lt;li>专家个数比较少（128）时，模型可以达到 roofline performance 的 $70\%$, 专家个数比较多（2048）时，模型依然可以达到 roofline performance 的 $48\%$.&lt;/li>
+&lt;/ol>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/gshard/GShard-execution-time-breakdown.png"
+width="1064"
+height="521"
+loading="lazy"
+alt="execution time of GShard"
+class="gallery-image"
+data-flex-grow="204"
+data-flex-basis="490px"
+>&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者探究了如何提高大规模模型的训练效率，作者提出了基于 MoE 架构的模型，然后作者还设计了 GShard, 一个自动化分割大规模模型的深度学习模块。实现结果发现，增加模型 size 可以提高模型的表现。作者还发现，SPMD 是一个更好的提高计算效率的方法。&lt;/p>
+&lt;h2 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2006.16668" target="_blank" rel="noopener"
+>arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>ST-MoE</title><link>https://github.com/jiangyigithub/ai.github.io/p/st-moe/</link><pubDate>Wed, 29 Oct 2025 11:19:37 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/st-moe/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>已有的工作如 &lt;a class="link" href="https://maosong.website/p/gshard/" target="_blank" rel="noopener"
+>GShard&lt;/a> 和 &lt;a class="link" href="https://maosong.website/p/switch-transformer/" target="_blank" rel="noopener"
+>Switch Transformer&lt;/a> 均验证了 MoE 模型的有效性，但是他们的问题在于训练不稳定。&lt;/p>
+&lt;p>因此，在本文中，作者就提出了 ST-MoE 来解决这个问题。作者的主要贡献如下：&lt;/p>
+&lt;ol>
+&lt;li>探究了如何平衡模型的表现与训练稳定性&lt;/li>
+&lt;li>提出了 router Z-loss 来解决训练的不稳定性&lt;/li>
+&lt;li>探究了如何设定 MoE 模型 fine tuning 时的超参数&lt;/li>
+&lt;li>对 MoE 的性质进行了分析&lt;/li>
+&lt;/ol>
+&lt;h2 id="training-stability">&lt;a href="#training-stability" class="header-anchor">&lt;/a>Training Stability
+&lt;/h2>&lt;p>作者发现，直接训练 MoE 模型会面临训练不稳定性的问题，实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/st-moe/ST-MoE-training-instabilities.png"
+width="1040"
+height="420"
+loading="lazy"
+alt="Training instabilities for sparse models."
+class="gallery-image"
+data-flex-grow="247"
+data-flex-basis="594px"
+>&lt;/p>
+&lt;p>可以看到不同的实验，一次训练崩溃，一次训练正常。&lt;/p>
+&lt;p>作者接下来探究了如何提高训练的稳定性，作者有三点发现：&lt;/p>
+&lt;ol>
+&lt;li>大多数方法都可以提高训练稳定性，但是也会是的模型表现更差&lt;/li>
+&lt;li>router Z-loss 可以在不损失模型表现的情况下提高训练的稳定性&lt;/li>
+&lt;li>multiplicative components 如 RMSNorm 等可以提高模型表现，但是训练稳定性更差&lt;/li>
+&lt;/ol>
+&lt;p>作者构建了一个 baseline 的 MoE 模型，总专家个数为 $N=32$, 激活专家个数为 $K=2$, Transformer block 按照 4 个 block 为一组，每组里包含一个 MoE layer. 为了避免初始化带来的误差，作者使用 6 个随机数种子进行训练。&lt;/p>
+&lt;h3 id="multiplicative-components">&lt;a href="#multiplicative-components" class="header-anchor">&lt;/a>Multiplicative Components
+&lt;/h3>&lt;p>multiplicative components 指的是 GEGLU 和 RMSNorm 这些操作，其实验结果如下所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Method&lt;/th>
+&lt;th>Fraction Stable&lt;/th>
+&lt;th>Quality&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Baseline&lt;/td>
+&lt;td>4/6&lt;/td>
+&lt;td>$-1.755 \pm0.02$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Remove GEGLU&lt;/td>
+&lt;td>3/3&lt;/td>
+&lt;td>$-1.849 \pm0.02$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Remove RMS Norm. Scale Param&lt;/td>
+&lt;td>3/3&lt;/td>
+&lt;td>$-2.020 \pm0.06$&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>结果发现，移除掉 multiplicative components 之后，模型训练变得稳定，但是效果也变差了。&lt;/p>
+&lt;h3 id="adding-noise">&lt;a href="#adding-noise" class="header-anchor">&lt;/a>Adding Noise
+&lt;/h3>&lt;p>接下来作者尝试了 &lt;a class="link" href="https://maosong.website/p/switch-transformer/" target="_blank" rel="noopener"
+>Switch Transformer&lt;/a> 中的 jitter noise 和 dropoout 方法，实验结果如下图所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Method&lt;/th>
+&lt;th>Fraction Stable&lt;/th>
+&lt;th>Quality&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Baseline&lt;/td>
+&lt;td>4/6&lt;/td>
+&lt;td>$-1.755 ± 0.02$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Input jitter ($10^{-2}$)&lt;/td>
+&lt;td>3/3&lt;/td>
+&lt;td>$-1.777 \pm 0.03$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Dropout (0.1)&lt;/td>
+&lt;td>3/3&lt;/td>
+&lt;td>$-1.822 \pm0.11$&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>实验结果显示，加入噪声对模型的表现存在负面影响。&lt;/p>
+&lt;h3 id="constraining-activations">&lt;a href="#constraining-activations" class="header-anchor">&lt;/a>Constraining Activations
+&lt;/h3>&lt;p>作者接下来分析了以下 &lt;a class="link" href="https://maosong.website/p/switch-transformer/" target="_blank" rel="noopener"
+>Switch Transformer&lt;/a> 中 router 存在的问题，作者发现尽管在 router 中使用 &lt;code>float32&lt;/code> 可以提高训练稳定性，但是这还不够，因此作者使用了如下的 router Z-loss:&lt;/p>
+$$
+\mathcal{L}_z(x) = \frac1B\sum_{i=1}^B\left(\log\sum_{j=1}^N e^{x_j^{(i)}}\right)^2
+$$&lt;p>其中 $B, N$ 分别是 batch size 和专家个数，$x_j^{(i)}$ 代表了第 $j$ 个专家对 $i$ 个 token 的激活 logits. 通过增加这个 loss, 我们可以让 routing layer 的 logits 都在一个合理的范围内。&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Method&lt;/th>
+&lt;th>Fraction Stable&lt;/th>
+&lt;th>Quality ($\uparrow$)&lt;/th>
+&lt;th>&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Baseline&lt;/td>
+&lt;td>$4/6$&lt;/td>
+&lt;td>$-1.755 \pm 0.02$&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Update clipping (clip = 0.1)&lt;/td>
+&lt;td>$3/3$&lt;/td>
+&lt;td>$-4.206 \pm 0.17$&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Router Z-Loss&lt;/td>
+&lt;td>$3/3$&lt;/td>
+&lt;td>$-1.741 \pm 0.02$&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>可以看到，加入 router Z-loss 之后，模型的稳定性和表现都有了提升。&lt;/p>
+&lt;p>因此，在本文中，作者使用的损失函数为&lt;/p>
+$$
+\mathcal{L} = \mathcal{L}_{CE} + \alpha \mathcal{L}_B + \beta \mathcal{L}_z
+$$&lt;p>其中 $\mathcal{L}_{CE}, \mathcal{L}_B$ 分别是 cross-entropy loss 和 Load Balancing loss, $\alpha,\beta$ 是对应 loss 的权重。&lt;/p>
+&lt;h3 id="numerical-precision">&lt;a href="#numerical-precision" class="header-anchor">&lt;/a>Numerical Precision
+&lt;/h3>&lt;p>接下来作者探究了数值精度对训练效率和稳定性的影响，作者发现使用低精度进行训练的优势有：&lt;/p>
+&lt;ol>
+&lt;li>通信开销更小&lt;/li>
+&lt;li>计算消耗更小&lt;/li>
+&lt;li>内存需求更小&lt;/li>
+&lt;/ol>
+&lt;p>但是低精度进行训练的问题是存在严重的 roundoff error, 其示意图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/st-moe/ST-MoE-numerical-precision-and-roundoff.png"
+width="925"
+height="249"
+loading="lazy"
+alt="Numerical precision formats and roundoff errors."
+class="gallery-image"
+data-flex-grow="371"
+data-flex-basis="891px"
+>&lt;/p>
+&lt;h2 id="fine-tuning">&lt;a href="#fine-tuning" class="header-anchor">&lt;/a>Fine-tuning
+&lt;/h2>&lt;p>作者在本节探究了如何 fine-tune 一个 MoE 模型。&lt;/p>
+&lt;p>作者首先通过实验给出了 MoE 模型容易过拟合的结论，实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/st-moe/ST-MoE-overfitting-of-MoE.png"
+width="1138"
+height="456"
+loading="lazy"
+alt="Sparse models are prone to overfit."
+class="gallery-image"
+data-flex-grow="249"
+data-flex-basis="598px"
+>&lt;/p>
+&lt;p>可以看到，在两个人呢误伤，MoE 模型相比于 dense 模型都更容易过拟合。&lt;/p>
+&lt;p>接下来作者探究了超参数特别是 batch size 和 learning rate 对模型表现的影响，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/st-moe/ST-MoE-hyperparameter-sensitivity.png"
+width="1036"
+height="416"
+loading="lazy"
+alt="Batch size and learning rate sensitivity"
+class="gallery-image"
+data-flex-grow="249"
+data-flex-basis="597px"
+>&lt;/p>
+&lt;p>可以看到，与 dense 模型相反，MoE 模型需要更大的 batch size 以及更小的 learning rate.&lt;/p>
+&lt;h2 id="design-sparse-models">&lt;a href="#design-sparse-models" class="header-anchor">&lt;/a>Design Sparse Models
+&lt;/h2>&lt;p>首先作者分析了专家个数 $N$ 的设置，作者认为当专家个数超过 $256$ 之后，带来的收益就微乎其微了。并且，当专家个数增加之后，虽然算力没有变化，但是通信开销以及计算优化会变得更加困难。作者还认为，在 TPU 上，每个 core 应该进放置一个 expert&lt;/p>
+&lt;p>作者还对 capacity factor 进行了实验，实验结果显示，提升 capacity factor 可以提高模型的表现。但是同时也会带来计算开销，从而让模型训练更慢，实验结果如下图所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Train CF&lt;/th>
+&lt;th>Step Time (s) ($\downarrow$)&lt;/th>
+&lt;th>&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>ST-MoE-L&lt;/td>
+&lt;td>1.25&lt;/td>
+&lt;td>$2.397$&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>ST-MoE-L&lt;/td>
+&lt;td>2.0&lt;/td>
+&lt;td>$2.447 (+7\%)$&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>ST-MoE-32B&lt;/td>
+&lt;td>1.25&lt;/td>
+&lt;td>$4.244$&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>ST-MoE-32B&lt;/td>
+&lt;td>2.0&lt;/td>
+&lt;td>$4.819 (+14\%)$&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>最终结论如下：&lt;/p>
+&lt;blockquote>
+&lt;ol>
+&lt;li>使用 top-2 routing, 即激活 $K=2$ 个专家，capacity factor 设置为 $1.25$, 每个 core 上最多放置一个专家&lt;/li>
+&lt;li>在评估时可以动态调整 capacity factor&lt;/li>
+&lt;/ol>
+&lt;/blockquote>
+&lt;h2 id="tracing-tokens-through-the-model">&lt;a href="#tracing-tokens-through-the-model" class="header-anchor">&lt;/a>Tracing Tokens through the Model
+&lt;/h2>&lt;p>在这一节里，作者分析了 MoE 模型专家的性质。&lt;/p>
+&lt;p>首先，作者发现，每一层里，至少有一个专家对于 sentinel token 比较敏感。并且，encoder 里的专家 specialization 更强，比如某些专家会负责 punctuation, verbs, proper names 等&lt;/p>
+&lt;p>接下来，作者发现，专家的 specialization 在 decoder 里几乎没有，作者认为这是因为 target token distribution 不同导致的，即：&lt;/p>
+&lt;ol>
+&lt;li>decoding 是只有一小部分 token 被一个专家处理&lt;/li>
+&lt;li>decoding 过程中大部分 token 都是 sentinel token&lt;/li>
+&lt;/ol>
+&lt;p>因此，每个 group 相比于 encoder 来说通常只 cover 一小部分的 semantic space&lt;/p>
+&lt;p>encoder 和 decoder 专家的 specialization 实验结果如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>&lt;/th>
+&lt;th>Layer 1&lt;/th>
+&lt;th>Layer 2&lt;/th>
+&lt;th>Layer 3&lt;/th>
+&lt;th>Layer 4&lt;/th>
+&lt;th>Layer 5&lt;/th>
+&lt;th>Layer 6&lt;/th>
+&lt;th>Uniform (32-experts)&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Encoder&lt;/td>
+&lt;td>2.2&lt;/td>
+&lt;td>1.8&lt;/td>
+&lt;td>1.6&lt;/td>
+&lt;td>1.7&lt;/td>
+&lt;td>1.7&lt;/td>
+&lt;td>1.2&lt;/td>
+&lt;td>3.5&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Decoder&lt;/td>
+&lt;td>3.4&lt;/td>
+&lt;td>3.4&lt;/td>
+&lt;td>3.4&lt;/td>
+&lt;td>3.4&lt;/td>
+&lt;td>3.4&lt;/td>
+&lt;td>3.4&lt;/td>
+&lt;td>3.5&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>可以看到，decoder 的专家分布和均匀分布差不多，这说明 decoder 里的专家 specialization 更弱。&lt;/p>
+&lt;p>作者还探究了不同专家对于不同语言的敏感程度，结果发现，专家对于不同语言并没有出现明显的 specialization 现象，作者分析原因认为，输入一般只含有一种语言，因此各个专家均需要去处理对应语言的 token, 这就导致了专家对于不同语种的数据处理基本上没有太大差别。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>在本文中，作者提出了 ST-MoE 系列 MoE 大语言模型，作者通过实验优化了 MoE 模型训练的不稳定性问题。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2202.08906" target="_blank" rel="noopener"
+>Arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Switch Transformer</title><link>https://github.com/jiangyigithub/ai.github.io/p/switch-transformer/</link><pubDate>Tue, 28 Oct 2025 09:38:12 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/switch-transformer/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>&lt;a class="link" href="https://maosong.website/p/kaplan-scaling-law/" target="_blank" rel="noopener"
+>Kaplan scaling law&lt;/a> 和 &lt;a class="link" href="https://maosong.website/p/chinchilla-scaling-law/" target="_blank" rel="noopener"
+>Chinchilla scaling law&lt;/a> 已经给出了针对 dense transformer model 的 scaling law, 即在给定算力下如何找到最优的 model size 和 dataset size. 已有的工作如 T5 主要是扩展 dense model 来达到更高的表现, 但是他们的问题是对算力要求比较高。&lt;/p>
+&lt;p>为了解决这个问题，作者尝试在不增加算力的情况下提升模型的参数量，为了达到这个目的，作者构建了基于 MoE 架构的模型 Switch Transformer.&lt;/p>
+&lt;p>作者的主要贡献如下：&lt;/p>
+&lt;ol>
+&lt;li>提出了基于 MoE 架构的 Switch Transformer model&lt;/li>
+&lt;li>探究了针对 MoE 架构的 scaling law&lt;/li>
+&lt;li>将 MoE model 的能力蒸馏到 small dense model 里去&lt;/li>
+&lt;li>若干提升训练效率和稳定性的技巧&lt;/li>
+&lt;/ol>
+&lt;h2 id="architecture">&lt;a href="#architecture" class="header-anchor">&lt;/a>Architecture
+&lt;/h2>&lt;p>Switch Transformer 的架构如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/switch-transformer/Switch-Transformer-Architecture.png"
+width="1130"
+height="571"
+loading="lazy"
+alt="Architecture of Switch Transformer"
+class="gallery-image"
+data-flex-grow="197"
+data-flex-basis="474px"
+>&lt;/p>
+&lt;h3 id="moe">&lt;a href="#moe" class="header-anchor">&lt;/a>MoE
+&lt;/h3>&lt;p>MoE 的定义见 &lt;a class="link" href="https://maosong.website/p/moe-tutorial/" target="_blank" rel="noopener"
+>MoE tutorial&lt;/a>, 我们假设有 $N$ 个专家，其中激活 $K$ 个专家。&lt;/p>
+&lt;p>之前的工作认为我们只有在激活 $>2$ 个专家时，模型才能够比较好的训练，但是在本文中，作者决定只使用 1 个 expert, 也就是 $K=1$. 作者将激活一个专家的 layer 称为 &lt;strong>Switch layer&lt;/strong>.&lt;/p>
+&lt;p>作者认为 Switch Layer 有三个优势：&lt;/p>
+&lt;ol>
+&lt;li>router computation 现在只需要将每个 token route 到 1 个 expert&lt;/li>
+&lt;li>每个专家的 capacity 更小，负载更加均衡&lt;/li>
+&lt;li>routing 的实现更简单，且通信开销也降低了&lt;/li>
+&lt;/ol>
+&lt;h3 id="efficient-sparse-routing">&lt;a href="#efficient-sparse-routing" class="header-anchor">&lt;/a>Efficient Sparse Routing
+&lt;/h3>&lt;p>作者首先定义了&lt;strong>expert capacity&lt;/strong>, 也就是每个 expert 处理的 token 数量，其定义如下&lt;/p>
+$$
+\text{expert capacity} = \left(\frac{\text{tokens per batch}}{\text{number of experts}}\right) * \text{capacity factor}
+$$&lt;p>其示意图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/switch-transformer/Switch-Transformer-expert-capacity.png"
+width="1269"
+height="479"
+loading="lazy"
+alt="Token routing dynamics"
+class="gallery-image"
+data-flex-grow="264"
+data-flex-basis="635px"
+>&lt;/p>
+&lt;p>提升 capacity factor 可以减少 token overflow 的概率，但同时也会导致计算和内存的浪费。作者通过实验发现应该尽可能降低 dropped token 比例。&lt;/p>
+&lt;p>为了平衡每个 expert 处理 token 的个数，作者设计了 load balancing loss, 见 &lt;a class="link" href="https://maosong.website/p/load-balancing-tutorial/" target="_blank" rel="noopener"
+>Load Balancing loss&lt;/a> 来要求每个 expert 处理的 token 数基本一致。&lt;/p>
+&lt;h2 id="parallelism">&lt;a href="#parallelism" class="header-anchor">&lt;/a>Parallelism
+&lt;/h2>&lt;p>作者在本节介绍了针对 MoE 模型的并行策略，如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/switch-transformer/Switch-Transformer-Parallelism.png"
+width="1268"
+height="746"
+loading="lazy"
+alt="Data and weight partitioning strategies"
+class="gallery-image"
+data-flex-grow="169"
+data-flex-basis="407px"
+>&lt;/p>
+&lt;p>这里，我们给定 notation 如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Term&lt;/th>
+&lt;th>Description&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$B$&lt;/td>
+&lt;td>Number of tokens in the batch.&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$N$&lt;/td>
+&lt;td>Number of total cores.&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$n$&lt;/td>
+&lt;td>Number of ways for data-parallelism sharding.&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$m$&lt;/td>
+&lt;td>Number of ways for model-parallelism sharding.&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$E$&lt;/td>
+&lt;td>Number of experts in Switch layers.&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$C$&lt;/td>
+&lt;td>Expert capacity, the batch size of each expert.&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>作者将一个 Logical mesh 分为两个维度，一个是 data-parallel sharding, 用 $n$ 表示，另一个是 model-parallel sharding, 用 $m$ 表示，从而总的 cores 数为 $N=n\times m$.&lt;/p>
+&lt;h3 id="data-parallelism">&lt;a href="#data-parallelism" class="header-anchor">&lt;/a>Data Parallelism
+&lt;/h3>&lt;p>对于 data prallelism 来说，每个 core 上的模型是一样的，而一个 batch 的数据被切分为了 $B/n$ 份，此时 $n=N$, $m=1$. 这种并行策略的好处是仅在 forward 和 backward 完成之后才会进行一次通信。&lt;/p>
+&lt;h3 id="model-parallelism">&lt;a href="#model-parallelism" class="header-anchor">&lt;/a>Model Parallelism
+&lt;/h3>&lt;p>对于 model parallelism, 每个 core 上的数据都是全部数据（通过拷贝得到），模型被 shard 到所有 core 上，此时 $n=1,m=N$, 这种情况下，每次 forward 或者 backward，都需要进行 $N$ 次通信（假设我们使用 pipeline parallelism）， 这种并行策略的好处是每个 core 上的计算压力小了，但是缺点是通信开销多了。&lt;/p>
+&lt;h3 id="model-and-data-parallelism">&lt;a href="#model-and-data-parallelism" class="header-anchor">&lt;/a>Model and Data Parallelism
+&lt;/h3>&lt;p>第三种总策略是同时进行 model parallelism 和 data parallelism, 这种情况下，每个 core 上保存 $B/n$ 的数据以及 shard 为 $m$ 份的 sharding weight.&lt;/p>
+&lt;h3 id="expert-and-data-parallelism">&lt;a href="#expert-and-data-parallelism" class="header-anchor">&lt;/a>Expert and Data Parallelism
+&lt;/h3>&lt;p>第四种策略是同时进行 expert parallelism 和 data parallelism, 作者在这里假设 $n=N$ 且 $E=n=N$, 也就是每个 core 上保留 $B/n$ 的数据, 然后还有一个对应的专家。&lt;/p>
+&lt;p>首先，对于输入大小为 $[B,d]$ 的 tensor, 我们会进行拆分得到大小为 $[n, B/n, d]$ 的 tensor, 代表 $n$ 个设备上分别存储 $[B/n, d]$ 的数据，首先我们计算路由权重，得到&lt;/p>
+$$
+[n,B/n, d]\times [d, E] \to [n, B/n, E]
+$$&lt;p>权重的每个值 $[i,j,k]$ 代表了第 $i$ 个 core 上,第 $j$ 个 token 分配一个第 $k$ 个专家的概率，我们对其进行 softmax 与 top-K 操作之后，就得到了对应的专家（注意 Switch Transformer 中的 $K=1$, 我们通过 one-hot 编码将其输出转化为一个二进制矩阵，大小为 $[n,B/n, E, C]$, 这里的每个值 $[i,j,k,l]$ 代表了第 $i$ 个 core 上,第 $j$ 个 token 分配给第 $k$ 个专家第 $l$ 个 token, 接下来我们再基于输入 &lt;code>[n,B/n,d]&lt;/code> 计算 core 到 expert 的数据，其大小为 &lt;code>[n,E,C,d]&lt;/code>, 计算方式为&lt;/p>
+$$
+\mathrm{einsum}([n,B/n, d], [n,B/n,E,C], \mathrm{dim}=[B/n])
+$$&lt;p>里面的元素 &lt;code>[i,j,k,:]&lt;/code> 代表了第 $i$ 个设备路由到第 $j$ 个专家的第 $k$ ($k&lt;C$) 个 token.&lt;/p>
+&lt;p>然后我们就可以执行 &lt;code>all-to-all&lt;/code> 通信来把对应的 token 传输给对应专家所在的设备上了，通信完成之后，每个设备上的专家对收集到的输入 token 进行计算，计算完之后，再通过 &lt;code>all-to-all&lt;/code> 通信来把输出传输给输入的设备。这样就完成了 MoE 模块的计算与通信&lt;/p>
+&lt;h3 id="expert-model-and-data-parallelism">&lt;a href="#expert-model-and-data-parallelism" class="header-anchor">&lt;/a>Expert, Model and Data Parallelism
+&lt;/h3>&lt;p>目前我们只是通过增加专家个数来提高模型的表现，但是 FLOPs 并没有增加，如果我们希望通过增加 FLOPs 来提高模型表现的话，我们需要增加 expert layer 的 model size, 这就涉及到了 Model parallelism, 此时的做法和前面提到的 Expert and Data Parallelism 一样，我们在收集到对应的设备的输入之后，再执行 model parallelism 就可以了。&lt;/p>
+&lt;h2 id="results">&lt;a href="#results" class="header-anchor">&lt;/a>Results
+&lt;/h2>&lt;p>基于以上改进，作者构建了 Switch Transformer, 模型训练的数据集为 C4, 训练的目标为 masked language modeling, 训练时，作者将 $15\%$ 的 token 替换为 &lt;code>[mask]&lt;/code> token.&lt;/p>
+&lt;p>模型的配置如下表所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/switch-transformer/Switch-Transformer-model-configuration.png"
+width="1256"
+height="252"
+loading="lazy"
+alt="Model configuration"
+class="gallery-image"
+data-flex-grow="498"
+data-flex-basis="1196px"
+>&lt;/p>
+&lt;p>实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/switch-transformer/Switch-Transformer-performance.png"
+width="1206"
+height="526"
+loading="lazy"
+alt="Performance of Switch Transformer"
+class="gallery-image"
+data-flex-grow="229"
+data-flex-basis="550px"
+>&lt;/p>
+&lt;p>实验结果发现&lt;/p>
+&lt;ol>
+&lt;li>Switch Transformer 的表现和训练效率都超过了 Dense model&lt;/li>
+&lt;li>Switch transformer 的训练效率稍微优于使用 2 个 expert 的 MoE-Base 模型&lt;/li>
+&lt;li>Switch transformer 在 low capacity factor 的场景下效果更好&lt;/li>
+&lt;/ol>
+&lt;h3 id="scaling">&lt;a href="#scaling" class="header-anchor">&lt;/a>Scaling
+&lt;/h3>&lt;p>作者对比了 MoE 模型的 scaling law, 结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/switch-transformer/Switch-Transformer-scaling-law.png"
+width="1244"
+height="497"
+loading="lazy"
+alt="Scaling law of MoE model"
+class="gallery-image"
+data-flex-grow="250"
+data-flex-basis="600px"
+>&lt;/p>
+&lt;p>可以看到，当我们增加专家个数的时候，模型的表现是持续提升的。并且当我们增加专家个数之后，模型的训练效率也有所提升。&lt;/p>
+&lt;p>作者接下来在训练时间上进行了对比，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/switch-transformer/Switch-Transformer-speed-comparison.png"
+width="839"
+height="672"
+loading="lazy"
+alt="Speed comparison of MoE model"
+class="gallery-image"
+data-flex-grow="124"
+data-flex-basis="299px"
+>&lt;/p>
+&lt;p>实验结果说明，switch transformer 的训练效率比 dense model 快 7 倍左右&lt;/p>
+&lt;p>作者进一步对比 switch transformer 和更大的 dense 模型 (T5 large, $3.5\times$ FLOPs), 实验结果证明 Switch transformer 的训练效率仍然更高。&lt;/p>
+&lt;h3 id="switch-for-attention">&lt;a href="#switch-for-attention" class="header-anchor">&lt;/a>Switch for Attention
+&lt;/h3>&lt;p>作者还探究了在 attention layer 加入 MoE 的表现，结果发现尽管效果有提升，但是训练不稳定。&lt;/p>
+&lt;h3 id="no-token-left-behind">&lt;a href="#no-token-left-behind" class="header-anchor">&lt;/a>No Token Left behind
+&lt;/h3>&lt;p>由于 tensorflow 为一个静态计算框架，tensor 的形状必须预先定义好，因此必须为每个 expert 设定 capacity, 但是这样就会导致有些 token 被 drop 掉。&lt;/p>
+&lt;p>因此，作者提出了 &amp;ldquo;No token left behind&amp;rdquo; 这种方法，来避免出现 token overflow 的情况。具体做法就是先按照正常的 router 逻辑进行计算，如果 router 选取出来的 top-K expert （本文中 $K=1$） 都已经满载了，则选取 &lt;code>top-(K+1)&lt;/code> expert 进行计算，作者发现这种方式可以保证大部分 token 都不会被 drop. 作者通过尝试之后发现，这种方法并没有带来提升。&lt;/p>
+&lt;h3 id="encouraging-exploration-across-experts">&lt;a href="#encouraging-exploration-across-experts" class="header-anchor">&lt;/a>Encouraging Exploration Across Experts
+&lt;/h3>&lt;p>作者还探究了不同选取 top-Kexpert 的方式，作者对比了以下三种方法：&lt;/p>
+&lt;ol>
+&lt;li>argmax&lt;/li>
+&lt;li>sampling from the softmax distribution&lt;/li>
+&lt;li>input dropout on the incoming representation&lt;/li>
+&lt;li>multiplicative jitter noise on the incoming representation&lt;/li>
+&lt;/ol>
+&lt;p>实验结果如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model Quality&lt;/th>
+&lt;th>(Neg. Log Perp.) (↑)&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Argmax&lt;/td>
+&lt;td>-1.471&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Sample softmax&lt;/td>
+&lt;td>-1.570&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Input dropout&lt;/td>
+&lt;td>-1.480&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Input jitter&lt;/td>
+&lt;td>-1.468&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>作者发现，jitter 的效果最好，因此在本文中作者使用 jitter 来加入 noise.&lt;/p>
+&lt;h3 id="ablation-on-few-experts">&lt;a href="#ablation-on-few-experts" class="header-anchor">&lt;/a>Ablation on Few Experts
+&lt;/h3>&lt;p>作者还使用了更少的专家进行实验，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/switch-transformer/Switch-Transformer-few-experts.png"
+width="846"
+height="666"
+loading="lazy"
+alt="Switch Transformer with few experts"
+class="gallery-image"
+data-flex-grow="127"
+data-flex-basis="304px"
+>&lt;/p>
+&lt;p>实验结果显示，即使我们只使用少数 experts, 其模型表现仍然超过了 dense model 的表现，说明了 MoE 架构的有效性。&lt;/p>
+&lt;h3 id="downstream-model-performance">&lt;a href="#downstream-model-performance" class="header-anchor">&lt;/a>Downstream Model Performance
+&lt;/h3>&lt;p>作者还进一步探究了模型的预训练表现与 downstream task 任务上表现的关系，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/switch-transformer/Switch-Transformer-downstream-performance-scaling.png"
+width="1257"
+height="499"
+loading="lazy"
+alt="Upstream pre-trained quality to downstream model quality."
+class="gallery-image"
+data-flex-grow="251"
+data-flex-basis="604px"
+>&lt;/p>
+&lt;p>实验结果显示，不管是 baseline 还是 Switch Transformer 其预训练的表现与下游任务上的表现都是正相关的。但是，作者也发现，MoE 模型在微调之后，其表现并不总是与预训练的表现正相关。因此，作者认为进一步探究这个机制是有必要的。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者在本文中提出了 Switch Transformer，一个基于 MoE 架构的 Transformer 模型。作者通过改进 MoE 算法，大幅度提高了计算和通信效率，结果发现模型比 dense model 有更高的训练效率。&lt;/p>
+&lt;p>作者认为，未来的工作有：&lt;/p>
+&lt;ol>
+&lt;li>提升大规模模型的训练稳定性&lt;/li>
+&lt;li>解决 MoE 模型微调之后效果不如预期的问题&lt;/li>
+&lt;li>探究针对 MoE 模型的 scaling law&lt;/li>
+&lt;li>支持异构架构的 MoE 模型&lt;/li>
+&lt;li>在 FFN 模块意外应用 MoE 架构&lt;/li>
+&lt;li>将 Switch Transformer 扩展到其他的模态&lt;/li>
+&lt;/ol>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2101.03961" target="_blank" rel="noopener"
+>Arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Chinchilla Scaling Law</title><link>https://github.com/jiangyigithub/ai.github.io/p/chinchilla-scaling-law/</link><pubDate>Wed, 22 Oct 2025 14:39:23 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/chinchilla-scaling-law/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>本文中关注的研究问题为：&lt;/p>
+&lt;blockquote>
+&lt;p>给定一个 FLOPs budget, 如何平衡 model size 和 dataset size 之间的关系？&lt;/p>
+&lt;/blockquote>
+&lt;p>即，我们希望求解如下优化问题：&lt;/p>
+$$
+N_{opt}(C), D_{opt}(C) =\arg\min_{N,D,\ \mathrm{s.t.}\ FLOPs(N,D)=C} L(N,D)
+$$&lt;p>作者通过训练 400 多个模型，构建了对应的 scaling law.&lt;/p>
+&lt;p>已有工作如 &lt;a class="link" href="https://maosong.website/p/kaplan-scaling-law/" target="_blank" rel="noopener"
+>Kaplan scaling law&lt;/a> 已经发现模型参数和大语言模型表现之间的关系，一个结论就是计算最优并不代表达到最优的 loss. 在本文中，作者也有相同结论，但是作者认为大模型应该使用比 &lt;a class="link" href="https://maosong.website/p/kaplan-scaling-law/" target="_blank" rel="noopener"
+>Kaplan scaling law&lt;/a> 推荐的更多的 training token. 基于这个发现，作者训练了 Chinchilla, 一个 70B 的 LLM, Chinchilla 相比 Gopher 表现有了大幅度的提升。&lt;/p>
+&lt;h2 id="scaling-law">&lt;a href="#scaling-law" class="header-anchor">&lt;/a>Scaling Law
+&lt;/h2>&lt;h3 id="fix-model-size-and-very-dataset-size">&lt;a href="#fix-model-size-and-very-dataset-size" class="header-anchor">&lt;/a>Fix Model Size and Very Dataset Size
+&lt;/h3>&lt;p>这个方法中，作者通过改变训练步数，来研究 FLOPs 与模型表现之间的关系，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/chinchilla-scaling-law/Chinchilla-Training-curve-envelope.png"
+width="3018"
+height="1304"
+loading="lazy"
+alt="Training Curve envelope"
+class="gallery-image"
+data-flex-grow="231"
+data-flex-basis="555px"
+>&lt;/p>
+&lt;p>通过对实验结果进行拟合，作者发现存在关系 $N_{opt}(C)\propto C^a$ 以及 $D_{opt}(C)\propto C^b$, 拟合的结果为 $a=b=0.5$.&lt;/p>
+&lt;h3 id="isoflops-profiles">&lt;a href="#isoflops-profiles" class="header-anchor">&lt;/a>IsoFLOPS Profiles
+&lt;/h3>&lt;p>这个方法中，作者使用了不同的模型大小以及算力来构建最优模型参数量与算力之间的关系。作者给定 9 个算力配置，然后选取不同参数量的模型，训练的 token 数由算力和模型参数量决定，实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/chinchilla-scaling-law/Chinchilla-IsoFLOP-curves.png"
+width="3018"
+height="1396"
+loading="lazy"
+alt="IsoFLOP curves"
+class="gallery-image"
+data-flex-grow="216"
+data-flex-basis="518px"
+>&lt;/p>
+&lt;p>结果显示，不同大小的模型的表现 (loss) 随算力上升先下降后上升。因此给定算力，存在一个最优的 model size. 作者基于拟合出来的曲线得到了 Gopher 使用的算力配置下的最优 model size 和 training tokens. 同样的，作者得到 $a=0.49,b=0.51$.&lt;/p>
+&lt;h3 id="fitting-a-parametric-loss-function">&lt;a href="#fitting-a-parametric-loss-function" class="header-anchor">&lt;/a>Fitting a Parametric Loss Function
+&lt;/h3>&lt;p>这个方法中，作者对 $L(N,D)$ 进行建模，作者使用了如下的公式&lt;/p>
+$$
+L(N,D) = E + \frac{A}{N^{\alpha}} + \frac{B}{D^{\beta}}
+$$&lt;p>第一项代表了建模的误差，第二项代表了数据集充分大损失与模型参数之间的关系，第三项代表了当模型充分训练时，损失与数据集大小之间的关系。&lt;/p>
+&lt;p>为了求解 $(A,B,E,\alpha,\beta)$, 作者基于训练收集到的数据 $L(N_i,D_i)$, 通过 L-BFGS 算法来最小化 Huber loss 进行求解，结果得到 $(A,B,E,\alpha,\beta)=( 406.4, 410.7, 1.69, 0.34, 0.28)$.&lt;/p>
+&lt;p>将结果带入带上面的表达式中，然后求出梯度为 0 的点，就得到&lt;/p>
+$$
+N_{opt}(C) = G\left(\frac C6\right)^a, D_{opt}(C) = G^{-1}\left(\frac C6\right)^b, \text{ where }G=\left(\frac{\alpha A}{\beta B}\right)^{1/(\alpha+\beta)}, a=\frac{\beta}{\alpha+\beta}, b=\frac{\alpha}{\alpha+\beta}
+$$&lt;p>带入数值之后就得到 $a=0.46$, $b=0.54$. 作者对结果可视化如下图所示，左图是拟合曲线的 Contour plot, 右图对左图的一个切片&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/chinchilla-scaling-law/Chinchilla-Parametric-fit.png"
+width="2980"
+height="1284"
+loading="lazy"
+alt="Parametric fit"
+class="gallery-image"
+data-flex-grow="232"
+data-flex-basis="557px"
+>&lt;/p>
+&lt;h3 id="optimal-model-scaling">&lt;a href="#optimal-model-scaling" class="header-anchor">&lt;/a>Optimal Model Scaling
+&lt;/h3>&lt;p>作者将三种方法的结果以及 &lt;a class="link" href="https://maosong.website/p/kaplan-scaling-law/" target="_blank" rel="noopener"
+>Kaplan scaling law&lt;/a> 的结果总结放在下表中，作者假设 $N_{opt}(C)\propto C^a$ 以及 $D_{opt}(C)\propto C^b$&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Approach&lt;/th>
+&lt;th>$a$&lt;/th>
+&lt;th>$b$&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Kaplan&lt;/td>
+&lt;td>0.73&lt;/td>
+&lt;td>0.26&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Approach 1&lt;/td>
+&lt;td>0.50&lt;/td>
+&lt;td>0.50&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Approach 2&lt;/td>
+&lt;td>0.49&lt;/td>
+&lt;td>0.51&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Approach 3&lt;/td>
+&lt;td>0.46&lt;/td>
+&lt;td>0.54&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>结果表明，三种方法的结论差不多：model size 和 dataset size 增长 debility 差不多。&lt;/p>
+&lt;p>作者因此给出来的不同模型大小所需要的算力以及 token, 结果如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Parameters&lt;/th>
+&lt;th>Approach 1&lt;/th>
+&lt;th>&lt;/th>
+&lt;th>Approach 2&lt;/th>
+&lt;th>&lt;/th>
+&lt;th>Approach 3&lt;/th>
+&lt;th>&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>FLOPs&lt;/td>
+&lt;td>Tokens&lt;/td>
+&lt;td>FLOPs&lt;/td>
+&lt;td>Tokens&lt;/td>
+&lt;td>FLOPs&lt;/td>
+&lt;td>Tokens&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>400 M&lt;/td>
+&lt;td>1.92e+19&lt;/td>
+&lt;td>8.0 B&lt;/td>
+&lt;td>1.84e+19&lt;/td>
+&lt;td>7.7 B&lt;/td>
+&lt;td>1.84e+19&lt;/td>
+&lt;td>7.7 B&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>1 B&lt;/td>
+&lt;td>1.21e+20&lt;/td>
+&lt;td>20.2 B&lt;/td>
+&lt;td>1.20e+20&lt;/td>
+&lt;td>20.0 B&lt;/td>
+&lt;td>1.20e+20&lt;/td>
+&lt;td>20.0 B&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>10 B&lt;/td>
+&lt;td>1.23e+22&lt;/td>
+&lt;td>205.1 B&lt;/td>
+&lt;td>1.32e+22&lt;/td>
+&lt;td>219.5 B&lt;/td>
+&lt;td>1.32e+22&lt;/td>
+&lt;td>219.5 B&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>67 B&lt;/td>
+&lt;td>5.76e+23&lt;/td>
+&lt;td>1.5 T&lt;/td>
+&lt;td>6.88e+23&lt;/td>
+&lt;td>1.7 T&lt;/td>
+&lt;td>6.88e+23&lt;/td>
+&lt;td>1.7 T&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>175 B&lt;/td>
+&lt;td>3.85e+24&lt;/td>
+&lt;td>3.7 T&lt;/td>
+&lt;td>4.54e+24&lt;/td>
+&lt;td>4.3 T&lt;/td>
+&lt;td>4.54e+24&lt;/td>
+&lt;td>4.3 T&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>280 B&lt;/td>
+&lt;td>9.90e+24&lt;/td>
+&lt;td>5.9 T&lt;/td>
+&lt;td>1.18e+25&lt;/td>
+&lt;td>7.1 T&lt;/td>
+&lt;td>1.18e+25&lt;/td>
+&lt;td>7.1 T&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>520 B&lt;/td>
+&lt;td>3.43e+25&lt;/td>
+&lt;td>11.0 T&lt;/td>
+&lt;td>4.19e+25&lt;/td>
+&lt;td>13.4 T&lt;/td>
+&lt;td>4.19e+25&lt;/td>
+&lt;td>13.4 T&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>1 T&lt;/td>
+&lt;td>1.27e+26&lt;/td>
+&lt;td>21.2 T&lt;/td>
+&lt;td>1.59e+26&lt;/td>
+&lt;td>26.5 T&lt;/td>
+&lt;td>1.59e+26&lt;/td>
+&lt;td>26.5 T&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>10 T&lt;/td>
+&lt;td>1.30e+28&lt;/td>
+&lt;td>216.2 T&lt;/td>
+&lt;td>1.75e+28&lt;/td>
+&lt;td>292.0 T&lt;/td>
+&lt;td>1.75e+28&lt;/td>
+&lt;td>292.0 T&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>作者基于发现的 scaling law, 对已有模型进行了探究，发现现有的大模型都存在 under-training 的现象，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/chinchilla-scaling-law/Chinchilla-Overlaied-predictions.png"
+width="2422"
+height="1284"
+loading="lazy"
+alt="Overlaid predictions"
+class="gallery-image"
+data-flex-grow="188"
+data-flex-basis="452px"
+>&lt;/p>
+&lt;p>实验结果显示，现有的大模型的 size 应该更小（或者需要更大的算力）。作者最终的结论就是，现有的比较小的模型，需要更多的算力才能达到更好的表现。&lt;/p>
+&lt;h2 id="chinchilla">&lt;a href="#chinchilla" class="header-anchor">&lt;/a>Chinchilla
+&lt;/h2>&lt;p>基于上一节的发现，作者提出了 Chinchilla, 一个 70B 的模型，训练使用了 1.4T token. 训练的数据集为 MassiveText 的扩展版本，训练使用的优化器为 AdamW, tokenizer 为 SentencePiece.&lt;/p>
+&lt;p>模型配置如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Layers&lt;/th>
+&lt;th>Number Heads&lt;/th>
+&lt;th>Key/Value Size&lt;/th>
+&lt;th>dmodel&lt;/th>
+&lt;th>Max LR&lt;/th>
+&lt;th>Batch Size&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Gopher 280B&lt;/td>
+&lt;td>80&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>16384&lt;/td>
+&lt;td>$4\times 10^{-5}$&lt;/td>
+&lt;td>$3M\to6M$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Chinchilla 70B&lt;/td>
+&lt;td>80&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>8192&lt;/td>
+&lt;td>$1\times 10^{-5}$&lt;/td>
+&lt;td>$1.5M\to3M$&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="ablation-study">&lt;a href="#ablation-study" class="header-anchor">&lt;/a>Ablation Study
+&lt;/h3>&lt;p>&lt;strong>learning rate schedule&lt;/strong>
+作者还通过 ablation study 发现，cosine learning rate cycle length 应该和训练步数差不多，当 cycle length 太长时，模型表现会下降。&lt;/p>
+&lt;p>&lt;strong>Optimizer&lt;/strong>
+作者对比了 &lt;a class="link" href="https://maosong.website/p/notes-on-adam/" target="_blank" rel="noopener"
+>Adam&lt;/a> 和 &lt;a class="link" href="https://maosong.website/p/notes-on-adamw/" target="_blank" rel="noopener"
+>AdamW&lt;/a> 的表现，结果发现，AdamW 的表现优于 Adam.&lt;/p>
+&lt;p>&lt;strong>High Precision&lt;/strong>
+训练时，作者使用了高精度也就是 &lt;code>float32&lt;/code> 来保存梯度的状态，结果显示，不管是 Adam 还是 AdamW, 使用高精度都可以提高模型的表现&lt;/p>
+&lt;p>&lt;strong>Comparison with Kaplan&lt;/strong>
+作者还对比了 Chinchilla 和 Kaplan 的预测结果，如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/chinchilla-scaling-law/Chinchilla-Comparison-with-Kaplan.png"
+width="2684"
+height="1436"
+loading="lazy"
+alt="Comparison with Kaplan"
+class="gallery-image"
+data-flex-grow="186"
+data-flex-basis="448px"
+>&lt;/p>
+&lt;p>结果显示，基于 Chinchilla 预测得到的模型训练效果比 Kaplan 的更好。&lt;/p>
+&lt;p>&lt;strong>Curvature of the FLOPs-frontier&lt;/strong>
+作者发现，FLOP-minimal loss frontier 存在 curvature, 也就是小模型和大模型预测出来的曲线是不一样的，作者将结果展示在下图中&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/chinchilla-scaling-law/Chinchilla-curvature-of-FLOPs-frontier.png"
+width="3012"
+height="1570"
+loading="lazy"
+alt="Curvature of the FLOPs-frontier"
+class="gallery-image"
+data-flex-grow="191"
+data-flex-basis="460px"
+>&lt;/p>
+&lt;p>结果显示，从小模型拟合出来的结果比大模型拥有更高的算力使用效率，作者认为这是未来的一个研究方向。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>本文中作者重新探究了针对 LLM 的 scaling law, 作者发现已有的大模型都存在 under-training 的现象，也就是说，模型需要更多的训练 token, 具体来讲，model size scaling 和 dataset scaling 应该处于同一水平。作者基于这个结论，提出了 Chinchilla, 一个 70B 的 LLM, 其表现超过了 280B 的 LLM.&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2203.15556" target="_blank" rel="noopener"
+>arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

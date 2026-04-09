@@ -1,0 +1,2615 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Deepseek on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/deepseek/</link><description>Recent content in Deepseek on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/deepseek/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on DeepSeek-V3.2</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3.2/</link><pubDate>Tue, 06 Jan 2026 17:30:40 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3.2/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>作者首先回顾了开源模型如 &lt;a class="link" href="https://maosong.website/p/notes-on-minimax-01/" target="_blank" rel="noopener"
+>MiniMax-01&lt;/a>, &lt;a class="link" href="https://maosong.website/p/notes-on-kimi-k2/" target="_blank" rel="noopener"
+>Kimi-k2&lt;/a>, &lt;a class="link" href="https://maosong.website/p/notes-on-qwen3/" target="_blank" rel="noopener"
+>Qwen3&lt;/a>, &lt;a class="link" href="https://maosong.website/p/notes-on-glm-4.5/" target="_blank" rel="noopener"
+>GLM-4.5&lt;/a> 和闭源模型的进展，作者指出，现在的开源模型和闭源模型在表现上仍然存在较大差距。作者认为这种差距主要是由于三个原因：&lt;/p>
+&lt;ol>
+&lt;li>Transformer 提出的 softmax attention 在处理长文本时效率非常低&lt;/li>
+&lt;li>已有的开源模型在 post-training 阶段使用的算力不够&lt;/li>
+&lt;li>开原模型的泛化和指令跟随能力不如闭源模型&lt;/li>
+&lt;/ol>
+&lt;p>基于这三个问题，DeepSeek-V3.2 分别进行了改进：&lt;/p>
+&lt;ol>
+&lt;li>在架构上，作者提出了 DSA，一个高效的稀疏注意力机制，用于降低计算复杂度&lt;/li>
+&lt;li>在 post-training 阶段，作者使用了比 pre-training 阶段高 $10\%$ 的算力，用于提高模型的能力&lt;/li>
+&lt;li>作者提出了一个 pipeline 用于提高模型在工具调用场景下的 reasoning 能力&lt;/li>
+&lt;/ol>
+&lt;p>通过实验作者发现，模型达到了和 &lt;a class="link" href="https://maosong.website/p/notes-on-kimi-k2/" target="_blank" rel="noopener"
+>Kimi-k2&lt;/a> 以及 GPT-5 差不多的 reasoning 表现。&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;h3 id="architecture">&lt;a href="#architecture" class="header-anchor">&lt;/a>Architecture
+&lt;/h3>&lt;p>DeepSeek-V3.2 与 DeepSeek-V3.1 不同之处在于使用了 DeepSeek Sparse Attention (DSA). 架构如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3.2/DeepSeek-V3-2-architecture.png"
+width="1285"
+height="672"
+loading="lazy"
+alt="Attention architecture of DeepSeek-V3.2-Exp"
+class="gallery-image"
+data-flex-grow="191"
+data-flex-basis="458px"
+>&lt;/p>
+&lt;p>DSA 包含两个模块：&lt;/p>
+&lt;ol>
+&lt;li>lightning indexer&lt;/li>
+&lt;li>fine-grained token selection mechanism&lt;/li>
+&lt;/ol>
+&lt;p>其中，lightning indexer 负责计算 query token $h_t\in\mathbb{R}^d$ 和一个 preceding token $h_s\in\mathbb{R}^d$ 之间的 index score $I_{t,s}$ 来决定 query token 选择的 token:&lt;/p>
+$$
+I_{t,s} = \sum_{j=1}^{H_I}w_{t,j}^I \mathrm{ReLU}(q_{t,j}^I\cdot k_s^I)
+$$&lt;p>其中， $H^I$ 代表 indexer heads 的个数，$q_{t,j}^I\in\mathbb{R}^{d^I}$ 和 $w_{t,j}^I$ 由 query token $h_t$ 得到，$k_s^I\in\mathbb{R}^{d^I}$ 由 preceding token $h_s$ 得到&lt;/p>
+&lt;p>给定 query token $h_t$ 对应的 index score $\{I_{t,s}\}$, fine-grained token selection mechanism 负责选取 top-K index score 对应的 key-value entries $\{c_s\}$, 然后 attention 的输出由 query token 个选取的 key value entries 得到：&lt;/p>
+$$
+u_t = \mathrm{Attn}(h_t,\{c_s\mid I_{t,s}\in \mathrm{TopK}(I_{t,:})\})
+$$&lt;blockquote>
+&lt;p>[!Recall]
+MoBA 也提出了类似的方法，但是 MoBA 是一个无需训练的策略&lt;/p>
+&lt;/blockquote>
+&lt;p>受 &lt;a class="link" href="https://maosong.website/p/notes-on-nsa/" target="_blank" rel="noopener"
+>NSA&lt;/a> 启发，作者实现了基于 &lt;a class="link" href="https://maosong.website/p/notes-on-mqa/" target="_blank" rel="noopener"
+>MQA&lt;/a> 模式的 &lt;a class="link" href="https://maosong.website/p/notes-on-mla/" target="_blank" rel="noopener"
+>MLA&lt;/a>, 其中 latent vector 对于 query token 所有的 query heads 都是共享的。示意图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3.2/DeepSeek-V3-2-modes-of-MLA.png"
+width="1344"
+height="533"
+loading="lazy"
+alt="Different modes of MLA"
+class="gallery-image"
+data-flex-grow="252"
+data-flex-basis="605px"
+>&lt;/p>
+&lt;h3 id="continue-pre-training">&lt;a href="#continue-pre-training" class="header-anchor">&lt;/a>Continue Pre-training
+&lt;/h3>&lt;p>作者在 DeepSeek-V3.1 的基础上进行了 continue pre-training. Continue pre-training 包含两个阶段：&lt;/p>
+&lt;p>&lt;strong>Dense Warm-up stage&lt;/strong>
+这个阶段用于训练 lightning indexer, 作者冻结除 lightning indexer 之外的参数，为了对齐 indexer output 和 main attention distribution, 对于第 $t$ 个 query token, 作者首先计算所有 attention heads 的 main attention score 之和，然后在 sequence 层面进行 L1-normalization 得到 $p_{t,:}\in\mathbb{R}^t$, 最后计算 lightning indexer 输出与 $p_{t,:}$ 之间的 KL divergence:&lt;/p>
+$$
+\mathcal{L}^I = \sum_{t}\mathcal{D}_{KL}(p_{t,:}\ \Vert\ \mathrm{Softmax}(I_{t,:}))
+$$&lt;p>这个阶段训练一共使用了 &lt;strong>2.1B&lt;/strong> 的 token, lr 为 1e-3, 训练的步数为 1000 steps, batch size 为 16.&lt;/p>
+&lt;p>&lt;strong>Sparse training stage&lt;/strong>
+这个阶段模型所有的参数都参与训练，该阶段的目的是让模型学习到 DSA 的 sparse pattern. 训练时，作者让 lightning indexer 的输出与 $p_{t,S_t}$ 之间的输出进行对齐，其中 $S_t=\{s\mid I_{t,s}\in\mathrm{TopK}(I_{t,:})\}$:&lt;/p>
+$$
+\mathcal{L}^I = \sum_{t}\mathcal{D}_{KL}(p_{t,S_t}\ \Vert\ \mathrm{Softmax}(I_{t,:}))
+$$&lt;p>实际训练时，lightning indexer 仅接受 $\mathcal{L}^I$ 的反向传播，而 LLM 则仅接受 next-token prediction loss. 这个阶段模型一共使用了&lt;strong>943.7B&lt;/strong> token, 其中 $K$ 设置为 $2048$. 学习率为 $7.3\times 1e-6$, 训练步数为 15,000 steps, batch size 为 480.&lt;/p>
+&lt;h3 id="post-training">&lt;a href="#post-training" class="header-anchor">&lt;/a>Post-training
+&lt;/h3>&lt;p>post-training 与 DeepSeek-V3.1 一致：&lt;/p>
+&lt;p>&lt;strong>Specialist Distillation&lt;/strong>
+作者基于 DeepSeek-V3.2 base 构建了不同领域的 specialized model, 这些领域包括：&lt;/p>
+&lt;ol>
+&lt;li>math&lt;/li>
+&lt;li>competitive programming&lt;/li>
+&lt;li>general logical reasoning&lt;/li>
+&lt;li>agentic coding&lt;/li>
+&lt;li>agentic search&lt;/li>
+&lt;/ol>
+&lt;p>每个 specialized model 都使用 RL 进行训练，训练数据包括 long CoT reasoning 数据以及 direct response generation 数据，specialized model 训练完毕之后，就被用于生产 domain-specific data, 作者通过实验发现，基于这种蒸馏方法，模型的表现仅比 specialized model 低一点，并且这个 gap 可以被后续的 RL 训练所抵消。&lt;a class="link" href="https://maosong.website/p/notes-on-glm-4.5/" target="_blank" rel="noopener"
+>GLM-4.5&lt;/a> 也采取了类似的做法&lt;/p>
+&lt;p>&lt;strong>Mixed RL Training&lt;/strong>
+作者使用了 GRPO 算法进行训练，与 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v3/" target="_blank" rel="noopener"
+>DeepSeek-V3&lt;/a> 不同，作者将 reasoning, agent 以及 human alignment 的 RL 训练合并为了一个阶段，作者认为这种方法可以平衡模型在多个 domain 上的表现，并且可以防止 multi-stage training 带来的灾难性遗忘问题。对于 reasoning 和 agent 任务，作者使用了 rule-basd outcome reward, length penalty 以及 language consistency reward. 对于通用任务，作者使用了 generative reward model, 每个 prompt 都有对应的 rubris 用于 evaluation. 作者构建 reward 时主要考虑了:&lt;/p>
+&lt;ol>
+&lt;li>length versus accuracy&lt;/li>
+&lt;li>language consistency versus accuracy&lt;/li>
+&lt;/ol>
+&lt;p>&lt;strong>DeepSeek-V3.2-Speciale&lt;/strong>
+除了 DeepSeek-V3.2 之外，作者还训练了 DeepSeek-V3.2-Speciale 模型，该模型仅使用 reasoning 数据进行训练，reasoning 数据包含了 DeepSeek-Math-V2 的训练数据以及 reward 方法。训练时，作者降低了 length penalty 的惩罚系数，最终 DeepSeek-V3.2-Speciale 模型拥有更强的 reasoning 能力&lt;/p>
+&lt;h4 id="scaling-grpo">&lt;a href="#scaling-grpo" class="header-anchor">&lt;/a>Scaling GRPO
+&lt;/h4>&lt;p>作者在 GRPO 的基础上对 KL estimate 进行了改进（见 &lt;a class="link" href="https://maosong.website/p/notes-on-kl-divergence/" target="_blank" rel="noopener"
+>KL divergence&lt;/a>），使用了 importance sampling 对 K3 estimator 进行修正:&lt;/p>
+$$
+\mathcal{D}_{\mathrm{KL}}(\pi_\theta(o_{i,t})\Vert\pi_{\mathrm{ref}}(o_{i,t})) = \frac{\pi_\theta(o_{i,t}\mid q, o_{i,&lt;t})}{\pi_{\mathrm{old}}(o_{i,t}\mid q, o_{i,&lt;t})}\left(\frac{\pi_{\mathrm{ref}}(o_{i,t}\mid q, o_{i,&lt;t})}{\pi_\theta(o_{i,t}\mid q, o_{i,&lt;t})}-\frac{\pi_{\mathrm{ref}}(o_{i,t}\mid q, o_{i,&lt;t})}{\pi_\theta(o_{i,t}\mid q, o_{i,&lt;t})}-1\right)
+$$&lt;p>使用 K3 estimator 之后，现在 KL estimator 的梯度估计就变成无偏估计了，从而提高了整体训练的稳定性。作者还发现不同任务对 KL regularization 的需求不一致，对数学等 domain, 我们应该采取较小的 KL penalty 或者不使用 KL penalty 反而能提升性能&lt;/p>
+&lt;p>&lt;strong>Off-Policy Sequence Masking&lt;/strong>
+作者还使用了 sequence masking 来提高 off-policy data 的数据使用效率，由于不同 rollout 的完成时间不一致，训练过程中会出现 off-policy 现象，即某些 mini-batch 不是由当前 policy 产生，这个现象在 &lt;a class="link" href="https://maosong.website/p/notes-on-magistral/" target="_blank" rel="noopener"
+>Magistral&lt;/a> 中也有提到，这种训练 - 推理不一致性会进一步加剧 off-policy 程度，为了提高训练稳定性，作者将 policy divergence 程度比较高的 sequence 给 mask 掉，更新后的损失函数如下所示&lt;/p>
+$$
+\mathcal{J}_{\mathrm{GRPO}}(\theta) = \mathbb{E}_{(q,a)\sim\mathcal{D},\{o_i\}_{i=1}^G\sim \pi_{\theta_{old}}(\cdot\mid q)}\left[ \frac{1}{G}\sum_{i=1}^G\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\min\left(r_{i,t}(\theta)\hat{A}_{i,t},\mathrm{clip}\left(r_{i,t}(\theta), 1-\epsilon, 1+\epsilon\right)\hat{A}_{i,t}\right)M_{i,t}-\beta \mathcal{D}_{\mathrm{KL}}(\pi_\theta(o_{i,t})\Vert\pi_{\mathrm{ref}}(o_{i,t}))\right]
+$$&lt;p>其中，&lt;/p>
+$$
+M_{i,t} = \begin{cases}
+0, &amp;\hat{A}_{i,t}&lt;0, \frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\log r_{i,t}(\theta)&lt;\delta\\
+1, &amp;\text{otherwise}
+\end{cases}
+$$&lt;p>用于决定是否对当前 sequence 进行 mask, $\delta$ 是一个超参数控制 policy divergence 程度。作者认为，模型主要从自身的错误进行学习，而 off-policy 的负样本模型学习提升有限甚至有害。作者发现加入这个 masking 策略之后，模型的训练稳定性有所提升。&lt;/p>
+&lt;p>&lt;strong>Keep Routing&lt;/strong>
+MoE 模型在进行 On-policy RL 训练是，由于 policy 的更新，新 policy 和旧 policy 专家的 routing 可能会不一致，这种不一致性会降低训练的稳定性以及 off-policy 现象。为了解决这个问题，作者在采样室，保存了训练阶段所使用的 expert routing path, 来保证训练推理的一致性。这种策略可以有效提高针对 MoE 模型的 RL 训练稳定性&lt;/p>
+&lt;p>&lt;strong>Keep Sampling Mask&lt;/strong>
+作者发现，使用 top-p 和 top-K 可以提高 LLM 输出的质量，但是这种采样擦略也会导致 $\pi_{\mathrm{old}}$ 和 $\pi_{\theta}$ action space 的不匹配，因此，作者记录了 $\pi_{\mathrm{old}}$ 采样过程中的 truncation mask, 然后再训练的时候将其应用到 $\pi_{\theta}$ 上，作者发现通过这种方式可以有效提高 RL 训练过程中的 language consistency&lt;/p>
+&lt;h4 id="thinking-in-tool-use">&lt;a href="#thinking-in-tool-use" class="header-anchor">&lt;/a>Thinking in Tool-Use
+&lt;/h4>&lt;p>本节的目的是希望能够将 reasoning 能力应用到工具调用的场景下。&lt;/p>
+&lt;p>作者发现，如果使用 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-r1/" target="_blank" rel="noopener"
+>DeepSeek-R1&lt;/a> 的策略，在下一轮对话到来时，丢弃到当前的 reasoning content 会让模型重新生成针对问题的 CoT, 从而产生 token inefficiency. 为了解决这个问题，作者构建了一个上下文管理策略，如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3.2/DeepSeek-V3-2-context-management-tool-calling.png"
+width="1281"
+height="677"
+loading="lazy"
+alt="Context Management of DeepSeek V3.2 in tool-calling senarios"
+class="gallery-image"
+data-flex-grow="189"
+data-flex-basis="454px"
+>&lt;/p>
+&lt;p>具体做法为：&lt;/p>
+&lt;ul>
+&lt;li>reasoning content 只有当有新的 user message 进入时才会丢弃；如果只有工具调用相关的 message, 则 reasoning content 会保留&lt;/li>
+&lt;li>移除 reasoning content 时，会保留对应的工具调用及其结果&lt;/li>
+&lt;/ul>
+&lt;p>在训练时，作者认为模型已经掌握了比较好的指令跟随能力，我们仅需要将 reasoning data (non-agentic) 和 non-reasoning data(agentic) 以不同的 prompt 输入给模型就能够得到比较好的结果。&lt;/p>
+&lt;p>对于训练的数据，作者认为 RL 任务的多样性可以有效提高模型的 robustness, 因此作者构建了不同的环境及其对应的 prompt, 生成的任务如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>&lt;/th>
+&lt;th>number of tasks&lt;/th>
+&lt;th>environment&lt;/th>
+&lt;th>prompt&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>code agent&lt;/td>
+&lt;td>24667&lt;/td>
+&lt;td>real&lt;/td>
+&lt;td>extracted&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>search agent&lt;/td>
+&lt;td>50275&lt;/td>
+&lt;td>real&lt;/td>
+&lt;td>synthesized&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>general agent&lt;/td>
+&lt;td>4417&lt;/td>
+&lt;td>synthesized&lt;/td>
+&lt;td>synthesized&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>code interpreter&lt;/td>
+&lt;td>5908&lt;/td>
+&lt;td>real&lt;/td>
+&lt;td>extracted&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;ul>
+&lt;li>search agent: 作者使用了 multi-agent 的策略，包括 question-construction agent 用于构建 QA pair, multiple answer-generation agent 用于构建不同的 response, 一个 verification agent 用于评估生成的 response. 最后作者使用 generative reward model 来评分&lt;/li>
+&lt;li>code agent: 作者爬取了 Github 上的 pull request, 然后进行过滤，接下来作者通过一个 environment-setup agent 来构建对应的环境&lt;/li>
+&lt;li>code interpreter agent: 作者使用 jupyter notebook 作为代码解释器来解决复杂的 reasoning tasks, 包括 math, logic, data science 等&lt;/li>
+&lt;li>general agent: 作者构建了验证简单解决困难的任务。首先作者基于 agent 和 task category 来生成或检索相关数据；接下来作者合成一个任务相关的工具集合；最后，作者让一个 agent 来提出任务以及对应的解法，并不断提高任务的难度。最后得到 &lt;code>&amp;lt;environment, tools, task, verifier&amp;gt;&lt;/code> 的 tuple 格式&lt;/li>
+&lt;/ul>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>作者对比了 DeepSeek-V3.2-Exp 和 Claude-4.5 Sonnet, GPT-5, Gemini 3.0 Pro, Kimi-K2 thinking, MiniMax M2 的表现，评测结果如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3.2/DeepSeek-V3-2-performance.png"
+width="1345"
+height="817"
+loading="lazy"
+alt="Performance of DeepSeek V3.2"
+class="gallery-image"
+data-flex-grow="164"
+data-flex-basis="395px"
+>&lt;/p>
+&lt;p>结果显示，DeepSeek V 3.2 和 GPT-high 在 reasoning 任务上的表现差不多。作者认为，进一步提高 RL 阶段的算力可以有效提高模型的表现&lt;/p>
+&lt;p>作者还对比了 DeepSeek-V 3.2-Speciale 的表现，结果显示，提高 token budget 之后，模型的表现显著提高，与 Gemini 3.0 Pro 可以相比，但是其 token efficiency 仍然弱于 Gemini 3.0 Pro, 结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3.2/DeepSeek-V3-2-speciale-performance.png"
+width="1299"
+height="421"
+loading="lazy"
+alt="Performance of DeepSeek V 3.2 speciale"
+class="gallery-image"
+data-flex-grow="308"
+data-flex-basis="740px"
+>&lt;/p>
+&lt;p>接下来作者验证了 synthesis agentic tasks 对模型表现的影响。首先，作者随机采样一批样本使用闭源 LLM 进行测试，发现闭源模型表现最好为 $62\%$, 这说明了合成数据对于 DeepSeek V3.2 和闭源模型都是有挑战的。&lt;/p>
+&lt;p>其次，作者探究了合成数据是否能够提高 RL 的泛化性，作者构建了两个额外模型：&lt;/p>
+&lt;ul>
+&lt;li>SFT: 在 SFT checkpoint 上进行 RL&lt;/li>
+&lt;li>Exp: 仅在 search 以及 code environment 上进行 RL&lt;/li>
+&lt;/ul>
+&lt;p>对比结果发现，合成数据缺失可以有效提高模型的表现&lt;/p>
+&lt;p>作者还对比了 DSA 的效率，DSA 可以将 attention 的计算复杂度由 $\mathcal{O}(L^2)$ 降低到 $\mathcal{O}(LK)$, 其中 $K$ 是选取的 top-K tokens. 尽管 lightning indexer 的复杂度仍然是 $\mathcal{O}(L^2)$, 但是其计算量远小于 MLA, 作者对比了两者的效率，实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3.2/DeepSeek-V3-2-efficiency.png"
+width="1323"
+height="547"
+loading="lazy"
+alt="Efficiency of DeepSeek-V3.2"
+class="gallery-image"
+data-flex-grow="241"
+data-flex-basis="580px"
+>&lt;/p>
+&lt;p>可以看到，DeepSeek-V3.2 的 prefilling 和 decoding 效率都远高于 DeepSeek-V3.1&lt;/p>
+&lt;p>最后，作者对比了不同上下文管理策略对模型表现的影响，对比策略有：&lt;/p>
+&lt;ol>
+&lt;li>Summary: 对轨迹进行总结然后重新初始化 rollout&lt;/li>
+&lt;li>Discard 75%: 丢弃到初始 75% 的工具调用历史&lt;/li>
+&lt;li>Discard-all: 丢弃掉所有的工具调用历史&lt;/li>
+&lt;li>Parallel-fewest step: 多次采样然后保留步数最少得轨迹&lt;/li>
+&lt;/ol>
+&lt;p>实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3.2/DeepSeek-V3-2-context-management-ablation.png"
+width="1286"
+height="643"
+loading="lazy"
+alt="Ablation study on context management"
+class="gallery-image"
+data-flex-grow="200"
+data-flex-basis="480px"
+>&lt;/p>
+&lt;p>结果显示，使用上下文管理策略之后，模型的表现有了显著提升。并且，discard-all 策略虽然很简单，但是其表现非常好。作者认为如何根据不同场景来选取合适的策略是一个待解决的问题。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者在本文中提出了 DeepSeek-V 3.2, DeepSeek-V 3.2 使用了一个稀疏注意力机制来提高模型在长上下文场景下的计算效率。作者还通过提升 RL 阶段的算力来提高模型在下游任务上的表现。最后，作者合成了大规模的 agentic task 来提升模型的 agent 能力。&lt;/p>
+&lt;p>作者认为，相比于 Gemini 3.0 Pro, 模型的知识广度仍然有限。并且，目前模型的 token efficiency 仍然是一个问题，模型需要更长的轨迹输出才能达到 Gemini 3.0 Pro 的表现。最后，模型解决复杂问题的能力仍然弱于闭源模型。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2512.02556" target="_blank" rel="noopener"
+>DeepSeek-V3.2: Pushing the Frontier of Open Large Language Models&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on NSA</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-nsa/</link><pubDate>Mon, 15 Dec 2025 17:39:16 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-nsa/</guid><description>&lt;p>DeepSeek 在 25 年 1 月提出了 Natively trainable Sparse Attention (NSA), 一个软硬件结合的稀疏注意力机制，NSA 可以在提高模型推理效率的同时提高计算效率。&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>现有的大模型主要是基于 Transformer 提出的 softmax attention, 其主要问题在于随上下文长度增加，其 latency 也上升更快。理论估计，对于 64k 上下文长度的输出，softmax attention 部分的计算占 $70\%\sim80\%$ 的 latency.&lt;/p>
+&lt;p>为了解决 softmax 的 high latency 问题，，一个做法就是使用稀疏注意力机制，如 MInference 等，但是这些系数注意力机制大多没有实际部署，且它们一般只在 inference 阶段使用&lt;/p>
+&lt;p>作者认为解决这个问题有两个挑战：&lt;/p>
+&lt;ol>
+&lt;li>Hardware-aligned inference speedup: 降低 inference latency 需要算法与硬件结合，不能只关注算法层面的改进&lt;/li>
+&lt;li>Training-aware algorithm design: 需要在训练阶段也支持算法，从而可以降低训练的算力消耗并且保持模型的表现&lt;/li>
+&lt;/ol>
+&lt;p>为了解决这两个问题，作者就提出了 natively trainable sparse attention (NSA) 架构。NSA 通过将 key 和 value 分割为不同的 block, 然后基于三种 path: compressed coarse-grained tokens, selectively retrained fine-grained tokens 以及 sliding windows for local contextual information 来进行处理和过滤。NSA 提出了两点观点改进：&lt;/p>
+&lt;ol>
+&lt;li>Hardware-aligned system: 优化了 blockwise sparse attention 来平衡 arithmetic intensity.&lt;/li>
+&lt;li>Training-aware design: 支持端到端的训练和部署&lt;/li>
+&lt;/ol>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;h3 id="overview">&lt;a href="#overview" class="header-anchor">&lt;/a>Overview
+&lt;/h3>&lt;p>作者首先回顾了 attention 的定义如下：&lt;/p>
+$$
+\mathbf{o}_t=\mathrm{Attn}(\mathbf{q_t},\mathbf{k}_{:,t}, \mathbf{v}_{:,t})=\sum_{i=1}^t \frac{\alpha_{t,i}}{\sum_{t,i}\alpha_{t,i}}\mathbf{v_i},\ \alpha_{t,i} = \exp\left(\frac{\mathbf{q_t}^T\mathbf{k}_{i}}{\sqrt{d_k}}\right)
+$$&lt;p>其中 $\mathbf{q_t}\in\mathbb{R}^{d_k}$.&lt;/p>
+&lt;p>接下来是 Arithmetic Intensity. Arithmetic intensity 指的是 FLOPs 与内存访问次数之比。由于现在的 GPU 都是计算密集型设备，理想情况下应该是 Arithmetic intensity 越高越好。&lt;/p>
+&lt;p>对于 causal self-attention 来说，在训练以及 prefilling 阶段，由于 batch 较大，因此整体的 Arithmetic intensity 较高，因而这两个阶段是 computer-bound. 但是在 decoding 阶段，由于其 token-by-token generation 的性质，每次生成新的 token 时都需要重新加载 KV cache, 因而是 memory-bound.&lt;/p>
+&lt;p>从而我们的优化目标也变得不一致：在训练阶段，我们希望降低计算消耗，而在推理 (decodng) 阶段，我们希望降低内存访问次数。&lt;/p>
+&lt;p>基于这两个目标，作者提出了使用 $\mathbf{k}_{:,t}, \mathbf{v}_{:,t}$ 的子集 $\tilde{K}_t, \tilde{V}_t$ 来参与计算，其对应的 attention 如下所示&lt;/p>
+$$
+\tilde{K}_t=f_K(\mathbf{q_t},\mathbf{k}_{:,t}, \mathbf{v}_{:,t}), \tilde{V}_t=f_V(\mathbf{q_t},\mathbf{k}_{:,t}, \mathbf{v}_{:,t}), \mathbf{o}_t=\mathrm{Attn}(\mathbf{q_t},\tilde{K}_t, \tilde{V}_t)
+$$&lt;p>我们还可以结合不同的方法来进行组合：&lt;/p>
+$$
+\mathbf{o}_t^*=\sum_{c\in\mathcal{C}}g_t^c\mathrm{Attn}(\mathbf{q_t},\tilde{K}_t^c, \tilde{V}_t^c)
+$$&lt;p>作者在本文中使用了三种方法 $\mathcal{C}=\{\mathrm{cmp},\mathrm{slc},\mathrm{win}\}$, 分别代表了 compression, selection 以及 sliding window, $g_t^c\in[0,1]$ 代表了不同方法对应的 gating score, 类似于 MoE 的 gating layer, $g_t^c$ 由一个 MLP 和一个 sigmoid activation 生成。最终 NSA 的架构如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-nsa/NSA-architecture.png"
+width="1364"
+height="402"
+loading="lazy"
+alt="Overview of NSA architecture"
+class="gallery-image"
+data-flex-grow="339"
+data-flex-basis="814px"
+>&lt;/p>
+&lt;p>作者定义 $N_t$ 代表参与计算的 KV 的总个数：&lt;/p>
+$$
+N_t = \sum_{c\in\mathcal{C}} \mathrm{size}[\tilde{K}_t^c].
+$$&lt;p>作者使用了一个较高的 sparsity ratio 来保证 $N_t&lt;&lt;t$.&lt;/p>
+&lt;h3 id="design">&lt;a href="#design" class="header-anchor">&lt;/a>Design
+&lt;/h3>&lt;p>接下来作者分别介绍了每一部分的设计&lt;/p>
+&lt;h4 id="token-compression">&lt;a href="#token-compression" class="header-anchor">&lt;/a>Token Compression
+&lt;/h4>&lt;p>对于 token compression, 其定义如下：&lt;/p>
+$$
+\tilde{K}_t^{\mathrm{cmp}} = f_K^{\mathrm{cmp}}(\mathbf{k}_{:,t})=\left\{\phi(\mathbf{k}_{id+1:id+l})\mid 0\leq i\leq \left\lfloor\frac{t-l}{d}\right\rfloor\right\}\in\mathbb{R}^{d_k\times \left\lfloor\frac{t-l}{d}\right\rfloor}
+$$&lt;p>其中 $l$ 是 block size, $d$ 是 sliding stride, $\phi:\mathbb{R}^{l\times d_k}\to \mathbb{R}^d_k$ 是一个 MLP 用于将 block key 映射为一个单一的 key. 对于 $\tilde{V}_t^{\mathrm{cmp}}$ 作者也使用了类似的做法。&lt;/p>
+&lt;h4 id="token-selection">&lt;a href="#token-selection" class="header-anchor">&lt;/a>Token Selection
+&lt;/h4>&lt;p>仅使用 compressed token 的话，可能会丢失一些细粒度的信息。因此，作者额外提出了 token selection 机制来解决这个问题。&lt;/p>
+&lt;p>作者使用的做法是 blockwise selection. 这样做的原因有两点：&lt;/p>
+&lt;ol>
+&lt;li>hardware efficiency. 这样做的原因是 GPU 访问内存是在 block 层面进行的，因而更加高效&lt;/li>
+&lt;li>inherent distribution patterns of attention scores. MInference 证明了 attention score 在空间上存在连续性。即相邻的 key 对应的重要性非常相似&lt;/li>
+&lt;/ol>
+&lt;p>为了实现 block-wise selection, 作者首先将 key value sequences 分割为 blocks, 然后针对每个 blocks 分配 Importance score.&lt;/p>
+&lt;p>作者首先介绍了如何计算不同 block 的 importance score.&lt;/p>
+&lt;p>如果 selection block size 与 compression block size ，即 $l'=l$ 相同的话，则我们可以直接用 compression block 提供的信息：&lt;/p>
+$$
+\mathbf{p}_{t}^{\mathrm{cmp}} = \mathrm{sotmax}\left(\mathbf{q}_t^T\tilde{K}_t^{\mathrm{cmp}}\right)
+$$&lt;p>其中 $\mathbf{p}_{t}^{\mathrm{cmp}}\in\mathbb{R}^{\left\lfloor\frac{t-l}{d}\right\rfloor+1}$ 代表了 $\mathbf{q}_t$ 和 compressed key $\tilde{K}_t^{\mathrm{cmp}}$ 之间的 attention score.&lt;/p>
+&lt;p>如果 $l'\neq l$ 的话，作者通过空间关系来进行计算，假设 $l\leq l'$, $d\mid l$, $d\mod l'$, 则我们有&lt;/p>
+$$
+\mathbf{p}_{t}^{\mathrm{slc}}[j] = \sum_{m=0}^{l'/d-1}\sum_{n=0}^{l/d-1}\mathbf{p}_{t}^{\mathrm{cmp}}\left[\frac{l'}{d}j-m-n\right]
+$$&lt;p>对于 &lt;a class="link" href="https://maosong.website/p/notes-on-gqa/" target="_blank" rel="noopener"
+>GQA&lt;/a> 和 &lt;a class="link" href="https://maosong.website/p/notes-on-mqa/" target="_blank" rel="noopener"
+>MQA&lt;/a>, 由于其 KV-cache 在 heads 之间共享，因此我们必须保证不同 heads 之间的 consistency, 因此作者提出了 shared importance score 如下：&lt;/p>
+$$
+\mathbf{p}_{t}^{\mathrm{slc}'} = \sum_{h=1}^H\mathbf{p}_{t}^{\mathrm{slc},(h)}
+$$&lt;p>接下来，对于每个 block 及其对应的 Importance score, 作者保存 top-$n$ sparse blcoks, 如下所示&lt;/p>
+$$
+\begin{aligned}
+\mathcal{I}_t &amp;= \{i\mid \mathrm{rank}(p_t^{\mathrm{slc}'}[i])\leq n\}\\
+\tilde{K}_t^{\mathrm{slc}} &amp;= \mathrm{Cat}\left[\{\mathbf{k}_{il'+1:(i+1)l'}\mid i\in \mathcal{I}_t\}\right]
+\end{aligned}
+$$&lt;p>其中 $\mathrm{rank}(\cdot)$ 代表了降序排列的 importance scores. $\mathcal{I}_t$ 是选择出来的 block indices, $\mathrm{Cat}(\cdot)$ 表示了 concatenation operation. $\tilde{K}_t^{\mathrm{slc}}\in\mathbb{R}^{d_k\times il'}$ 代表了选择出来的 key.&lt;/p>
+&lt;h4 id="sliding-window">&lt;a href="#sliding-window" class="header-anchor">&lt;/a>Sliding Window
+&lt;/h4>&lt;p>为了避免 local pattern 对 compression token 以及 selection token 的学习产生影响，作者额外使用了一个 branch 来学习这个 local pattern. 其具体做法就是维持一个 sliding window 用于最近的若干个 token, 即&lt;/p>
+$$
+\tilde{K}_t^{\mathrm{win}} = \mathbf{k}_{t-w:t}, \tilde{V}_t^{\mathrm{win}} = \mathbf{v}_{t-w:t}
+$$&lt;p>这里 $w$ 是 window size.&lt;/p>
+&lt;p>为了进一步避免 shortcut learning, 对于三个 branch 作者提供了不同的 key 和 values&lt;/p>
+&lt;h4 id="kernel-design">&lt;a href="#kernel-design" class="header-anchor">&lt;/a>Kernel Design
+&lt;/h4>&lt;p>接下来是针对硬件设计进行的优化。由于 flash attention 2 对 compression attention 以及 sliding window attention 已经支持的比较好，作者这里介绍了如何针对 selection attention 进行优化。&lt;/p>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>作者构建了一个 27B-A3B 的 MoE 模型，attention 基于 GQA, MoE 基于 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseekmoe/" target="_blank" rel="noopener"
+>DeepSeekMoE&lt;/a>. 模型配置如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>field&lt;/th>
+&lt;th>value&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>layers&lt;/td>
+&lt;td>30&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>hidden dimension&lt;/td>
+&lt;td>2560&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>head groups&lt;/td>
+&lt;td>4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>attention heads&lt;/td>
+&lt;td>64&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>query head dimension&lt;/td>
+&lt;td>192&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>value head dimension&lt;/td>
+&lt;td>128&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>routed experts&lt;/td>
+&lt;td>72&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>shared experts&lt;/td>
+&lt;td>2&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>activated experts&lt;/td>
+&lt;td>6&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>dense layers&lt;/td>
+&lt;td>1&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>NSA 配置如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>field&lt;/th>
+&lt;th>value&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$l$&lt;/td>
+&lt;td>32&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$d$&lt;/td>
+&lt;td>16&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$l'$&lt;/td>
+&lt;td>64&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$n$&lt;/td>
+&lt;td>16&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$w$&lt;/td>
+&lt;td>512&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>其中 selection blocks 包含初始的一个 block 以及最近的 2 个 block.&lt;/p>
+&lt;p>模型先在 8K 的上下文长度下使用 270B token 进行预训练，接下来在使用 &lt;a class="link" href="https://maosong.website/p/notes-on-yarn/" target="_blank" rel="noopener"
+>YARN&lt;/a> 将模型上下文通过 continual pre-training 以及 SFT 扩展到 32K. 训练过程的损失如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-nsa/NSA-training-loss.png"
+width="1073"
+height="780"
+loading="lazy"
+alt="Training loss of NSA"
+class="gallery-image"
+data-flex-grow="137"
+data-flex-basis="330px"
+>&lt;/p>
+&lt;p>作者从 general performance, long-context performance 以及 CoT reasoning performance 三个层面来评估 NSA 的表现。&lt;/p>
+&lt;p>首先是 NSA 与其他 sparse attention 以及 baseline 在通用任务上表现的对比，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-nsa/NSA-general-performance.png"
+width="1355"
+height="181"
+loading="lazy"
+alt="Performance of NSA on general benchmarks"
+class="gallery-image"
+data-flex-grow="748"
+data-flex-basis="1796px"
+>&lt;/p>
+&lt;p>接下来是 NSA 在 LongBench 上的表现：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-nsa/NSA-long-context-performance.png"
+width="1361"
+height="358"
+loading="lazy"
+alt="Performance of NSA on LongBench"
+class="gallery-image"
+data-flex-grow="380"
+data-flex-basis="912px"
+>&lt;/p>
+&lt;p>作者还使用了 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-r1/" target="_blank" rel="noopener"
+>DeepSeek-R1&lt;/a> 中的知识蒸馏方法，结果如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Generation token limit&lt;/th>
+&lt;th>8192&lt;/th>
+&lt;th>16384&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Full Attention-R&lt;/td>
+&lt;td>0.046&lt;/td>
+&lt;td>0.092&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>NSA-R&lt;/td>
+&lt;td>0.121&lt;/td>
+&lt;td>0.146&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>上面的结果均验证了 NSA 的有效性&lt;/p>
+&lt;h2 id="analysis">&lt;a href="#analysis" class="header-anchor">&lt;/a>Analysis
+&lt;/h2>&lt;p>接下来，作者分析了 NSA 的性质。作者首先对比了 NSA 和 flash attention 2 的训练速度，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-nsa/NSA-training-speed-performance.png"
+width="883"
+height="514"
+loading="lazy"
+alt="Performance comparison between NSA and flash attention 2"
+class="gallery-image"
+data-flex-grow="171"
+data-flex-basis="412px"
+>&lt;/p>
+&lt;p>可以看到，相比于 flash attention 2, NSA 在 forward 过程和 backward 过程的的效率分别提升了 9 倍和 6 倍。作者认为这是由于两个优点：&lt;/p>
+&lt;ol>
+&lt;li>NSA 使用了 block-wise memory access, 提高了 tensor core 的利用率&lt;/li>
+&lt;li>loop scheduling 减少了 KV transfer 时的 kernel 冗余&lt;/li>
+&lt;/ol>
+&lt;p>作者还对比了不同 attention 的解码速度，在 NSA 中，每次只需要 $\left\lfloor\frac{s-l}{d}\right\rfloor+nl'+w$ 个 token 就可以完成计算，作者对比不同 attention 所需余姚的 token 如下表所示如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Context Length&lt;/th>
+&lt;th>8192&lt;/th>
+&lt;th>16384&lt;/th>
+&lt;th>32768&lt;/th>
+&lt;th>65536&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Full attention&lt;/td>
+&lt;td>8192&lt;/td>
+&lt;td>16384&lt;/td>
+&lt;td>32768&lt;/td>
+&lt;td>65536&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>NSA&lt;/td>
+&lt;td>2048&lt;/td>
+&lt;td>2560&lt;/td>
+&lt;td>3584&lt;/td>
+&lt;td>5632&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>speedup&lt;/td>
+&lt;td>4x&lt;/td>
+&lt;td>6.4x&lt;/td>
+&lt;td>9.1x&lt;/td>
+&lt;td>11.6x&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="discussion">&lt;a href="#discussion" class="header-anchor">&lt;/a>Discussion
+&lt;/h2>&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者在本文中提出了 NSA, 一个通过软硬件协同结合 compression, selection 以及 sliding window 的稀疏注意力机制，作者通过实验验证了其有效性。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2502.11089" target="_blank" rel="noopener"
+>arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on DeepSeek-V3</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3/</link><pubDate>Mon, 08 Dec 2025 11:14:45 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3/</guid><description>&lt;p>DeepSeek 在 24 年 11 月发布了 DeepSeek-V3, 一个仅花费 2.8M H800 hours 的大语言模型，且在各个 benchmark 上达到了 SOTA 表现&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>作者在本文中提出了 DeepSeek-V3, 一个 671B-A37B 的 MoE 大语言模型。&lt;/p>
+&lt;p>在训练目标和架构上，作者做了如下改进：&lt;/p>
+&lt;ol>
+&lt;li>efficiency inference: 采用了 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v2/" target="_blank" rel="noopener"
+>DeepSeek-V2&lt;/a> 提出的 &lt;a class="link" href="https://maosong.website/p/notes-on-mla/" target="_blank" rel="noopener"
+>MLA&lt;/a>&lt;/li>
+&lt;li>cost-effective training: 采用了 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseekmoe/" target="_blank" rel="noopener"
+>DeepSeekMoE&lt;/a> 提出了 MoE 架构&lt;/li>
+&lt;li>auxiliary-loss-free strategy: 采用了 &lt;a class="link" href="https://maosong.website/p/notes-on-loss-free-balancing/" target="_blank" rel="noopener"
+>Loss-Free Balancing&lt;/a> 提出的 loss balancing 策略&lt;/li>
+&lt;li>multi-token prediction: 采用了 MTP 的训练目标来提升模型的表现&lt;/li>
+&lt;/ol>
+&lt;p>在训练上，作者做了如下改进：&lt;/p>
+&lt;ol>
+&lt;li>使用了 FP8 混合精度进行训练并验证了其在大规模模型上的有效性&lt;/li>
+&lt;li>作者构建了 DualPipe 算法用于高效的 pipeline parallelism&lt;/li>
+&lt;li>构建了 cross-node all-to-all communication kernel 来高效使用 InfiniBand 以及 NVLink bandwidth&lt;/li>
+&lt;li>优化了 memory footprint, 来避免使用 tensor parallelism&lt;/li>
+&lt;/ol>
+&lt;p>预训练阶段，DeepSeek-V3 使用了&lt;strong>14.8T&lt;/strong> token. 在 mid-training 阶段，作者将模型的上下文长度由 8K 扩展到 32K, 再扩展到 128K.&lt;/p>
+&lt;p>后训练阶段，作者使用了 SFT 和 RL 两个阶段来提高模型的表现，作者还对 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-r1/" target="_blank" rel="noopener"
+>DeepSeek-R1&lt;/a> 进行蒸馏来提高模型的 reasoning 能力&lt;/p>
+&lt;h2 id="architecture">&lt;a href="#architecture" class="header-anchor">&lt;/a>Architecture
+&lt;/h2>&lt;h3 id="basic-architecture">&lt;a href="#basic-architecture" class="header-anchor">&lt;/a>Basic Architecture
+&lt;/h3>&lt;p>DeepSeek-V3 的架构与 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v2/" target="_blank" rel="noopener"
+>DeepSeek-V2&lt;/a> 的架构一致，如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3/DeepSeek-V2-architecture.png"
+width="1324"
+height="1064"
+loading="lazy"
+alt="Architecture of DeepSeek-V2"
+class="gallery-image"
+data-flex-grow="124"
+data-flex-basis="298px"
+>&lt;/p>
+&lt;p>MLA 的介绍见 &lt;a class="link" href="https://maosong.website/p/notes-on-mla/" target="_blank" rel="noopener"
+>MLA&lt;/a>, MoE 架构的介绍见 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseekmoe/" target="_blank" rel="noopener"
+>DeepSeekMoE&lt;/a>. DeepSeek-V3 在 DeepSeekMoE 的基础上做了两点改变：&lt;/p>
+&lt;ol>
+&lt;li>受 &lt;a class="link" href="https://maosong.website/p/notes-on-loss-free-balancing/" target="_blank" rel="noopener"
+>Loss-Free Balancing&lt;/a> 启发，作者使用了 sigmoid fu nction 来计算 affinity score&lt;/li>
+&lt;li>对于 selected affinity score 应用了 normalization&lt;/li>
+&lt;/ol>
+&lt;p>在 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseekmoe/" target="_blank" rel="noopener"
+>DeepSeekMoE&lt;/a> 的基础上，作者使用了 &lt;a class="link" href="https://maosong.website/p/notes-on-loss-free-balancing/" target="_blank" rel="noopener"
+>Loss-Free Balancing&lt;/a>. 其表达式如下&lt;/p>
+$$
+g_{i,t} = \begin{cases}
+s_{i,t}, &amp; s_{i,t}+b_i\in\mathrm{Topk}(\{s_{i,j}+b_j\mid 1\leq j\leq N\}, K)\\
+0, &amp;\text{otherwise}
+\end{cases}
+$$&lt;p>其中 $b_i$ 仅影响 routing, 训练时，如果对应的 expert 负载不均衡，则对 $b_i$ 进行更新，更新方式为增加/减少 $\gamma$, 这里 $\gamma$ 是一个超参数&lt;/p>
+&lt;p>为了提高 routing 在 sequence 层面的负载均衡，作者还是用了一个 complementary sequence-wise balance loss:&lt;/p>
+$$
+\begin{aligned}
+\mathcal{L}_{\mathrm{Bal}} &amp;= \alpha\sum_{i=1}^{N_r} f_iP_i\\
+f_i &amp;= \frac{}{}\sum_{t=1}^T\mathbb{1}(s_{i,t}\in\mathrm{TopK}(\{s_{j,t}\mid 1\leq j \leq N_r\}, K_r))\\
+s_{i,y}' &amp;= \frac{s_{i,t}}{\sum_{j=1}^{N_r}s_{j,t}}\\
+P_i &amp;= \frac1T\sum_{t=1}^T s_{i,t}'
+\end{aligned}
+$$&lt;p>其中 $\alpha$ 是 balance factor, 为超参数，$T$ 是 sequence length, 加入这个损失后，每个 sequence 上的负载会变得更加均衡&lt;/p>
+&lt;p>与 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseekmoe/" target="_blank" rel="noopener"
+>DeepSeekMoE&lt;/a> 一样，作者也在 node 层面实现负载均衡，具体做法就是，根据 node 中所包含 expert 的 affinity score 之和来选取最高的 $M$ 个 nodes, 这样就可以进一步提高 computation 和 communication 之间的 overlap.&lt;/p>
+&lt;p>由于 DeepSeek-V3 负载均衡比较好，因此作者使用了 no token-dropping strategy.&lt;/p>
+&lt;h3 id="mtp">&lt;a href="#mtp" class="header-anchor">&lt;/a>MTP
+&lt;/h3>&lt;p>受 MTP 启发，DeepSeek-V3 也构建了 MTP 模块，作者认为 MTP 模块有两个优势：&lt;/p>
+&lt;ol>
+&lt;li>MTP objective 提供了更多的学习信号，进而提高了数据使用效率&lt;/li>
+&lt;li>MTP 可以让模型更好预测未来的 token&lt;/li>
+&lt;/ol>
+&lt;p>与 MTP 不同，DeepSeek-V3 【todo】, DeepSeek-V3 所使用的 MTP 模块架构图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3/DeepSeek-V3-MTP.png"
+width="1203"
+height="536"
+loading="lazy"
+alt="Illustration of MTP"
+class="gallery-image"
+data-flex-grow="224"
+data-flex-basis="538px"
+>&lt;/p>
+&lt;p>MTP 模块使用了 $D$ sequential modules 来预测未来的 $D$ 个 token. 其中，第 $k$ 个 MTP 模块包含一个共享的 embedding layer $\mathrm{Emb}(\cdot)$ , 一个共享的 output head $\mathrm{OutHead}(\cdot)$, 一个 transformer block $\mathrm{TRM}_k(\cdot)$ 和一个 projection matrix $M_k\in\mathbb{R}^{d\times 2d}$.&lt;/p>
+&lt;p>对于第 $i$ 个 token 以及第 $k$ 个 MTP 模块，作者首先将第 $k-1$ 个 MTP 模块的第 $i$ 个 token 的 hidden states $h_i^{k-1}\in\mathbb{R}^d$ 和第 $i+k$ 个 token 的 embedding $\mathrm{Emb}(t_{i+1})\in\mathbb{R}^d$ 联合在一起&lt;/p>
+$$
+h_i'^{k}=M_k[\mathrm{RMSNorm(h_{i}^{k-1});\mathrm{RMSNorm(\mathrm{Emb}(t_{i+k}))}}]
+$$&lt;p>其中 $[\cdot;\cdot]$ 代表 concatenation 操作。当 $k=1$ 时，$h_{i}^{k-1}$ 就代表了 main model 的输出。每个 MTP 模块的 embedding layer 和 main model 的 embedding layer 是共享的，接下来， $h_i'^k$ 作为第 $k$ 个 MTP 模块 transformer block 的输入，得到&lt;/p>
+$$
+h_{i}^k = \mathrm{TRM}_k(h_{i}'^l)
+$$&lt;p>最后，共享的 output head 输出对应的概率分布：&lt;/p>
+$$
+P_{i+k+1}^k = \mathrm{OutHead}(h_i^k)
+$$&lt;p>这里的 $\mathrm{OutHead}(\cdot)$ 的权重与 main model 也是共享的。作者这里提到，所使用的思想与 EAGLE 是类似的，但是不同的地方在于，EAGLE 主要是用于 speculative decoding, 而 MTP 主要用于提升训练。&lt;/p>
+&lt;p>MTP 的训练目标为未来 $T-k-1$ 个 token 的 cross-entropy loss:&lt;/p>
+$$
+\mathcal{L}_{\mathrm{MTP}}^k = \mathrm{CrossEntropy}(P_{2+k:T+1}^k,t_{2+k:T+1}) = -\frac1T\sum_{t=k+2}^{T+1}\log P_i^k[t_i],
+$$&lt;p>其中 $T$ 是 sequence length, $t_i$ 是第 $i$ 个位置对应的 ground truth token, $P_i^k[t_i]$ 代表低 $k$ 个 MTP 模块给出的 $t_i$ 的预测概率。最后，作者对所有的 MTP loss 进行求和，得到&lt;/p>
+$$
+\mathcal{L}_{\mathrm{MTP}} = \frac{\lambda}{D}\sum_{k=1}^D \mathcal{L}_{\mathrm{MTP}}^k.
+$$&lt;h2 id="infra">&lt;a href="#infra" class="header-anchor">&lt;/a>Infra
+&lt;/h2>&lt;p>DeepSeek-V3 训练使用了 2048 张 H800, 每个 node 包含 8 张 GPU, node 内部使用 NVLink 和 NVSwitch 进行连接，node 之间使用 InfiniBand 进行连接&lt;/p>
+&lt;p>与之前的 DeepSeek 系列相同，DeepSeek-V3 也是用了 HAI-LLM 框架来支持训练。训练时，DeepSeek-V3 使用了 16-way PP, 64-way EP (spanning 8 nodes, &lt;a class="link" href="https://maosong.website/p/gshard/" target="_blank" rel="noopener"
+>GShard&lt;/a>) 以及 ZeRO-1 DP.&lt;/p>
+&lt;p>作者主要进行了三点优化：&lt;/p>
+&lt;ol>
+&lt;li>构建了 DualPipe 用于高效 pipeline parallelism&lt;/li>
+&lt;li>构建了 cross-node all-to-all communication kernels 来高效利用 IB 以及 NVLink bandwidth&lt;/li>
+&lt;li>优化了训练时的 memory footprint, 使得训练时不再依赖 TP&lt;/li>
+&lt;/ol>
+&lt;h3 id="training-framework">&lt;a href="#training-framework" class="header-anchor">&lt;/a>Training Framework
+&lt;/h3>&lt;h4 id="dualpipe">&lt;a href="#dualpipe" class="header-anchor">&lt;/a>DualPipe
+&lt;/h4>&lt;p>DeepSeek-V3 中，由于 cross-node EP, computation-to-communication ratio 近似为 1:1, 为了解决这个问题，作者提出了 DualPipe. DualPipe 的核心思想是将 forward 和 backward 过程中的 computation 以及 communication 进行重叠。与 ZeroBubble 类似，作者将每个 chunk 分为四个部分：attention, all-to-all dispatch, MLP 以及 all-to-all combine. 对于 attention 和 MLP, 作者还进一步将 backward 拆分为 针对权重和输入的 backward. 其示意图如下所示，这里橙色部分代表 forward, 绿色代表了针对输入的 backward, 蓝色代表了针对权重的 backward&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3/DeepSeek-V3-overlapping-strategy.png"
+width="1101"
+height="125"
+loading="lazy"
+alt="Overlapping stategy of DeepSeek-V3"
+class="gallery-image"
+data-flex-grow="880"
+data-flex-basis="2113px"
+>&lt;/p>
+&lt;p>示意图里包含两个 block, 我们记为 block1, block2, 前向计算过程为&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&lt;span class="line">&lt;span class="cl">dispatch(F, block1) -&amp;gt; MLP(F, block1) -&amp;gt; combine(F, block1) -&amp;gt; attention(F, block2)
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>其中，&lt;code>dispatch(F, block1)&lt;/code> 与 MLP 的反向传播 &lt;code>MLP(B, block1)&lt;/code> 计算重叠, &lt;code>MLP(F, block1)&lt;/code> 与 MLP 反向传播的 dispatch &lt;code>dispatch(B, block1)&lt;/code> 通信重叠，&lt;code>combine(F, block1)&lt;/code> 与 attention 反向传播的 &lt;code>attention(B, block2)&lt;/code> 重叠，&lt;code>attention(F, block2)&lt;/code> 与反向传播的 combine &lt;code>combine(block2)&lt;/code> 重叠。下面是一个具体的例子&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3/DeepSeek-V3-DualPipe-scheduling.png"
+width="1212"
+height="210"
+loading="lazy"
+alt="DualPipe scheduling"
+class="gallery-image"
+data-flex-grow="577"
+data-flex-basis="1385px"
+>&lt;/p>
+&lt;p>作者进一步对比了 DualPipe, 1F1B 和 ZeroBubble, 结果如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Method&lt;/th>
+&lt;th>Bubble&lt;/th>
+&lt;th>Parameter&lt;/th>
+&lt;th>Activation&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>1F1B&lt;/td>
+&lt;td>$(PP-1)(F+B)$&lt;/td>
+&lt;td>$1\times$&lt;/td>
+&lt;td>$PP$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>ZB1P&lt;/td>
+&lt;td>$(PP-1)(F+B-2W)$&lt;/td>
+&lt;td>$1\times$&lt;/td>
+&lt;td>$PP$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>DualPipe (Ours)&lt;/td>
+&lt;td>$(\frac{PP}{2}-1)(F\&amp;B+B-3W)$&lt;/td>
+&lt;td>$2\times$&lt;/td>
+&lt;td>$PP+1$&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>这里 $F$ 是 forward chunk 的执行时间，$B$ 是 backward chunk 执行的时间，$W$ 是一个 chunk &amp;ldquo;backward for weights&amp;rdquo; 的执行时间，$F\&amp;B$ 是一个 chunk 前向反向传播重叠的时间。可以看到，DualPipe 只使用了额外的 $1/PP$ 倍的 peak activation memory, 就大幅度降低了 bubble 时间&lt;/p>
+&lt;h4 id="cross-node-all-to-all-communication">&lt;a href="#cross-node-all-to-all-communication" class="header-anchor">&lt;/a>Cross-node All-to-all Communication
+&lt;/h4>&lt;p>作者针对 DualPipe 构建了 cross-node all-to-all communication kernels 来提高通信效率。&lt;/p>
+&lt;p>作者提到，跨节点通信使用的是 IB, 节点内部通信使用的是 NVLink， 通信方式如下图所示。&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3/GPU-communication-pattern.png"
+width="1360"
+height="749"
+loading="lazy"
+alt="Communication of GPU"
+class="gallery-image"
+data-flex-grow="181"
+data-flex-basis="435px"
+>&lt;/p>
+&lt;p>对于 H800 来说,NVLink 的带宽为 160GB/s, IB 的带宽为 50GB/s, 因此 NVLInk 的通信效率是 IB 的 3.2 倍，即节点内部通信效率高于节点之间的通信效率。为了提高通信效率，作者限制每个 token 只能被分发到至多 4 个节点上（&lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v2/" target="_blank" rel="noopener"
+>DeepSeek-V2&lt;/a> 里提到的 device limited routing）。其具体通信方式为想传输到目标 node index 相同的 rank 上，然后再通过节点内部通信传输到目标的 rank 上。通过这种方式，我们可以让节点间通信与节点内部通信进行重叠，从而每个 token 可以从一个节点上选取 3.2 个专家，这样 DeepSeek-V3 可以在不损失效率的情况下最高选取 $13$ 个专家。&lt;/p>
+&lt;p>作者进一步采用了 warp specialization 技巧来将 20 个 SM 划分为 10 个通信 channel. 作者分别针对 dispatching 和 combing 阶段使用了不同数量的 warps.&lt;/p>
+&lt;h4 id="memory-saving">&lt;a href="#memory-saving" class="header-anchor">&lt;/a>Memory saving
+&lt;/h4>&lt;p>作者使用了如下技巧来减少内存访问：&lt;/p>
+&lt;ol>
+&lt;li>Recomputation of RMSNorm and MLA Up-Projection. 在 backward 过程中重新计算 RMSNorm operation 以及 MLA up projection 来避免存储器对应的输出&lt;/li>
+&lt;li>Exponential Moving Average in CPU. 作者将 EMA 参数保存在 CPU 中，然后进行异步更新来进一步减少内存访问&lt;/li>
+&lt;li>Shared Embedding and Output Head for Multi-Token Prediction. 作者将 embedding layer 和 output head 放在一个 PP rank 上，这样就可以提高 MTP 的内存访问效率&lt;/li>
+&lt;/ol>
+&lt;h3 id="fp8-training">&lt;a href="#fp8-training" class="header-anchor">&lt;/a>FP8 Training
+&lt;/h3>&lt;p>作者提出了一个基于 FP8 的混合精度训练框架。作者提出了两个改进方案：&lt;/p>
+&lt;ol>
+&lt;li>分组量化，将 tensor 按照 tile 分组或者按照 block 分组来分组量化，这样就避免了全局量化的精度损失&lt;/li>
+&lt;li>高精度累加，作者在乘法计算时，使用了 FP8 格式，然后在累加阶段，使用了更高精度的格式&lt;/li>
+&lt;/ol>
+&lt;p>为了进一步减少内存和通信开销，对于 activation 的 cache 以及 dispatch, 作者使用了 FP8 数据格式，然后对于优化器状态，作者使用了 BF16 数据格式。下面是对上面改进的具体说明。&lt;/p>
+&lt;h4 id="mixed-precision-training">&lt;a href="#mixed-precision-training" class="header-anchor">&lt;/a>Mixed Precision Training
+&lt;/h4>&lt;p>作者在本文中提出了使用 FP8 混合精度进行预训练，作者参考了 low precision training 构建 FP8 训练框架，即计算量高的使用 FP8 精度，计算量低的使用原本的数据精度, 框架如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3/DeepSeek-V3-mixed-precision.png"
+width="1210"
+height="365"
+loading="lazy"
+alt="Mix-precision training of DeepSeek-V3"
+class="gallery-image"
+data-flex-grow="331"
+data-flex-basis="795px"
+>&lt;/p>
+&lt;p>其中各个模块使用的精度如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Precision&lt;/th>
+&lt;th>Modules&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>FP8&lt;/td>
+&lt;td>Linear (Fprop, Dgrad, Wgrad)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>higher precision&lt;/td>
+&lt;td>- embedding&lt;br>- output head&lt;br>- Moe gating&lt;br>- normalization&lt;br>- attention operator&lt;br>- master weights&lt;br>- weight gradients&lt;br>- optimizer states&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h4 id="enhancing-low-precision-training-accuracy">&lt;a href="#enhancing-low-precision-training-accuracy" class="header-anchor">&lt;/a>Enhancing Low-precision Training Accuracy
+&lt;/h4>&lt;p>作者介绍了几个策略用于提高 FP8 混合精度训练的表现：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3/DeepSeek-V3-quantization.png"
+width="1162"
+height="588"
+loading="lazy"
+alt="Quantization of DeepSeek-V3"
+class="gallery-image"
+data-flex-grow="197"
+data-flex-basis="474px"
+>&lt;/p>
+&lt;ol>
+&lt;li>fine-grained quantization: 对于激活值，作者将 tensor 分割为 $1\times 128$ 大小的 groups, 然后每个 group 内部进行 quantization; 对于权重，作者将其分割为 $128\times 128$ 大小的 groups, 然后进行 quantization, 这样可以降低 quantization error, 如上图左图所示&lt;/li>
+&lt;li>increasing accumulation precision: 低精度训练会带来 underflow 的问题，而 FP8 GEMM 累加仅能保留约 14bit 精度，远低于 FP32 的 32bit 精度。为了解决这个问题，作者采用了 Tensor Core 不分累加 +CUDA core 高精度聚合的协同策略。即在 Tensor Core 上执行 MMA 指令时，先按照 14bit 精度对 $N_C$ 个元素进行累加，当达到 $N_C$ 时，作者将结果复制到 CUDA core 的 FP32 寄存器中，在 FP32 精度下完成累加。过程如上图右图所示&lt;/li>
+&lt;li>Mantissa over exponents. 与之前的工作不同，作者使用了 E4M3 的数据格式来达到更高的精度&lt;/li>
+&lt;li>Online Quantization. 为了降低 quantization 的误差，作者实时计算了 activation block 以及 weight block 的最大绝对值来导出 scaling factor 并量化为 FP8 精度&lt;/li>
+&lt;/ol>
+&lt;h4 id="low-precision-storage-and-communication">&lt;a href="#low-precision-storage-and-communication" class="header-anchor">&lt;/a>Low Precision Storage and Communication
+&lt;/h4>&lt;p>作者通过压缩 cached activation 和 optimizer states 来进一步减少内存访问以及通信访问次数&lt;/p>
+&lt;ul>
+&lt;li>Low-precision optimizer states: 对于 optimizer states, 作者使用了 BF16 数据格式来保存 &lt;a class="link" href="https://maosong.website/p/notes-on-adamw/" target="_blank" rel="noopener"
+>AdamW&lt;/a> 的优化器的一阶和二阶动量，但是对于 master weight 和 gradients 作者仍然使用了 FP32 来保证训练的数值稳定性&lt;/li>
+&lt;li>Low-Precision Activation: 对于 linear operator, 作者将其 cache activation 使用 FP8 格式进行存储，对于 attention 的输出，作者使用了 E5M6 数据格式来存储 activations, 这些 activations 的 tile size 为 $1\times 128$, 作者还是用了 2 的幂次作为 scale factor 来减少 quantizationerror; 对于 SwiGLU, 作者将其输入也保存为 FP8 的数据格式来降低内存消耗&lt;/li>
+&lt;li>Low-Precision Communication: 在 MoE up-projection 之前，作者将 attention 的输出量化为 FP8 数据格式再执行 dispatch 操作，这样可以降低通信开销。在反向传播的时候同理，先进行 FP8 量化，然后再进行反向 dispatch. 对于 combine 阶段，为了避免精度损失，作者还是使用了 BF16 数据格式&lt;/li>
+&lt;/ul>
+&lt;p>作者对比了 FP8 和 BF16 精度训练，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3/DeepSeek-V3-FP8-performance.png"
+width="1056"
+height="305"
+loading="lazy"
+alt="FP8 v.s. BF16"
+class="gallery-image"
+data-flex-grow="346"
+data-flex-basis="830px"
+>&lt;/p>
+&lt;p>实验结果显示，FP8 混合精度训练的损失降低不足 $0.25\%$.&lt;/p>
+&lt;h3 id="inference-and-deployment">&lt;a href="#inference-and-deployment" class="header-anchor">&lt;/a>Inference and Deployment
+&lt;/h3>&lt;p>作者在 H800 集群上部署 DeepSeek-V3, 作者分别针对 prefilling 和 decoding 两个阶段进行了优化&lt;/p>
+&lt;h4 id="prefilling">&lt;a href="#prefilling" class="header-anchor">&lt;/a>Prefilling
+&lt;/h4>&lt;p>prefilling 阶段在 4 节点 32 GPU 上进行，并行策略如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>模块&lt;/th>
+&lt;th>并行策略&lt;/th>
+&lt;th>说明&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Dense MLP&lt;/td>
+&lt;td>1-wat TP&lt;/td>
+&lt;td>减少 TP 通信&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Attention&lt;/td>
+&lt;td>4-way TP, SP, 8-way DP&lt;/td>
+&lt;td>SP 用于长文本处理&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MoE&lt;/td>
+&lt;td>32-way EP&lt;/td>
+&lt;td>每个 GPU 包含 8 个专家&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>为了实现负载均衡，作者提出了&lt;strong>redundant experts&lt;/strong>的策略，具体就是将负载比较高的专家进行复制。模型会周期性进行统计，然后计算出负载比较高的专家，接下来每个 GPU 除了原来的 8 个专家之外，还会 host 一个额外的 redundant expert.&lt;/p>
+&lt;p>为了提高 throughput, 作者同时处理两个 micro-batch, 来重叠 attention, MoE 和 dispatch, combine 通信，如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3/DeepSeek-V3-prefilling-overlap.png"
+width="661"
+height="316"
+loading="lazy"
+alt="Prefiling overlap of DeepSeek-V3"
+class="gallery-image"
+data-flex-grow="209"
+data-flex-basis="502px"
+>&lt;/p>
+&lt;p>作者还探索了 dynamic redundancy 策略，即每个 GPU host 更多的专家（比如 16 个）然后 inference 的每一步仅激活其中的 9 个，在进行 all-to-all operation 时，作者首先进行 global optimal routing 来计算最合适的专家。作者认为 prefilling 计算量很大，因此 routing 的计算量可以忽略不计&lt;/p>
+&lt;h4 id="decoding">&lt;a href="#decoding" class="header-anchor">&lt;/a>Decoding
+&lt;/h4>&lt;p>在 decoding 阶段，作者在 40 个节点 320 GPU 上进行部署，并行策略如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>模块&lt;/th>
+&lt;th>并行策略&lt;/th>
+&lt;th>说明&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Attention&lt;/td>
+&lt;td>4-way TP, SP, 80-way DP&lt;/td>
+&lt;td>SP 用于长文本处理&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MoE&lt;/td>
+&lt;td>320-way EP&lt;/td>
+&lt;td>每个 GPU 包含 8 个专家&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>这个阶段，每个 GPU 只 host 一个专家，64 个 GPU 负责 host redundant expert 以及 shared expert. 作者通过在 IB 上直接进行 P2P 的传输来降低通信的开销，作者还是用了 IBGDA 来进一步最小化 latency 以及提高通信效率&lt;/p>
+&lt;p>在这个阶段，attention 的计算占据了大部分时间，因此，作者采取了如下的 overlap 策略&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3/DeepSeek-V3-decoding-overlap.png"
+width="896"
+height="308"
+loading="lazy"
+alt="Decoding overlap of DeepSeek-V3"
+class="gallery-image"
+data-flex-grow="290"
+data-flex-basis="698px"
+>&lt;/p>
+&lt;p>由于 decoding 阶段一般 batch size 比较小，因此整个 decoding 的瓶颈在于 memory access, 因此为了避免影响 attention 的计算效率，作者仅安排一小部分 SM 用于 dispatch-MoE-combine.&lt;/p>
+&lt;h3 id="suggestions-on-hardware-design">&lt;a href="#suggestions-on-hardware-design" class="header-anchor">&lt;/a>Suggestions on Hardware Design
+&lt;/h3>&lt;h4 id="communication-hardware">&lt;a href="#communication-hardware" class="header-anchor">&lt;/a>Communication Hardware
+&lt;/h4>&lt;p>尽管作者将计算与通信重叠来提高训练效率，但是已有的通信仍然依赖于 SM, 这样限制了计算的效率。作者希望工能够构建专门针对通信的设备，另一方面，作者希望统一 IB 和 NVLink 来降低实现难度&lt;/p>
+&lt;h4 id="computation-hardware">&lt;a href="#computation-hardware" class="header-anchor">&lt;/a>Computation Hardware
+&lt;/h4>&lt;ol>
+&lt;li>提升 FP8 GEMM 的累加精度，当前精度只有 14bit, 作者希望能够在 GPU 设计上进行改进，将这个精度提升到 34-bit&lt;/li>
+&lt;li>支持 tile 以及 block 层面的 quantization, 尽管前文作者已经设计出了改进的算法，但是 Tensor Core 以及 CUDA 之前平凡的数据移动降低了计算效率，作者希望未来能够支持细粒度的 quantization&lt;/li>
+&lt;li>online quantization, 作者希望将 FP8 cast 以及 TMA 结合在一起，从而 quantization 可以在传输的时候完成计算，减少了内存读写。作者还建议使用 warp-level cast instruction&lt;/li>
+&lt;li>Transposed GEMM operations. 本文中，矩阵被切分为不同的 tiles, 在计算的时候需要先加载这些 tiles 然后进行 dequantization, transpose 等操作，作者希望未来能够直接支持 transposed reads of matrices&lt;/li>
+&lt;/ol>
+&lt;h2 id="pre-training">&lt;a href="#pre-training" class="header-anchor">&lt;/a>Pre-training
+&lt;/h2>&lt;h3 id="pre-training-data">&lt;a href="#pre-training-data" class="header-anchor">&lt;/a>Pre-training Data
+&lt;/h3>&lt;p>相比于 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v2/" target="_blank" rel="noopener"
+>DeepSeek-V2&lt;/a>, DeepSeek-V3 提升了数学和代码数据的比例，以及增加了多语种数据。最终训练数据一共包括 &lt;strong>14.8T&lt;/strong>&lt;/p>
+&lt;p>作者还使用了 DeepSeekCoder-V2 里应用的 Fill in the middle 策略来让模型基于上下文越策中间的文本，对应的数据格式如下&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&lt;span class="line">&lt;span class="cl">&amp;lt;|fim_begin|&amp;gt;f_pre&amp;lt;|fim_hole|&amp;gt;f_suf&amp;lt;|fim_hole|&amp;gt;f_middle&amp;lt;|fim_end|&amp;gt;
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>这个结构与 sequence packing 结合在一起。&lt;/p>
+&lt;p>Tokenizer 基于 BBPE, 大小为 128K tokens. 在训练时，作者将随机一部分 combine token 进行切分来减少 token boundary bias 问题&lt;/p>
+&lt;h3 id="hyper-parameters">&lt;a href="#hyper-parameters" class="header-anchor">&lt;/a>Hyper-parameters
+&lt;/h3>&lt;p>模型参数如下表所示，最终 DeepSeek-V3 拥有 671B 总参数，激活参数为 37B&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>variable&lt;/th>
+&lt;th>notation&lt;/th>
+&lt;th>value&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>layers&lt;/td>
+&lt;td>$\ell$&lt;/td>
+&lt;td>61&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>dense layers&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>3&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>hidden dimension&lt;/td>
+&lt;td>$d$&lt;/td>
+&lt;td>7168&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>num of attention heads&lt;/td>
+&lt;td>$n_h$&lt;/td>
+&lt;td>128&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>head dimension&lt;/td>
+&lt;td>$d_h$&lt;/td>
+&lt;td>128&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>KV compression dimension&lt;/td>
+&lt;td>$d_c$&lt;/td>
+&lt;td>512&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>query compression dimension&lt;/td>
+&lt;td>$d_c'$&lt;/td>
+&lt;td>1536&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>decouple query and key dimension&lt;/td>
+&lt;td>$d_h^R$&lt;/td>
+&lt;td>64&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>routed expert&lt;/td>
+&lt;td>$N_r$&lt;/td>
+&lt;td>256&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>shared expert&lt;/td>
+&lt;td>$N_s$&lt;/td>
+&lt;td>1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MoE hidden dimension&lt;/td>
+&lt;td>$d_{MoE}$&lt;/td>
+&lt;td>2048&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>activated experts&lt;/td>
+&lt;td>$K$&lt;/td>
+&lt;td>8&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>limited node routing&lt;/td>
+&lt;td>$M$&lt;/td>
+&lt;td>4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MTP depth&lt;/td>
+&lt;td>$D$&lt;/td>
+&lt;td>1&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>训练时，作者使用了 learning rate scheduling, batch size scheduling 等方法。对于 PP, routed expert 会均匀分布为 8node 对应的 64 个 GPU 上，预训练时模型的上下文长度为 4k&lt;/p>
+&lt;h3 id="long-context-extension">&lt;a href="#long-context-extension" class="header-anchor">&lt;/a>Long Context Extension
+&lt;/h3>&lt;p>作者使用了 &lt;a class="link" href="https://maosong.website/p/notes-on-yarn/" target="_blank" rel="noopener"
+>YARN&lt;/a> 来扩展模型的上下文长度，模型上下文长度经过两个额外的训练阶段从 4K 扩展到 32K 再扩展到 128K, 均训练了 1000 步。&lt;/p>
+&lt;p>YARN 配置与 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v2/" target="_blank" rel="noopener"
+>DeepSeek-V2&lt;/a> 基本一致，在额外的 decoupled query and key 上作者没有应用这一点。参数配置如下表&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>parameter&lt;/th>
+&lt;th>$s$&lt;/th>
+&lt;th>$\alpha$&lt;/th>
+&lt;th>$\beta$&lt;/th>
+&lt;th>$\sqrt{t}$&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>value&lt;/td>
+&lt;td>40&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>32&lt;/td>
+&lt;td>$0.1\ln s+1$&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>第一阶段的上下文长度为 32K, batch size 为 1920, 第二个阶段的上下文长度为 128K, batch size 为 480.&lt;/p>
+&lt;h3 id="performance">&lt;a href="#performance" class="header-anchor">&lt;/a>Performance
+&lt;/h3>&lt;p>DeepSeek-V3 base 的表现下图所示，作者对比了 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v2/" target="_blank" rel="noopener"
+>DeepSeek-V2&lt;/a>, &lt;a class="link" href="https://maosong.website/p/notes-on-qwen2.5/" target="_blank" rel="noopener"
+>Qwen2.5&lt;/a>, &lt;a class="link" href="LLaMA%203.1" >LLaMA 3.1&lt;/a>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3/DeepSeek-V3-base-performance.png"
+width="1065"
+height="1083"
+loading="lazy"
+alt="Performance of DeepSeek-V3 base"
+class="gallery-image"
+data-flex-grow="98"
+data-flex-basis="236px"
+>&lt;/p>
+&lt;h3 id="discussion">&lt;a href="#discussion" class="header-anchor">&lt;/a>Discussion
+&lt;/h3>&lt;p>作者首先验证了 MTP 的有效性，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3/DeepSeek-V3-ablation-MTP.png"
+width="979"
+height="451"
+loading="lazy"
+alt="Ablation study on MTP"
+class="gallery-image"
+data-flex-grow="217"
+data-flex-basis="520px"
+>&lt;/p>
+&lt;p>可以看到，在模型架构相同，训练数据相同的情况下，1-MTP 的效果超过了 baseline 的表现，说明了 MTP 策略的有效性&lt;/p>
+&lt;p>接下来，作者还验证了 &lt;a class="link" href="https://maosong.website/p/notes-on-loss-free-balancing/" target="_blank" rel="noopener"
+>Loss-Free Balancing&lt;/a> 的有效性，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3/DeepSeek-V3-ablation-loss-free-balancing.png"
+width="987"
+height="458"
+loading="lazy"
+alt="Ablation on loss-free balancing"
+class="gallery-image"
+data-flex-grow="215"
+data-flex-basis="517px"
+>&lt;/p>
+&lt;p>可以看到，loss-free Balancing 的效果比 loss balancing 的效果更好&lt;/p>
+&lt;p>接下来，作者对比了 loss-free balancing 和 sequence-wise auxiliary loss, 即 batch-wise v.s. sequence-wise. 作者认为，前者的约束更灵活，因为其不要求 in-domain balance. 作者在测试集上进行可视化，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3/DeepSeek-V3-ablation-batch-wise.png"
+width="1106"
+height="522"
+loading="lazy"
+alt="Ablation study on batch-wise load balancing"
+class="gallery-image"
+data-flex-grow="211"
+data-flex-basis="508px"
+>&lt;/p>
+&lt;p>实验结果发现，loss-free 策略对应的 expert specialization 更强。作者进一步设计了一个 batch-wise auxiliary loss 来实现 batch-wise load balance, 结果发现，这种策略也能达到和 loss-free balancing 一样的效果，这说明了 batch-wise load balancing 效果更好&lt;/p>
+&lt;p>最后，作者提了两点 loss-free 策略的问题：&lt;/p>
+&lt;ol>
+&lt;li>在特定的 sequence 或者小 batch 里出现负载不均衡。作者通通过增大 batch size 来解决这个问题&lt;/li>
+&lt;li>在推理阶段因为 domain-shift 导致的负载不均衡。作者实现了一个基于 redundant expert 的推理框架来解决这个问题&lt;/li>
+&lt;/ol>
+&lt;h2 id="post-training">&lt;a href="#post-training" class="header-anchor">&lt;/a>Post-training
+&lt;/h2>&lt;h3 id="sft">&lt;a href="#sft" class="header-anchor">&lt;/a>SFT
+&lt;/h3>&lt;p>post-training 包含 1.5M 样本，数据包括 reasoning 数据以及 non-reasoning 数据，前者由 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-r1/" target="_blank" rel="noopener"
+>DeepSeek-R1&lt;/a> 合成，后者由 DeepSeek-V2.5 合成&lt;/p>
+&lt;p>SFT 时，作者训练了两个 epoch, 使用了 sequence packing 技巧&lt;/p>
+&lt;h3 id="rl">&lt;a href="#rl" class="header-anchor">&lt;/a>RL
+&lt;/h3>&lt;p>Reward model 包含 rule-based reward model 和 model-based reward model.&lt;/p>
+&lt;p>RL 训练使用的算法为 GRPO&lt;/p>
+&lt;h3 id="post-training-performance">&lt;a href="#post-training-performance" class="header-anchor">&lt;/a>Post-training Performance
+&lt;/h3>&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v3/DeepSeek-V3-instruct-performance.png"
+width="1112"
+height="813"
+loading="lazy"
+alt="Performance of DeepSeek-V3"
+class="gallery-image"
+data-flex-grow="136"
+data-flex-basis="328px"
+>&lt;/p>
+&lt;h3 id="post-training-discussion">&lt;a href="#post-training-discussion" class="header-anchor">&lt;/a>Post-training Discussion
+&lt;/h3>&lt;p>作者首先探究了 Distillation 对模型表现的影响，作者使用 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-r1/" target="_blank" rel="noopener"
+>DeepSeek-R1&lt;/a> 来蒸馏 DeepSeek-V2.5, 结果如下图所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>LiveCodeBench-CoT&lt;/th>
+&lt;th>&lt;/th>
+&lt;th>MATH-500&lt;/th>
+&lt;th>&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;/td>
+&lt;td>Pass@1&lt;/td>
+&lt;td>Length&lt;/td>
+&lt;td>Pass@1&lt;/td>
+&lt;td>Length&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>DeepSeek-V2.5 Baseline&lt;/td>
+&lt;td>31.1&lt;/td>
+&lt;td>718&lt;/td>
+&lt;td>74.6&lt;/td>
+&lt;td>769&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>DeepSeek-V2.5 +R1 Distill&lt;/td>
+&lt;td>37.4&lt;/td>
+&lt;td>783&lt;/td>
+&lt;td>83.2&lt;/td>
+&lt;td>1510&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>可以看到，distillation 可以显著提高模型的表现。但是其问题在于也会让模型输出的长度增加。作者认为知识蒸馏是 post-training optimization 的一个重要方向。&lt;/p>
+&lt;p>接下来，作者讨论了 self-rewarding, 具体做法就是使用 DeepSeek-V3 来对评估结果进行投票，结果发现最终的效果很好，作者认为 LLM 可以很好地将非结构化信息转换为 rewards.&lt;/p>
+&lt;p>最后，作者讨论了 MTP. MTP 可以于 speculative decoding 结合，进一步提高 decoding 的速度。通过实验作者发现，second token prediction 的接受率在 $85\%\sim 90\%$ 之间，说明了其有效性。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>在本文中，作者提出了 DeepSeek-V3, 一个 671B-A37B 的 MoE 大语言模型，训练 token 数为 &lt;strong>14.8T&lt;/strong>. 作者使用了 loss-free-balancing strategy 来实现负载均衡。训练时作者使用了 FP8 混合精度。评估发现 DeepSeek-V3 的达到了 SOTA 表现。&lt;/p>
+&lt;p>作者认为，DeepSeek-V3 model size 太大，不适合部署。第二，部署策略需要进一步改进。&lt;/p>
+&lt;p>最后，作者认为未来工作有以下几点：&lt;/p>
+&lt;ol>
+&lt;li>改进模型架构，进一步提高训练以及推理效率，扩展模型的上下文&lt;/li>
+&lt;li>提升训练数据的数量和质量&lt;/li>
+&lt;li>提高模型的 reasoning 能力&lt;/li>
+&lt;li>更详尽的评估&lt;/li>
+&lt;/ol>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2412.19437" target="_blank" rel="noopener"
+>Arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on DeepSeek-R1</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-deepseek-r1/</link><pubDate>Tue, 02 Dec 2025 18:21:54 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-deepseek-r1/</guid><description/></item><item><title>Notes on DeepSeek-V2</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-deepseek-v2/</link><pubDate>Tue, 02 Dec 2025 18:21:54 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-deepseek-v2/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>作者首先提到如何提高模型的训练效率以及 inference efficiency 是两个尚未解决的问题。&lt;/p>
+&lt;p>基于这两个问题，作者在本文中提出了 DeepSeek-V2，一个开源的 MoE 模型，DeepSeek-V2 的亮点在于训练和推理都非常高效。最终 DeepSeeK-V2 包含 236B 总参数，激活参数为 21B, 上下文长度为 128K. 作者还开源了 DeepSeek-V2-Lite, 一个 15.7B-A2.4B 的 MoE 模型，用于学术研究。&lt;/p>
+&lt;p>DeepSeek-V2 主要改进点为：&lt;/p>
+&lt;ol>
+&lt;li>基于 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseekmoe/" target="_blank" rel="noopener"
+>DeepSeekMoE&lt;/a>, 使用了 MoE 架构&lt;/li>
+&lt;li>使用了 MLA 压缩 KV cache, 大幅度提高推理效率&lt;/li>
+&lt;/ol>
+&lt;p>DeepSeek-V2 预训练使用了 &lt;strong>8.1T&lt;/strong> tokens, 相比于 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-llm/" target="_blank" rel="noopener"
+>DeepSeek-LLM&lt;/a>, 预训练数据主要增加了中文数据以及提高了数据的质量。&lt;/p>
+&lt;p>接下来，作者收集了 &lt;strong>1.5M&lt;/strong> 对话数据来进行 SFT, 最终作者基于 DeepSeek Math 提出的 GRPO 来进行对齐。&lt;/p>
+&lt;h2 id="architecture">&lt;a href="#architecture" class="header-anchor">&lt;/a>Architecture
+&lt;/h2>&lt;p>DeepSeek-V2 的模型架构如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v2/DeepSeek-V2-architecture.png"
+width="1324"
+height="1064"
+loading="lazy"
+alt="Architecture of DeepSeek-V2"
+class="gallery-image"
+data-flex-grow="124"
+data-flex-basis="298px"
+>&lt;/p>
+&lt;p>模型基于 DeepSeekMoE 开发得到，相比于 DeepSeekMoE, DeepSeek-V2 主要是使用了 MLA&lt;/p>
+&lt;h3 id="mla">&lt;a href="#mla" class="header-anchor">&lt;/a>MLA
+&lt;/h3>&lt;p>这部分介绍见 &lt;a class="link" href="https://maosong2022.github.io/p/notes-on-mla/" target="_blank" rel="noopener"
+>MLA&lt;/a>&lt;/p>
+&lt;h3 id="deepseekmoe">&lt;a href="#deepseekmoe" class="header-anchor">&lt;/a>DeepSeekMoE
+&lt;/h3>&lt;h4 id="architecture-1">&lt;a href="#architecture-1" class="header-anchor">&lt;/a>Architecture
+&lt;/h4>&lt;p>关于架构的介绍见 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseekmoe/" target="_blank" rel="noopener"
+>DeepSeekMoE&lt;/a>&lt;/p>
+&lt;h4 id="device-limited-routing">&lt;a href="#device-limited-routing" class="header-anchor">&lt;/a>Device-Limited Routing
+&lt;/h4>&lt;p>由于 DeepSeek-MoE 使用了细粒度的专家，因此专家会分布在更多的设备（GPU）上，计算时，基于 routing 的 expert 所在设备，会产生不同大小的通信开销。为了降低通信开销，作者构建了 device-limited routing mechanism. 具体的做法就是，在 Routing 之前，先基于 experts 的 affinity score 挑选 $M$ 个设备，然后基于这 $M$ 个设备的专家挑选 top-K 专家进行计算。&lt;/p>
+&lt;p>作者通过实验发现，当 $M\geq3$ 时，device-limited routing 可以和标准的 top-K routing 表现差不多。&lt;/p>
+&lt;h4 id="auxiliary-loss-for-load-balance">&lt;a href="#auxiliary-loss-for-load-balance" class="header-anchor">&lt;/a>Auxiliary Loss for Load Balance
+&lt;/h4>&lt;p>作者使用了三个 loss 来实现负载均衡。其中，expert level 和 device level 的 load balancing loss 与 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseekmoe/" target="_blank" rel="noopener"
+>DeepSeekMoE&lt;/a> 相同。第三个 loss 是 communication balance loss, 这个 loss 的目的是让每个设备的通信开销保持平衡。损失函数的表达式如下所示&lt;/p>
+$$
+\mathcal{L}_{communication} = \alpha\sum_{i=1}^D f_iP_i
+$$&lt;p>其中 $\alpha$ 是超参数，$D$ 是 expert group 的个数。&lt;/p>
+$$
+f_i = \frac{D}{MT}\sum_{t=1}^T\mathbb{1}(\text{Token }t \text{ is sent Device }i),\quad P_i = \sum_{j\in\mathcal{E}_i}P_j
+$$&lt;p>device limited routing 让每个 device 发送至多 $MT$ 个 hidden states 到其他设备上。而 communication balancing loss 则让每个设备最多从其他设备接收 $MT$ 个 hidden states.&lt;/p>
+&lt;h4 id="token-dropping-strategy">&lt;a href="#token-dropping-strategy" class="header-anchor">&lt;/a>Token-Dropping Strategy
+&lt;/h4>&lt;p>尽管前面已经增加了 load balance loss, 但毕竟不是硬约束。因此，作者就从硬件层面提出了 Token dropping 策略，来提高训练效率。核心思想就是，在训练时，主动丢弃部分 token, 强制让各个设备的计算量不会超过额度限制，进而减少资源浪费。&lt;/p>
+&lt;p>具体做法就是，在训练之前，先将每个设备的 capacity factor 设置为 1 （定义见 &lt;a class="link" href="https://maosong.website/p/switch-transformer/" target="_blank" rel="noopener"
+>Switch Transformer&lt;/a>）. 然后按照 affinity score 来丢弃一些分数比较低的 token, 直到该设备的 token 数量刚到达到 capacity。为了避免过度学习导致模型表现较差，对于 $10\%$ 的训练数据，作者不执行 token dropping 策略。&lt;/p>
+&lt;p>最终，在 inference 时，可以根据需求来决定是否丢弃 token, 比如在 low latency 场景，我们可以丢弃低价值的 token, 在高精度场景，我们就可以保留所有的 token.由于在训练阶段已经才去过 token dropping 策略，因此在推理时不管是丢弃还是全部保留模型都能比较好的适应。&lt;/p>
+&lt;h2 id="pre-training">&lt;a href="#pre-training" class="header-anchor">&lt;/a>Pre-training
+&lt;/h2>&lt;h3 id="data">&lt;a href="#data" class="header-anchor">&lt;/a>Data
+&lt;/h3>&lt;p>预训练数据与 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-llm/" target="_blank" rel="noopener"
+>DeepSeek-LLM&lt;/a> 基本上差不多，作者针对中文数据，数据质量进行了改进。最终预训练数据包括 &lt;strong>8.1T&lt;/strong> token, 其中中文数据比英文数据多 $12\%$.&lt;/p>
+&lt;p>tokenizer 与 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-llm/" target="_blank" rel="noopener"
+>DeepSeek-LLM&lt;/a> 一致。&lt;/p>
+&lt;h3 id="model-configuration">&lt;a href="#model-configuration" class="header-anchor">&lt;/a>Model Configuration
+&lt;/h3>&lt;p>模型配置如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>DeepSeek-V2&lt;/th>
+&lt;th>DeepSeek-V2-Lite&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Date&lt;/td>
+&lt;td>2024-5&lt;/td>
+&lt;td>2024-5&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td># Total Parameters&lt;/td>
+&lt;td>236B&lt;/td>
+&lt;td>15.7B&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td># Activated Parameters&lt;/td>
+&lt;td>21B&lt;/td>
+&lt;td>2.4B&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td># tokens&lt;/td>
+&lt;td>8.1T&lt;/td>
+&lt;td>5.7T&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td># Dense Layers&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td># MoE Layers&lt;/td>
+&lt;td>60&lt;/td>
+&lt;td>26&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Hidden Dim&lt;/td>
+&lt;td>5120&lt;/td>
+&lt;td>2048&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Dense Intermediate Dim&lt;/td>
+&lt;td>12288&lt;/td>
+&lt;td>10944&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MoE Intermediate Dim&lt;/td>
+&lt;td>1536&lt;/td>
+&lt;td>1408&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Attention&lt;/td>
+&lt;td>MLA&lt;/td>
+&lt;td>MLA&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td># Attention Heads&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>16&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td># Key-Value Heads&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>16&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td># Routed Experts&lt;/td>
+&lt;td>160&lt;/td>
+&lt;td>64&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td># Experts Active Per Token&lt;/td>
+&lt;td>6&lt;/td>
+&lt;td>6&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td># Shared Experts&lt;/td>
+&lt;td>2&lt;/td>
+&lt;td>2&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>这里比较特殊的一点在于，模型在第一层使用了 MoE layer, 这个做法的原因在后面的 &lt;a class="link" href="https://maosong.website/p/notes-on-olmoe/" target="_blank" rel="noopener"
+>olmoe&lt;/a> 里有提到，核心思想是 early layer 特别是第一层 layer 收敛比较慢。&lt;/p>
+&lt;p>MLA 的配置如下 (DeepSeek-V2)&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>field&lt;/th>
+&lt;th>value&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$d_c$&lt;/td>
+&lt;td>512&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$d_c'$&lt;/td>
+&lt;td>1536&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$n_h$&lt;/td>
+&lt;td>16&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$d_h$&lt;/td>
+&lt;td>128&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$d_h^R$&lt;/td>
+&lt;td>64&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="training-recipe">&lt;a href="#training-recipe" class="header-anchor">&lt;/a>Training Recipe
+&lt;/h3>&lt;p>训练的配置也与 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-llm/" target="_blank" rel="noopener"
+>DeepSeek-LLM&lt;/a> 差不多，对于 MoE，作者使用了 PP 将不同的 layers 分配在不同的 device 上，然后 MoE 的 experts 被分配在 8 个 device 上 ($D=8$), 对于 device-limited routing, 每个 token 发送到至多 3 个 device, 也就是 $M=3$.&lt;/p>
+&lt;h3 id="infra">&lt;a href="#infra" class="header-anchor">&lt;/a>Infra
+&lt;/h3>&lt;p>在 infra 上，DeepSeek-V2 也是用了 HAI-LLM 框架进行训练。这里面使用了 16-way zero-bubble PP, 8-way EP, ZeRO-1 DP.&lt;/p>
+&lt;p>由于 DeepSeek-V2 的激活参数比较少，因此，作者没有使用 TP, 进而降低通信开销。作者还将 shared experts 的计算与 expert all-to-all 通信进行重叠来提高计算效率。作者还使用了 kernel fusion 和 flash attention 2 来加速训练。&lt;/p>
+&lt;h3 id="long-context">&lt;a href="#long-context" class="header-anchor">&lt;/a>Long Context
+&lt;/h3>&lt;p>在预训练阶段结束之后，作者使用了 &lt;a class="link" href="https://maosong.website/p/notes-on-yarn/" target="_blank" rel="noopener"
+>YARN&lt;/a> 来将模型的上下文从 4K 扩展到 128K. 超参数设置为&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Parameter&lt;/th>
+&lt;th>Value&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$s$&lt;/td>
+&lt;td>40&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\alpha$&lt;/td>
+&lt;td>1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\beta$&lt;/td>
+&lt;td>32&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>target context length&lt;/td>
+&lt;td>160K&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>scaling factor&lt;/td>
+&lt;td>$\sqrt{t} = 0.0707\ln s + 1$&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>作者在 32K 的上下文下额外训练了 1000 步，然后在推理阶段通过 YaRN 将模型的上下文长度扩展到 128K.&lt;/p>
+&lt;h3 id="evaluation">&lt;a href="#evaluation" class="header-anchor">&lt;/a>Evaluation
+&lt;/h3>&lt;p>作者对比了 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-llm/" target="_blank" rel="noopener"
+>DeepSeek-LLM&lt;/a>, &lt;a class="link" href="https://maosong.website/p/notes-on-qwen1.5/" target="_blank" rel="noopener"
+>Qwen1.5&lt;/a>, &lt;a class="link" href="https://maosong.website/p/mixstral-8x7b/" target="_blank" rel="noopener"
+>Mixtral MoE&lt;/a> 以及 &lt;a class="link" href="https://maosong.website/p/notes-on-llama3/" target="_blank" rel="noopener"
+>LLaMA 3&lt;/a>, 实验结果如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v2/DeepSeek-V2-pretraining-performance.png"
+width="1264"
+height="1177"
+loading="lazy"
+alt="Performance of DeepSeek-V2 base"
+class="gallery-image"
+data-flex-grow="107"
+data-flex-basis="257px"
+>&lt;/p>
+&lt;h3 id="efficiency">&lt;a href="#efficiency" class="header-anchor">&lt;/a>Efficiency
+&lt;/h3>&lt;p>作者对比了以下 DeepSeek-MoE 和 DeepSeek-LLM 的训练效率，结果发现，对于 1T 的 token, DeepSeek-LLM 需要 300.6K GPU hours, 而 DeepSeek-V2 仅需要 127.8K GPU hours. 也就是说，DeepSeeK-V2 节省了 $42.5\%$ 的训练成本&lt;/p>
+&lt;p>在推理时，作者首先将模型的精度转换为 FP8，然后作者进一步对模型进行 KV cache quantization 来进一步压缩每个 token 的 KV cache 到 6bits. 最终，DeepSeek-V2 的 throughtput 为 50K tokens/s.&lt;/p>
+&lt;h2 id="post-training">&lt;a href="#post-training" class="header-anchor">&lt;/a>Post-training
+&lt;/h2>&lt;p>post-training 分为 SFT 和 RL 两个阶段。&lt;/p>
+&lt;h3 id="sft">&lt;a href="#sft" class="header-anchor">&lt;/a>SFT
+&lt;/h3>&lt;p>在 SFT 阶段，作者构建了 &lt;strong>1.5M&lt;/strong> 样本，包括 1.2M 有帮助性的样本和 0.3M 安全性相关的样本。模型训练了 2 个 epoch, 学习率为 $5e-6$.&lt;/p>
+&lt;h3 id="rl">&lt;a href="#rl" class="header-anchor">&lt;/a>RL
+&lt;/h3>&lt;p>作者使用了 GRPO 算法来进一步对齐模型的表现。&lt;/p>
+&lt;p>作者通过实验发现，在 reasoning data, 如 code 和 math 相关数据上进行训练时，可以有效提高模型的表现。因此作者将 RL 的训练分为两个阶段，第一个阶段用于提高模型的 reasoning 能力，第二个阶段用于对齐人类偏好。&lt;/p>
+&lt;p>在第一个阶段，作者首先训练了一个针对 code 和 Math 的 reward model $\mathrm{RM}_{\mathrm{reasoning}}$, 然后基于这个 reward model 来训练 policy model:&lt;/p>
+$$
+r_i=\mathrm{RM}_{\mathrm{reasoning}}(o_i)
+$$&lt;p>在第二阶段，作者使用了一个 Multi-reward 框架，包括一个 helpful reward model $\mathrm{RM}_{\mathrm{helpful}}$, 一个 safety reward model $\mathrm{RM}_{\mathrm{safety}}$ 和一个 rule-based reward model $\mathrm{RM}_{\mathrm{rule}}$, 最终的 reward 为&lt;/p>
+$$
+r_i = c_1\mathrm{RM}_{\mathrm{helpful}}+c_2\mathrm{RM}_{\mathrm{safety}}+c_3\mathrm{RM}_{\mathrm{rule}}
+$$&lt;p>训练时，reward model 由 SFT model 初始化得到，然后基于 point-wise 或者 pair-wise loss 进行训练。&lt;/p>
+&lt;h3 id="evaluation-1">&lt;a href="#evaluation-1" class="header-anchor">&lt;/a>Evaluation
+&lt;/h3>&lt;p>chat 版本的模型评估结果如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-v2/DeepSeek-V2-posttraining-performance.png"
+width="1325"
+height="923"
+loading="lazy"
+alt="Performance of DeepSeek-V2-chat"
+class="gallery-image"
+data-flex-grow="143"
+data-flex-basis="344px"
+>&lt;/p>
+&lt;h3 id="discussion">&lt;a href="#discussion" class="header-anchor">&lt;/a>Discussion
+&lt;/h3>&lt;p>作者讨论了三点发现：&lt;/p>
+&lt;ol>
+&lt;li>SFT data 数量。已有工作认为进需要 10K 左右的样本就可以进行 SFT，但是作者发现当数据量小于 10K 时，模型在 IFEval benchmark 上的表现大幅度下降。作者认为，这是由于数据过少导致模型很难掌握特定的技能。因此，作者认为足够的数据以及数据质量都很重要，特别是写作类任务和 open-ended QA 类任务。&lt;/li>
+&lt;li>alignment tax. 作者发现通过 human preference alignment, 模型在 open-ended generation benchmark 上的保险有了很大提升。与 RLHF 一样，作者也发现了 alignment 之后模型在一些 benchmark 上表现也会下降。作者通过改进解决了这个问题，作者认为如何在不损失模型表现的情况下实现对齐是一个值得探究的方向。&lt;/li>
+&lt;li>online RL. 作者发现 Online RL 比 offline RL 的表现更好。作者认为如何根据不同的任务来选取 offline RL 和 online RL 也是一个值得探究的问题。&lt;/li>
+&lt;/ol>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>在本文中，作者提出了 DeepSeek-V2, 一个基于 MoE 架构的大语言模型系列，模型的上下文为 128K. 作者基于 DeepSeek-MoE, 提出了 MLA 来提高模型的 inference 效率，并大幅度降低了训练的成本。&lt;/p>
+&lt;p>作者介绍了几点未来工作：&lt;/p>
+&lt;ol>
+&lt;li>进一步 scaling up MoE 模型，降低模型的训练以及推理成本&lt;/li>
+&lt;li>进一步对齐模型和人类的价值观，然后最小化人类监督信号&lt;/li>
+&lt;li>扩展模型到多模态版本&lt;/li>
+&lt;/ol>
+&lt;h2 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2405.04434" target="_blank" rel="noopener"
+>Arxiv&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://huggingface.co/deepseek-ai/DeepSeek-V2" target="_blank" rel="noopener"
+>HuggingFace&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on MLA</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-mla/</link><pubDate>Tue, 02 Dec 2025 18:21:54 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-mla/</guid><description>&lt;p>DeepSeek 在 2024 年 5 月提出了 multi-head latent attention (MLA), 用于提高 attention 的 Inference 效率&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>传统的 multi head attention (MHA) 虽然效果好，但是在 inference 时，其 KV cache 会变成瓶颈，影响推理效率。为了解决这个问题，已有的工作如 &lt;a class="link" href="https://maosong2022.github.io/p/notes-on-mqa/" target="_blank" rel="noopener"
+>MQA&lt;/a> 和 &lt;a class="link" href="https://maosong2022.github.io/p/notes-on-gqa/" target="_blank" rel="noopener"
+>GQA&lt;/a> 通过共享权重来减少 KV cache 内存占用，但是结果发现模型的表现也会降低。&lt;/p>
+&lt;p>为了解决这个问题，作者提出了 multi-head latent attention (MLA), 来压缩 KV cache.&lt;/p>
+&lt;h2 id="related-work">&lt;a href="#related-work" class="header-anchor">&lt;/a>Related Work
+&lt;/h2>&lt;h3 id="mha">&lt;a href="#mha" class="header-anchor">&lt;/a>MHA
+&lt;/h3>&lt;p>令 $d$ 为 hidden size, $n_h$ 为 attention heads 的个数，$\ell$ 为 transformer layer 的层数，$d_h$ 为每个 head 的 dimension, $h_t\in\mathbb{R}^d$ 为 attention layer 中第 $t$ 个 token 对应的 hidden states。对于标准的 MHA, 我们首先计算 Q, K, V 如下：&lt;/p>
+$$
+q_t=W^{Q}h_t,\quad k_t=W^Kh_t,\quad v_t = W^Vh_t
+$$&lt;p>其中，$W^Q,W^K,W^V\in\mathbb{R}^{d_hn_h\times d}$ 分别为 query, key, value projection layer 的权重。接下来 MHA 的计算方式如下&lt;/p>
+$$
+\begin{aligned}
+o_{t,i} &amp;= \sum_{j=1}^t\mathrm{softmax}_j\left(\frac{q_{t,i}^Tk_{j,i}}{\sqrt{d_h}}\right)v_{j,i},\\
+u_t&amp;= W^O[o_{t,1};o_{t,2};\dots,;o_{t,n_h}]
+\end{aligned}
+$$&lt;p>其中 $q_t=[q_{t,1};q_{t,2};\dots,;q_{t,n_h}]$, $k_t=[k_{t,1};k_{t,2};\dots,;k_{t,n_h}]$, $v_t=[v_{t,1};v_{t,2};\dots,;v_{t,n_h}]$. $W^O\in\mathbb{R}^{d\times d_hn_h}$ 为 output projection 的权重。在 inference 阶段，每个 token 需要缓存其 key 以及 value 对应的值，从而每个 token 的 kv cache 占用为 $2n_hd_h\ell$. 当序列长度过大时，KV cache 会影响整体的 inference efficiency.&lt;/p>
+&lt;h3 id="mqa--gqa">&lt;a href="#mqa--gqa" class="header-anchor">&lt;/a>MQA &amp;amp; GQA
+&lt;/h3>&lt;p>MQA 通过在所有的 heads 中共享 key 和 value 来实现降低 kv cache 的作用，在 MQA 中，$W^K, W^V\in\mathbb{R}^{d_h\times d}$, 在计算时，对应的 $k_t$ 和 $v_t$ 通过广播机制参与 attention 的计算。此时，KV cache 占用为 MHA 的 $1/n_h$, 即 $2d_h\ell$.&lt;/p>
+&lt;p>但是，MQA 的问题是表达能力太弱（表现差），因此后续 GQA 进行了改进，GQA 在 MQA 和 MHA 之间进行了权衡，即将 heads 分为若干个 group, 每个 group 中共享 key 和 value, 即 $W^K, W^V\in\mathbb{R}^{n_gd_h\times d}$, 这里 $n_g$ 是 group 个数，在计算 attention 时，key 和 value 在 group 内部共享，此时，GQA 的 KV cache 占用是 MQA 的 $n_g$ 倍，即 $2n_gd_h\ell$.&lt;/p>
+&lt;p>这部分具体介绍见 &lt;a class="link" href="https://maosong2022.github.io/p/notes-on-mqa/" target="_blank" rel="noopener"
+>MQA&lt;/a> 和 &lt;a class="link" href="https://maosong2022.github.io/p/notes-on-gqa/" target="_blank" rel="noopener"
+>GQA&lt;/a>.&lt;/p>
+&lt;h2 id="mla">&lt;a href="#mla" class="header-anchor">&lt;/a>MLA
+&lt;/h2>&lt;p>MLA 的架构图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-mla/MLA-architecture.png"
+width="387"
+height="438"
+loading="lazy"
+alt="MLA architecture (sourced from MHA2MLA)"
+class="gallery-image"
+data-flex-grow="88"
+data-flex-basis="212px"
+>&lt;/p>
+&lt;p>MLA 使用 low-rank joint compression 来压缩 key 以及 value 的 KV cache:&lt;/p>
+$$
+c_t^{KV} = W^{DKV}h_t,\quad k_t^C = W^{UK}c_t^{KV}, v_t^C = W^{UV}c_t^{KV}
+$$&lt;p>这里 $c_t^{KV}\in\mathbb{R}^{d_c}$ 为 key 以及 value 压缩后的 latent vector. $d_c&lt;&lt;d_hn_h$ 为 KV cache compression dimension. $W^{DKV}\in\mathbb{R}^{d_c\times d}$ 为 down projection matrix, 这个矩阵是 key 和 value 共享的，$W^{UK}, W^{UV}\in\mathbb{R}^{d_hn_h\times d_c}$ 为 key, value 对应的 up projection matrix.&lt;/p>
+&lt;p>另外，为了减少训练时的 activation memory, 作者对于 query 同样也执行了 low-rank compression, 压缩方式如下&lt;/p>
+$$
+c_t^Q = W^{DQ}h_t,\quad q_t^C = W^{UQ}c_t^Q
+$$&lt;p>其中 $c_t^Q\in\mathbb{R}^{d_c'}$ 为 query 压缩后的 latent vector, $d_c'&lt;&lt; d_hn_h$ 为 query compression dimension, $W^{DQ}\in\mathbb{R}^{d_c'\times d}$, $W^{UQ}\in\mathbb{R}^{d_hn_h\times d_c'}$ 分别时 down projection, up projection matrix.&lt;/p>
+&lt;p>最后 attention 的计算与 MHA 保持一致：&lt;/p>
+$$
+\begin{aligned}
+o_{t,i} &amp;= \sum_{j=1}^t\mathrm{softmax}_j\left(\frac{q_{t,i}^Tk_{j,i}}{\sqrt{d_h}}\right)v_{j,i},\\
+u_t&amp;= W^O[o_{t,1};o_{t,2};\dots,;o_{t,n_h}]
+\end{aligned}
+$$&lt;p>在推理的时候，我们只需要缓存 $c_t^{KV}$ 即可，这样每个 token 的 KV cache 为 $d_c\ell$. 并且在 inference 时，我们可以将 $W^{UK}$ 和 $W^{Q}$ 融合在一起，将 $W^{UV}$ 和 $W^{O}$ 融合在一起，也就是说我们不需要显式的计算出 $k_t$ 以及 $v_t$, 即&lt;/p>
+$$
+q_t^Tk_t = (W^{UQ}c_t^Q)^T(W^{UK}c_t^{KV}) = (c_t^Q)^T((W^{UQ})^TW^{UK})\boxed{c_t^{KV}}
+$$&lt;p>以及&lt;/p>
+$$
+\begin{aligned}
+u_t &amp;= W^O[o_{t,1};o_{t,2};\dots,;o_{t,n_h}] \\
+&amp;= \sum_{i=1}^tW_i^Oo_{t,i}\\
+&amp;= \sum_{i=1}^tW_i^O\sum_{j=1}^t\mathrm{softmax}_j\left(\frac{q_{t,i}^Tk_{j,i}}{\sqrt{d_h}}\right)v_{j,i}\\
+&amp;= \sum_{i=1}^tW_i^O\sum_{j=1}^t\mathrm{softmax}_j\left(\frac{q_{t,i}^Tk_{j,i}}{\sqrt{d_h}}\right)W_i^{KV}c_t^{KV}\\
+&amp;= \sum_{i=1}^t(W_i^OW_i^{KV})\sum_{j=1}^t\mathrm{softmax}_j\left(\frac{q_{t,i}^Tk_{j,i}}{\sqrt{d_h}}\right)\boxed{c_t^{KV}}
+\end{aligned}
+$$&lt;p>这里 $W^O = [W^O_1,\dots,W^O_{n_h}]$, $W^{UV}=[W^{KV}_1;\dots;W^{KV}_{n_h}]$, $W_i^O\in\mathbb{R}^{d\times d_h}$, $W^{UV}_i\in\mathbb{R}^{d_h\times d_c}$.&lt;/p>
+&lt;h3 id="decoupled-position-embedding">&lt;a href="#decoupled-position-embedding" class="header-anchor">&lt;/a>Decoupled Position Embedding
+&lt;/h3>&lt;p>接下来，作者介绍了如何解决 RoPE 不相容的问题。如果说我们直接在 $k_t^C$ 上进行 RoPE, 那么我们有&lt;/p>
+$$
+q_t^Tk_t = (R_mW^{UQ}c_t^Q)^T(R_nW^{UK}c_t^{KV}) = (c_t^Q)^T((W^{UQ})^TR_{m-n}W^{UK})\boxed{c_t^{KV}}
+$$&lt;p>此时，我们没有办法将 $W^{UK}$ 吸收到 $W^{UQ}$ 中，这样就导致在 inference 时我们必须重新计算所有 prefix token 对应的 key, 这显然会降低 inference efficiency&lt;/p>
+&lt;p>为了解决这个问题，作者使用了partial RoPE的技巧，即将query和key拆解为NoPE以及RoPE两部分，前者由MLA产生，后者携带位置信息。RoPE部分包括query $q_{t,i}^R\in\mathbb{R}^{d_h^R}$ 以及一个共享的 key $k_t^R\in\mathbb{R}^{d_h^R}$, 其中 $d_h^R$ 是 decoupled query 以及 decoupled key 的 head dimension.&lt;/p>
+&lt;blockquote>
+&lt;p>[!remark]
+这里 key 对应的 RoPE 共享的原因是这部分信息也需要使用 KV cache 进行缓存，通过共享可以降低 KV cache 占用；而 query 对应的 RoPE 不共享的原因是提高 head 的表达能力，与 MHA 原理一致。&lt;/p>
+&lt;/blockquote>
+&lt;p>对应 MLA 的计算公式如下&lt;/p>
+$$
+\begin{aligned}
+q_t^R&amp;=\mathrm{RoPE}(W^{QR}c_t^Q)\\
+k_t^R &amp;= \mathrm{RoPE}(W^{KR}h_t)\\
+q_{t,i} &amp;= [q_{t,i}^C;q_{t,i}^R]\\
+k_{t,i} &amp;= [k_{t,i}^C;k_{t}^R]\\
+o_{t,i} &amp;= \sum_{j=1}^t\mathrm{softmax}_j\left(\frac{q_{t,i}^Tk_{j,i}}{\sqrt{d_h+d_h^R}}\right)v_{j,i}^C,\\
+u_t&amp;= W^O[o_{t,1};o_{t,2};\dots,;o_{t,n_h}]
+\end{aligned}
+$$&lt;p>其中 $q_t^R=[q_{t,1}^R;q_{t,2}^R;\dots,;q_{t,n_h}^R]$, $W^{QR}\in\mathbb{R}^{d_h^Rn_h\times d_c'}$, $W^{KR}\in\mathbb{R}^{d_h^R\times d}$ . $\mathrm{RoPE}(\cdot)$ 只执行 RoPE 矩阵乘法的操作。&lt;/p>
+&lt;p>在这种情形下，attention 的计算如下所示&lt;/p>
+$$
+\begin{aligned}
+q_{t,i}^Tk_{t,i} &amp;= [q_{t,i}^C;q_{t,i}^R]^T[k_{t,i}^C;k_{t}^R]\\
+&amp;= (q_{t,i}^C)^Tk_{t,i}^C + (q_{t,i}^R)^Tk_{t}^R
+\end{aligned}
+$$&lt;p>可以看到，现在 attention 的计算分为了两部分，一部分是 MLA 自身的计算，这部分计算前面已经证明可以通过矩阵吸收的方式来进行优化，第二部分是关于 RoPE 部分的计算，这部分计算量不是很大&lt;/p>
+&lt;p>最终，MLA 完整的计算公式如下&lt;/p>
+$$
+\begin{aligned}
+c_t^Q=W^{DQ}h_t\\
+[q_{t,1}^C;\dots;q_{t,n_h}^C]=q_t^C&amp;= W^{UQ}c_t^Q\\
+[q_{t,1}^R;\dots;q_{t,n_h}^R]=q_t^R&amp;= \mathrm{RoPE}(W^{QR}c_t^Q)\\
+q_{t,i} &amp;= [q_{t,i}^C;q_{t,i}^R]\\
+\boxed{c_t^{KV}} &amp;= W^{DKV}h_t\\
+[k_{t,1}^C;\dots;k_{t,n_h}^C]=k_t^C&amp;= W^{UK}c_t^{KV}\\
+\boxed{k_t^R} &amp;= \mathrm{RoPE}(W^{KR}h_t)\\
+k_{t,i} &amp;= [k_{t,i}^C;k_{t}^R]\\
+[v_{t,1}^C;\dots;v_{t,n_h}^C]=v_t^C&amp;= W^{UV}c_t^{KV}\\
+o_{t,i} &amp;= \sum_{j=1}^t\mathrm{softmax}_j\left(\frac{q_{t,i}^Tk_{j,i}}{\sqrt{d_h+d_h^R}}\right)v_{j,i}^C,\\
+u_t&amp;= W^O[o_{t,1};o_{t,2};\dots,;o_{t,n_h}]
+\end{aligned}
+$$&lt;p>在 inference 时，decoupled key 也需要被缓存，因此 DeepSeek-V2 每个 token 所需要的 KV cache 为 $(d_c+d_h^R)\ell$, 框选的部分即为 Inference 阶段需要缓存的内容&lt;/p>
+&lt;p>MLA 与 MHA, MQA, GQA 的对比如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-mla/DeepSeek-V2-comparison-attention.png"
+width="1336"
+height="367"
+loading="lazy"
+alt="Comparison of different attention mechanisms"
+class="gallery-image"
+data-flex-grow="364"
+data-flex-basis="873px"
+>&lt;/p>
+&lt;h3 id="comparison-of-kv-cache">&lt;a href="#comparison-of-kv-cache" class="header-anchor">&lt;/a>Comparison of KV Cache
+&lt;/h3>&lt;p>接下来，作者对比了不同 attention 机制的 KV cache, 结果如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Attention Mechanism&lt;/th>
+&lt;th>KV Cache per Token (# Element)&lt;/th>
+&lt;th>Capability&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Multi-Head Attention (MHA)&lt;/td>
+&lt;td>$2n_hd_h\ell$&lt;/td>
+&lt;td>Strong&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Grouped-Query Attention (GQA)&lt;/td>
+&lt;td>$2n_gd_h\ell$&lt;/td>
+&lt;td>Moderate&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Multi-Query Attention (MQA)&lt;/td>
+&lt;td>$2d_h\ell$&lt;/td>
+&lt;td>Weak&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MLA (Ours)&lt;/td>
+&lt;td>$(d_c+d_h^R)\ell\approx 9/2d_h\ell$&lt;/td>
+&lt;td>Stronger&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>这里作者将 $d_c$ 设置为 $4d_h$, $d_h^R$ 设置为 $d_h/2$, 因此得到了上面的 $9/2d_h\ell$ 的近似。与 GQA 相比，相当于 MLA 使用了 2.25 个 group, 但是可以得到更强的效果。&lt;/p>
+&lt;p>为了避免 low-rank compression 以及 fine-grained expert segmentation 对输出的 scale 产生影响，作者对 compressed latent vectors $c_t^Q, c_t^{KV}$ 进行了 normalization.&lt;/p>
+&lt;h2 id="code">&lt;a href="#code" class="header-anchor">&lt;/a>Code
+&lt;/h2>&lt;p>首先是代码变量与公式变量的对应关系&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>code name&lt;/th>
+&lt;th>variable name&lt;/th>
+&lt;th>Value&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;code>hidden_size&lt;/code>&lt;/td>
+&lt;td>$d$&lt;/td>
+&lt;td>5120&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>kv_lora_rank&lt;/code>&lt;/td>
+&lt;td>$d_c$&lt;/td>
+&lt;td>512&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>q_lora_rank&lt;/code>&lt;/td>
+&lt;td>$d_c'$&lt;/td>
+&lt;td>1536&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>qk_nope_head_dim&lt;/code>&lt;/td>
+&lt;td>$d_h$&lt;/td>
+&lt;td>128&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>qk_rope_head_dim&lt;/code>&lt;/td>
+&lt;td>$d_h^R$&lt;/td>
+&lt;td>64&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>v_head_dim&lt;/code>&lt;/td>
+&lt;td>$d_h$&lt;/td>
+&lt;td>128&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>num_attention_heads&lt;/code>&lt;/td>
+&lt;td>$n_h$&lt;/td>
+&lt;td>128&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>在具体实现时，作者对计算过程进行了优化，具体就是先合并计算然后通过 &lt;code>split&lt;/code> 进行拆分，这部分策略应用于三个部分：&lt;/p>
+$$
+\begin{aligned}
+\begin{bmatrix}
+q_t^c\\
+q_t^R
+\end{bmatrix} &amp;= \begin{bmatrix}
+W^{UQ}\\
+W^{QR}
+\end{bmatrix}W^{DQ}h_t\\
+\begin{bmatrix}
+c_t^{KV}\\
+k_t^R
+\end{bmatrix} &amp;= \begin{bmatrix}
+W^{DKV}\\
+W^{KR}
+\end{bmatrix}h_t\\
+\begin{bmatrix}
+k_t^c\\
+v_t^c
+\end{bmatrix} &amp;= \begin{bmatrix}
+W^{UK}\\
+W^{UV}
+\end{bmatrix}c_t^{KV}
+\end{aligned}
+$$&lt;p>代码如下所示&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;span class="lnt">37
+&lt;/span>&lt;span class="lnt">38
+&lt;/span>&lt;span class="lnt">39
+&lt;/span>&lt;span class="lnt">40
+&lt;/span>&lt;span class="lnt">41
+&lt;/span>&lt;span class="lnt">42
+&lt;/span>&lt;span class="lnt">43
+&lt;/span>&lt;span class="lnt">44
+&lt;/span>&lt;span class="lnt">45
+&lt;/span>&lt;span class="lnt">46
+&lt;/span>&lt;span class="lnt">47
+&lt;/span>&lt;span class="lnt">48
+&lt;/span>&lt;span class="lnt">49
+&lt;/span>&lt;span class="lnt">50
+&lt;/span>&lt;span class="lnt">51
+&lt;/span>&lt;span class="lnt">52
+&lt;/span>&lt;span class="lnt">53
+&lt;/span>&lt;span class="lnt">54
+&lt;/span>&lt;span class="lnt">55
+&lt;/span>&lt;span class="lnt">56
+&lt;/span>&lt;span class="lnt">57
+&lt;/span>&lt;span class="lnt">58
+&lt;/span>&lt;span class="lnt">59
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">class&lt;/span> &lt;span class="nc">DeepseekV2Attention&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Module&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="fm">__init__&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">layer_idx&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># d_h + d_h^R&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">q_head_dim&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">qk_nope_head_dim&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">qk_rope_head_dim&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># W^{DQ}&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">q_a_proj&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Linear&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hidden_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">q_lora_rank&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">bias&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">attention_bias&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># [W^{UQ}; W^{QR}]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">q_b_proj&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Linear&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">q_lora_rank&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_heads&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">q_head_dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">bias&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="kc">False&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># [W^{DKV}; W^{KR}]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">kv_a_proj_with_mqa&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Linear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hidden_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">kv_lora_rank&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">qk_rope_head_dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">bias&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">attention_bias&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># [W^{UK}; W^{UV}]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">kv_b_proj&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Linear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">kv_lora_rank&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_heads&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">q_head_dim&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">qk_rope_head_dim&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">v_head_dim&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="n">bias&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="kc">False&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># W^O&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">o_proj&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Linear&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_heads&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">v_head_dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">hidden_size&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">bias&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">config&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">attention_bias&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">def&lt;/span> &lt;span class="nf">forward&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">hidden_states&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">...&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># [q_t^c; q_t^R]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">q&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">q_b_proj&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">q_a_layernorm&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">q_a_proj&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">hidden_states&lt;/span>&lt;span class="p">)))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">q&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">q&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">view&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">bsz&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">q_len&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_heads&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">q_head_dim&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">transpose&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">q_nope&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">q_pe&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">split&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">q&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">qk_nope_head_dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">qk_rope_head_dim&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="o">=-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># [c_t^{KV}; k_t^R]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">compressed_kv&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">kv_a_proj_with_mqa&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">hidden_states&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">compressed_kv&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">k_pe&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">split&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">compressed_kv&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">kv_lora_rank&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">qk_rope_head_dim&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="o">=-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">k_pe&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">k_pe&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">view&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">bsz&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">q_len&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">qk_rope_head_dim&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">transpose&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># [k_t^c; v_t^c]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">kv&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">kv_b_proj&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">kv_a_layernorm&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">compressed_kv&lt;/span>&lt;span class="p">))&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">view&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">bsz&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">q_len&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_heads&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">qk_nope_head_dim&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">v_head_dim&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">transpose&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">k_nope&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">value_states&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">split&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">kv&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">qk_nope_head_dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">v_head_dim&lt;/span>&lt;span class="p">],&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="o">=-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># q_t^R, k_t^R&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">q_pe&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">k_pe&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">apply_rotary_pos_emb&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">q_pe&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">k_pe&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">cos&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">sin&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">position_ids&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># q_{t, i}&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">query_states&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">k_pe&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">new_empty&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">bsz&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_heads&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">q_len&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">q_head_dim&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">query_states&lt;/span>&lt;span class="p">[:,&lt;/span> &lt;span class="p">:,&lt;/span> &lt;span class="p">:,&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">qk_nope_head_dim&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">q_nope&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">query_states&lt;/span>&lt;span class="p">[:,&lt;/span> &lt;span class="p">:,&lt;/span> &lt;span class="p">:,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">qk_nope_head_dim&lt;/span> &lt;span class="p">:]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">q_pe&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># k_{t, i}&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">key_states&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">k_pe&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">new_empty&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">bsz&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">num_heads&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">q_len&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">q_head_dim&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">key_states&lt;/span>&lt;span class="p">[:,&lt;/span> &lt;span class="p">:,&lt;/span> &lt;span class="p">:,&lt;/span> &lt;span class="p">:&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">qk_nope_head_dim&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">k_nope&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">key_states&lt;/span>&lt;span class="p">[:,&lt;/span> &lt;span class="p">:,&lt;/span> &lt;span class="p">:,&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">qk_nope_head_dim&lt;/span> &lt;span class="p">:]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">k_pe&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># Q^TK&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">attn_weights&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">matmul&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">query_states&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">key_states&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">transpose&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">3&lt;/span>&lt;span class="p">))&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">softmax_scale&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># softmax(...) in FP32&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">attn_weights&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">nn&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">functional&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">softmax&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">attn_weights&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="o">=-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dtype&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">float32&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">to&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">query_states&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">dtype&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># o_{t, i}&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">attn_output&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">matmul&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">attn_weights&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">value_states&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># u_t&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">attn_output&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="bp">self&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">o_proj&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">attn_output&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">attn_output&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">attn_weights&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">past_key_value&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h3 id="参数量计算">&lt;a href="#%e5%8f%82%e6%95%b0%e9%87%8f%e8%ae%a1%e7%ae%97" class="header-anchor">&lt;/a>参数量计算
+&lt;/h3>&lt;p>首先，我们结合 DeepSeek-V2 的 &lt;code>config&lt;/code> 计算一下 MLA 部分的参数量：&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Matrix&lt;/th>
+&lt;th>Parameters&lt;/th>
+&lt;th>values&lt;/th>
+&lt;th>ratio&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$W^{DKV}$&lt;/td>
+&lt;td>$dd_c$&lt;/td>
+&lt;td>2621440&lt;/td>
+&lt;td>1.91%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$W^{UK}$&lt;/td>
+&lt;td>$d_hn_hd_c$&lt;/td>
+&lt;td>8388608&lt;/td>
+&lt;td>6.12%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$W^{UV}$&lt;/td>
+&lt;td>$d_hn_hd_c$&lt;/td>
+&lt;td>8388608&lt;/td>
+&lt;td>6.12%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$W^{DQ}$&lt;/td>
+&lt;td>$d_c'd$&lt;/td>
+&lt;td>7864320&lt;/td>
+&lt;td>5.74%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$W^{UQ}$&lt;/td>
+&lt;td>$d_hn_hd_c'$&lt;/td>
+&lt;td>25165824&lt;/td>
+&lt;td>18.37%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$W^{KR}$&lt;/td>
+&lt;td>$d_h^Rd$&lt;/td>
+&lt;td>327680&lt;/td>
+&lt;td>0.24%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$W^{QR}$&lt;/td>
+&lt;td>$d_h^Rd$&lt;/td>
+&lt;td>327680&lt;/td>
+&lt;td>0.24%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$W^{O}$&lt;/td>
+&lt;td>$dd_hn_h$&lt;/td>
+&lt;td>83886080&lt;/td>
+&lt;td>61.24%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Total&lt;/td>
+&lt;td>$d(d_c+d_c'+2h_h^R)+d_hn_h(2d_c+d_c'+d)$&lt;/td>
+&lt;td>136970240&lt;/td>
+&lt;td>100%&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>我们接下来对比一下各个模型架构之间 attention 部分的参数量，可以看到与 MHA 一致，大部分参数量都集中在最后的 Output projection layer 上&lt;/p>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>作者首先对比了 MHA, GQA, MQA 的表现，作者基于一个 7B 的 dense 模型，使用 1.33T token 进行训练，实验结果如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Benchmark (Metric)&lt;/th>
+&lt;th># Shots&lt;/th>
+&lt;th>MQA&lt;/th>
+&lt;th>GQA(8 Groups)&lt;/th>
+&lt;th>MHA&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td># Params&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>7.1B&lt;/td>
+&lt;td>6.9B&lt;/td>
+&lt;td>6.9B&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>BBH (EM)&lt;/td>
+&lt;td>3-shot&lt;/td>
+&lt;td>33.2&lt;/td>
+&lt;td>35.6&lt;/td>
+&lt;td>&lt;strong>37.0&lt;/strong>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MMLU (Acc.)&lt;/td>
+&lt;td>5-shot&lt;/td>
+&lt;td>37.9&lt;/td>
+&lt;td>41.2&lt;/td>
+&lt;td>&lt;strong>45.2&lt;/strong>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>C-Eval (Acc.)&lt;/td>
+&lt;td>5-shot&lt;/td>
+&lt;td>30.0&lt;/td>
+&lt;td>37.7&lt;/td>
+&lt;td>&lt;strong>42.9&lt;/strong>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>CMMLU (Acc.)&lt;/td>
+&lt;td>5-shot&lt;/td>
+&lt;td>34.6&lt;/td>
+&lt;td>38.4&lt;/td>
+&lt;td>&lt;strong>43.5&lt;/strong>&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>实验结果显示，MHA 的表现显著优于 GQA 和 MQA. 这说明了 MQA 和 GQA 虽然减少了 KV cache 的占用，但是相应地，它们对应的表现也有所降低。&lt;/p>
+&lt;p>接下来，作者对比了 MLA 和 MHA 的表现，实验结果如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Benchmark (Metric)&lt;/th>
+&lt;th># Shots&lt;/th>
+&lt;th>MHA&lt;/th>
+&lt;th>MLA&lt;/th>
+&lt;th>MHA&lt;/th>
+&lt;th>MLA&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td># Activated Params&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>2.5B&lt;/td>
+&lt;td>2.4B&lt;/td>
+&lt;td>25.0B&lt;/td>
+&lt;td>21.5B&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td># Total Params&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>15.8B&lt;/td>
+&lt;td>15.7B&lt;/td>
+&lt;td>250.8B&lt;/td>
+&lt;td>247.4B&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>KV Cache per Token (# Element)&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>110.6K&lt;/td>
+&lt;td>15.6K&lt;/td>
+&lt;td>860.2K&lt;/td>
+&lt;td>34.6K&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>BBH (EM)&lt;/td>
+&lt;td>3-shot&lt;/td>
+&lt;td>37.9&lt;/td>
+&lt;td>&lt;strong>39.0&lt;/strong>&lt;/td>
+&lt;td>46.6&lt;/td>
+&lt;td>&lt;strong>50.7&lt;/strong>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MMLU (Acc.)&lt;/td>
+&lt;td>5-shot&lt;/td>
+&lt;td>48.7&lt;/td>
+&lt;td>&lt;strong>50.0&lt;/strong>&lt;/td>
+&lt;td>57.5&lt;/td>
+&lt;td>&lt;strong>59.0&lt;/strong>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>C-Eval (Acc.)&lt;/td>
+&lt;td>5-shot&lt;/td>
+&lt;td>&lt;strong>51.6&lt;/strong>&lt;/td>
+&lt;td>50.9&lt;/td>
+&lt;td>57.9&lt;/td>
+&lt;td>&lt;strong>59.2&lt;/strong>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>CMMLU (Acc.)&lt;/td>
+&lt;td>5-shot&lt;/td>
+&lt;td>52.3&lt;/td>
+&lt;td>&lt;strong>53.4&lt;/strong>&lt;/td>
+&lt;td>60.7&lt;/td>
+&lt;td>&lt;strong>62.5&lt;/strong>&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>可以看到，MLA 的表现比 MHA 的表现更好，并且 KV cache 也更少。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者提出了 MLA, 一个基于 low rank compression 的注意力机制，通过将 key value vector 压缩到低维空间，MLA 可以有效降低 Inference latency, 作者通过实现证明 MLA 的表现可以与 MHA 相比，并且 KV cache 更小。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2405.04434" target="_blank" rel="noopener"
+>DeepSeek-V2&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2502.14837" target="_blank" rel="noopener"
+>MHA2MLA&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://www.cnblogs.com/rossiXYZ/p/18827618" target="_blank" rel="noopener"
+>探秘Transformer系列之（28）&amp;mdash; DeepSeek MLA&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on Loss-free Balancing</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-loss-free-balancing/</link><pubDate>Fri, 21 Nov 2025 15:38:52 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-loss-free-balancing/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>已有的 MoE 模型往往都会使用 load balancing loss 来避免 Imbalanced routing, 但是加入这个额外的损失之后，模型训练的梯度也会受到影响。&lt;/p>
+&lt;p>DeepSeek 基于这个问题提出了 Loss-Free Balancing, 该方法不引入额外的 loss item, 而是在 routing 的结果上加入一个 bias item, bias item 可以根据 expert load 来动态更新进而实现 load balancing.&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;p>MoE definition&lt;/p>
+$$
+\begin{aligned}
+h_t &amp;= u_t + \sum_{i=1}^Ng_{i,t}\mathrm{FFN}_i(u_t),\\
+g_{i,t} &amp;= \begin{cases}
+s_{i,t}, &amp; s_{i,t}\in\mathrm{Topk}(\{s_{i,j}\mid 1\leq j\leq N\}, K)\\
+0, &amp;\text{otherwise}
+\end{cases}\\
+s_{i,t} &amp;= G(u_t^Te_i),
+\end{aligned}
+$$&lt;p>其中 $G$ 是 gating function, $e_i$ 是第 $i$ 个专家对应 gating function 的权重&lt;/p>
+&lt;p>load balancing loss 有两个作用：&lt;/p>
+&lt;ol>
+&lt;li>避免 routing collapse, 即模型只选择固定的少数专家完成任务&lt;/li>
+&lt;li>减少通信开销&lt;/li>
+&lt;/ol>
+&lt;p>但是引入 load balancing loss 会对 LLM 的训练产生影响，为了避免对模型性能造成影响，我们需要小心设置 load balancing loss 的权重，实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-loss-free-balancing/loss-free-balancing-hyperparameter-setting.png"
+width="917"
+height="575"
+loading="lazy"
+alt="The dilemma between load balance and model performance for auxiliary-loss-controlled training"
+class="gallery-image"
+data-flex-grow="159"
+data-flex-basis="382px"
+>&lt;/p>
+&lt;p>为了解决这个问题，作者提出了 Loss-Free Balancing, 具体做法就是在每个专家的 gating score 上加入一个 bias term, 然后再决定对应的专家：&lt;/p>
+$$
+g_{i,t} = \begin{cases}
+s_{i,t}, &amp; s_{i,t}+b_i\in\mathrm{Topk}(\{s_{i,j}+b_j\mid 1\leq j\leq N\}, K)\\
+0, &amp;\text{otherwise}
+\end{cases}
+$$&lt;p>注意这里的 bias item 仅影响 top-K 操作，其对最终的输出没有影响。&lt;/p>
+&lt;p>为了实现负载均衡，作者根据上一个 batch 的 expert load 情况来调整 bias item, 如果某一个专家的 load 太大，则对应的 bias item 会变小。 其算法实现过程如下：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-loss-free-balancing/loss-free-balancing-algorithm.png"
+width="1152"
+height="410"
+loading="lazy"
+alt="Adjusting the per-expert bias during training"
+class="gallery-image"
+data-flex-grow="280"
+data-flex-basis="674px"
+>&lt;/p>
+&lt;p>作者对比不同的负载均衡算法如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Load Balancing Methods&lt;/th>
+&lt;th>Balanced Expert Load&lt;/th>
+&lt;th>Interference Gradients&lt;/th>
+&lt;th>Future Token Leakage&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Loss-Controlled (strong auxiliary loss)&lt;/td>
+&lt;td>balanced&lt;/td>
+&lt;td>strong&lt;/td>
+&lt;td>no leakage&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Loss-Controlled (weak auxiliary loss)&lt;/td>
+&lt;td>imbalanced&lt;/td>
+&lt;td>weak&lt;/td>
+&lt;td>no leakage&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Expert Choice&lt;/td>
+&lt;td>balanced&lt;/td>
+&lt;td>none&lt;/td>
+&lt;td>with leakage&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Loss-Free (Ours)&lt;/td>
+&lt;td>balanced&lt;/td>
+&lt;td>none&lt;/td>
+&lt;td>no leakage&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>作者使用了 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseekmoe/" target="_blank" rel="noopener"
+>DeepSeekMoE&lt;/a> 来进行实验，作者使用了 sigmoid function 作为 gating function, 因为作者发现 sigmoid function 效果比 softmax 效果更好。&lt;/p>
+&lt;p>作者提出了 maximal violation (MaxVio) 来量化一个 MoE layer 的负载均衡程度&lt;/p>
+$$
+\mathrm{MaxVio} = \frac{\max_i\mathrm{Load}_i-\overline{\mathrm{Load}_i}}{\overline{\mathrm{Load}_i}}
+$$&lt;p>其中 $\mathrm{Load}_i$ 代表了分配给第 $i$ 个专家的 token 个数，$\overline{\mathrm{Load}_i}$ 代表了理想情况下的负载均衡。&lt;/p>
+&lt;p>实验结果如下图所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model Size&lt;/th>
+&lt;th>Load Balancing Methods&lt;/th>
+&lt;th>Validation Perplexity&lt;/th>
+&lt;th>MaxVio&lt;sub>global&lt;/sub>&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>1B&lt;/td>
+&lt;td>Loss-Controlled&lt;/td>
+&lt;td>9.56&lt;/td>
+&lt;td>0.72&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>1B&lt;/td>
+&lt;td>Loss-Free&lt;/td>
+&lt;td>&lt;strong>9.50&lt;/strong>&lt;/td>
+&lt;td>&lt;strong>0.04&lt;/strong>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>3B&lt;/td>
+&lt;td>Loss-Controlled&lt;/td>
+&lt;td>7.97&lt;/td>
+&lt;td>0.52&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>3B&lt;/td>
+&lt;td>Loss-Free&lt;/td>
+&lt;td>&lt;strong>7.92&lt;/strong>&lt;/td>
+&lt;td>&lt;strong>0.04&lt;/strong>&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>实验结果显示，本文提出的 Loss-Free Balancing 效果更好，且负载均衡更高&lt;/p>
+&lt;p>作者还展示了训练过程的负载情况如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-loss-free-balancing/loss-free-training-process-load.png"
+width="1145"
+height="406"
+loading="lazy"
+alt="Load of training process"
+class="gallery-image"
+data-flex-grow="282"
+data-flex-basis="676px"
+>&lt;/p>
+&lt;p>可以看到，Loss-Free 的负载一直比 load balancing loss 效果更好&lt;/p>
+&lt;h3 id="ablation-study">&lt;a href="#ablation-study" class="header-anchor">&lt;/a>Ablation Study
+&lt;/h3>&lt;p>作者首先探究了 bias term 更新速率对模型表现的影响，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-loss-free-balancing/loss-free-ablation-update-rate.png"
+width="920"
+height="508"
+loading="lazy"
+alt="The impact of update rate on training load balance"
+class="gallery-image"
+data-flex-grow="181"
+data-flex-basis="434px"
+>&lt;/p>
+&lt;p>结果显示，使用过大的 update rate 会影响最终的负载均衡，而较小的 update rate 收敛速率比较慢。因此作者在本文中使用了 $u=0.001$ 这个设置&lt;/p>
+&lt;p>作者还对比了 baseline model 使用 softmax 个 sigmoid gating 两种方式，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-loss-free-balancing/loss-free-ablation-gating-function.png"
+width="917"
+height="573"
+loading="lazy"
+alt="Ablation study on gating function"
+class="gallery-image"
+data-flex-grow="160"
+data-flex-basis="384px"
+>&lt;/p>
+&lt;p>实验结果显示，Sigmoid function 对于超参数更加 robust, 且表现也更好一些。&lt;/p>
+&lt;p>作者还尝试了不同的 bias 更新方式，结果显示尽管不同的更新方式有可能会提高 load balance, 但是最终模型表现提升不大。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者在本文中提出了 Loss-Free Balancing 策略，一个针对 MoE 负载均衡而不需要额外损失项的方法&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2408.15664" target="_blank" rel="noopener"
+>Arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on DeepSeekMoE</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-deepseekmoe/</link><pubDate>Fri, 29 Aug 2025 11:03:12 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-deepseekmoe/</guid><description>&lt;p>DeepSeek 在 2024 年 1 月发布了 DeepSeekMoE, 一个解决 MoE 模型 specialization 不足以及 redundancy 问题的大模型系列。&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>作者首先回顾了已有 MoE 模型的不足，主要有两点：&lt;/p>
+&lt;ol>
+&lt;li>knowledge hybridity: 已有 MoE 模型的专家个数比较少，这就导致每个专家需要掌握更多样化的知识，提高了训练难度&lt;/li>
+&lt;li>knowledge redundancy: 不同专家掌握的知识可能有重叠，从而导致了模型参数的 redundancy&lt;/li>
+&lt;/ol>
+&lt;p>为了解决这两个问题，作者提出了 DeepSeek-MoE, DeepSeek-MoE 主要做出了两点改变：&lt;/p>
+&lt;ol>
+&lt;li>Fine-Grained Expert Segmentation: 作者使用了更多的专家，来提高每个专家的 specialization, 降低训练成本&lt;/li>
+&lt;li>Shared Expert Isolation: 作者在 Routing expert 的基础上，加入了 shared expert 来学习 common knowledge.&lt;/li>
+&lt;/ol>
+&lt;p>作者在 2B-A0.6B 的模型进行了实验，结果显示模型表现超过了 &lt;a class="link" href="https://maosong.website/p/gshard/" target="_blank" rel="noopener"
+>GShard&lt;/a>, 说明了 DeepSeekMoE 模型架构的有效性。&lt;/p>
+&lt;p>作者还进一步将模型 scale 到了 16B-A2.8B 和 145B-A22B, 实验结果均验证了模型的 scaling 效果。&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;h3 id="preliminary">&lt;a href="#preliminary" class="header-anchor">&lt;/a>Preliminary
+&lt;/h3>&lt;p>作者首先回顾了 transformer 架构，transformer 的第 $\ell$ 层 decode layer 可以表示为&lt;/p>
+$$
+\begin{aligned}
+u_{1:T}^{\ell} &amp;= \mathrm{self\_attention}(h_{1:T}^{\ell-1}) + h_{1:T}^{\ell}\\
+h_t^\ell &amp;= \mathrm{FFN}(u_t^{\ell}) + u_t^{\ell}
+\end{aligned}
+$$&lt;p>其中 $T$ 是 sequence length, $h_{1:T}^{\ell-1}$ 是第 $\ell-1$ 层 decoder layer 输出的 hidden states.&lt;/p>
+&lt;p>接下来，我们可以将 dense 架构转换为 MoE 架构，MoE 架构与 dense 架构不同的地方在与 $\mathrm{FFN}$ 不再是 MLP, 而是一个 MoE 模块，其表达式如下&lt;/p>
+$$
+\begin{aligned}
+h_t^\ell &amp;= \sum_{i=1}^N\left(g_{i,t}\mathrm{FFN}_i(u_t^{\ell})\right) + u_t^{\ell}\\
+g_{i,t} &amp;= \begin{cases}
+s_{i,t,}, &amp;s_{i,t}\in\mathrm{Topk}(\{s_{j,t}\mid 1\leq j \leq N\},K)\\
+0, &amp;\text{otherwise}
+\end{cases}\\
+s_{i,t,} &amp;= \mathrm{softmax}_i({u_t^{\ell}}^Te_i^{\ell})
+\end{aligned}
+$$&lt;p>这里 $N$ 是专家的总个数， $K$ 是激活专家个数， $e_{i}^{\ell}$ 是 routing layer 的权重矩阵，$\mathrm{FFN}_i$ 是每个专家对应的 FFN.&lt;/p>
+&lt;h3 id="deepseekmoe-architecutre">&lt;a href="#deepseekmoe-architecutre" class="header-anchor">&lt;/a>DeepSeekMoE Architecutre
+&lt;/h3>&lt;p>DeepSeekMoE 架构如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseekmoe/DeepSeekMoE-architecture.png"
+width="1200"
+height="586"
+loading="lazy"
+alt="Architecture of DeepSeekMoE"
+class="gallery-image"
+data-flex-grow="204"
+data-flex-basis="491px"
+>&lt;/p>
+&lt;p>相比于其他 MoE 架构，DeepSeekMoE 主要做了以下几点改变。&lt;/p>
+&lt;h4 id="fine-grained-expert-segmentation">&lt;a href="#fine-grained-expert-segmentation" class="header-anchor">&lt;/a>Fine-Grained Expert Segmentation
+&lt;/h4>&lt;p>作者首先解决了每个专家学习内容过多的问题。作者的做法就是将每个 expert FFN 分割为 $m$ 个更小的专家，具体做法就是将 FFN intermediate hidden size 降低为原来的 $1/m$. 这样的话就可以在不增加模型参数量的情况下提高模型的表现。修正后的 MoE 模块为&lt;/p>
+$$
+\begin{aligned}
+h_t^\ell &amp;= \sum_{i=1}^{mN}\left(g_{i,t}\mathrm{FFN}_i(u_t^{\ell})\right) + u_t^{\ell}\\
+g_{i,t} &amp;= \begin{cases}
+s_{i,t,}, &amp;s_{i,t}\in\mathrm{Topk}(\{s_{j,t}\mid 1\leq j \leq mN\},mK)\\
+0, &amp;\text{otherwise}
+\end{cases}\\
+s_{i,t,} &amp;= \mathrm{softmax}_i({u_t^{\ell}}^Te_i^{\ell})
+\end{aligned}
+$$&lt;p>可以看到，现在我们一共有 $mN$ 个专家，激活专家个数为 $mK$ 个。作者认为，通过提高专家的粒度，我们可以有效增加专家组合的可能性，这就提高了最终的组合多样性。&lt;/p>
+&lt;h4 id="shared-expert-isolation">&lt;a href="#shared-expert-isolation" class="header-anchor">&lt;/a>Shared Expert Isolation
+&lt;/h4>&lt;p>接下来，作者介绍了解决不同专家学习到重复知识的问题，作者的做法是在 routing Expert 的基础上加入 Shared expert. 也就是说，有固定几个专家始终都会被激活，这部分专家复杂学习通用知识，从而减少知识冗余。增加 shared expert 之后的 MoE 模块为&lt;/p>
+$$
+\begin{aligned}
+h_t^\ell &amp;= \sum_{i=1}^{K_s}\mathrm{FFN}_i(u_t^{\ell})+\sum_{i=K_s+1}^{mN}\left(g_{i,t}\mathrm{FFN}_i(u_t^{\ell})\right) + u_t^{\ell}\\
+g_{i,t} &amp;= \begin{cases}
+s_{i,t,}, &amp;s_{i,t}\in\mathrm{Topk}(\{s_{j,t}\mid K_s+1\leq j \leq mN\},mK-K_s)\\
+0, &amp;\text{otherwise}
+\end{cases}\\
+s_{i,t,} &amp;= \mathrm{softmax}_i({u_t^{\ell}}^Te_i^{\ell})
+\end{aligned}
+$$&lt;p>此时，模型中一共包含 $K_s$ 个共享专家，$mN-K_s$ 个 routing expert, 其中激活专家个数为 $mK-K_s$.&lt;/p>
+&lt;h4 id="load-balancing-loss">&lt;a href="#load-balancing-loss" class="header-anchor">&lt;/a>Load Balancing Loss
+&lt;/h4>&lt;p>接下来，作者解决了训练时的 load imbalance 问题，作者提出了两个 loss 来分别解决不同层面的 load imbalance 问题。&lt;/p>
+&lt;p>首先，在 expert 层面，作者使用了如下的 load balancing loss:&lt;/p>
+$$
+\mathcal{L} = \alpha_1\sum_{i=1}^{N'}f_iP_i
+$$&lt;p>其中 $\alpha_1$ 是超参数，&lt;/p>
+$$
+f_i = \frac{N'}{K'T}\sum_{i=1}^{N'}\mathbb{1}(\text{Token }i \text{ selects Expert }i),\quad P_i = \frac{1}{T}\sum_{t=1}^Ts_{i,t}
+$$&lt;p>分别为以及分配给第 $i$ 个专家的 token 比例以及概率之和。$N'=mN-K_s$, $K'=mK-K_s$. $\mathbb{1}(\cdot)$ 是 indicator function.&lt;/p>
+&lt;p>其次，在 device 层面，作者也是用了 load balancing loss 来减少不同设备之间不必要的通信。作者将 routed experts 分为 $D$ 个 group $\mathcal{E}_1,\dots,\mathcal{E}_D$, 然后每个设备部署一个 group, group level 的 load balancing loss 定义如下：&lt;/p>
+$$
+\mathcal{L} = \alpha_2\sum_{i=1}^D f_i' P_i'
+$$&lt;p>其中 $\alpha_2$ 是超参数，&lt;/p>
+$$
+f_i' = \frac{1}{|\mathcal{E}_i|}\sum_{j\in\mathcal{E}_i}f_i,\quad P_i' = \sum_{j\in\mathcal{E}_i}P_i
+$$&lt;p>实际中，作者使用了一个较小的 $\alpha_1$ 来避免 routing collapse, 使用了一个较大的 $\alpha_2$ 来提高 Device 层面的负载均衡。&lt;/p>
+&lt;h3 id="training">&lt;a href="#training" class="header-anchor">&lt;/a>Training
+&lt;/h3>&lt;p>作者使用了中英文数据进行训练，tokenizer 基于 BPE 算法，vocab size 为 8K. 模型训练基于 HAI-LLM.训练时使用了 TP, DP, PP, EP 等并行策略。&lt;/p>
+&lt;p>2B, 16B, 145B 模型的参数如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>2B&lt;/th>
+&lt;th>16B&lt;/th>
+&lt;th>145B&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>total params&lt;/td>
+&lt;td>2B&lt;/td>
+&lt;td>16.4B&lt;/td>
+&lt;td>144.6B&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>activated params&lt;/td>
+&lt;td>0.3B&lt;/td>
+&lt;td>2.8B&lt;/td>
+&lt;td>22.2B&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>hidden size&lt;/td>
+&lt;td>1280&lt;/td>
+&lt;td>2048&lt;/td>
+&lt;td>4096&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>layers&lt;/td>
+&lt;td>9&lt;/td>
+&lt;td>28&lt;/td>
+&lt;td>62&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>attention heads&lt;/td>
+&lt;td>10&lt;/td>
+&lt;td>16&lt;/td>
+&lt;td>32&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>head dimension&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>128&lt;/td>
+&lt;td>128&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>routed experts&lt;/td>
+&lt;td>63&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>128&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>activated experts&lt;/td>
+&lt;td>7&lt;/td>
+&lt;td>6&lt;/td>
+&lt;td>12&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>shared experts&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>2&lt;/td>
+&lt;td>4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>training tokens&lt;/td>
+&lt;td>100B&lt;/td>
+&lt;td>2T&lt;/td>
+&lt;td>245B&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;h3 id="alignment">&lt;a href="#alignment" class="header-anchor">&lt;/a>Alignment
+&lt;/h3>&lt;p>作者针对 DeepseekMoE 16B 进行了微调，微调使用了 &lt;strong>1.4M&lt;/strong> 的训练样本，覆盖了 math, code, QA, reasoning 等任务。&lt;/p>
+&lt;h3 id="ablation-study">&lt;a href="#ablation-study" class="header-anchor">&lt;/a>Ablation Study
+&lt;/h3>&lt;p>作者在 2B 的模型上进行了 ablation study.&lt;/p>
+&lt;p>首先，作者探究了细粒度专家和共享专家的有效性，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseekmoe/DeepSeekMoE-ablation-experts.png"
+width="1197"
+height="552"
+loading="lazy"
+alt="Ablation on experts"
+class="gallery-image"
+data-flex-grow="216"
+data-flex-basis="520px"
+>&lt;/p>
+&lt;p>实验结果显示，与 &lt;a class="link" href="https://maosong.website/p/gshard/" target="_blank" rel="noopener"
+>GShard&lt;/a> 相比，&lt;strong>使用共享专家可以有效提高模型的表现&lt;/strong>。并且，&lt;strong>使用更细粒度的专家也可以进一步提高模型的表现&lt;/strong>&lt;/p>
+&lt;p>作者还探究了共享专家与路由专家的比例，作者分别使用不同的比例进行实验，结果发现共享专家：路由专家个数为 1：3 的时候模型效果最好。&lt;/p>
+&lt;p>作者还探究了模型的泛化性，作者 mask 掉一部分概率最高的 routing expert, 然后从剩下的专家里进行 topK 的挑选，然后作者比较模型和 GShard 的表现，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseekmoe/DeepSeekMoE-ablation-expert-specialization.png"
+width="737"
+height="526"
+loading="lazy"
+alt="Ablation study on expert specialization"
+class="gallery-image"
+data-flex-grow="140"
+data-flex-basis="336px"
+>&lt;/p>
+&lt;p>实验结果显示，&lt;strong>DeepSeekMoE 对于 mask 操作更敏感，这说明 DeepSeekMoE 模型中专家的 specialization 更强。&lt;/strong>&lt;/p>
+&lt;p>作者还探究了 mask 掉共享专家对模型表现的影响，结果显示&lt;strong>共享专家与路由专家之间的 overlap 很小，去掉共享专家之后，模型表现会变差。&lt;/strong>&lt;/p>
+&lt;p>作者进一步分析了共享专家与路由专家组合的有效性。作者探究 DeepSeekMoE 是否可以使用更少的路由专家来获取知识。作者通过使用不同的 activated routed experts 来进行实验，实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseekmoe/DeepSeekMoE-ablation-number-activated-experts.png"
+width="730"
+height="524"
+loading="lazy"
+alt="Ablation study on activated routed experts"
+class="gallery-image"
+data-flex-grow="139"
+data-flex-basis="334px"
+>&lt;/p>
+&lt;p>实验结果显示，DeepSeekMoE 仅需激活 4 个路由专家，就可以达到与 GShard 相同的表现。&lt;strong>这说明了 DeepSeekMoE 模型中每个专家可以学习到更准确的知识。&lt;/strong>&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者在本文中提出了 DeepSeekMoE 架构，来提高 MoE 模型中专家的利用效率。为了达到这一点，作者首先使用了更细粒度的专家，降低每个专家的学习成本，然后，作者使用了共享专家，来降低不同专家之间的知识冗余。作者先在 2B 的模型上验证了方法的有效性，然后作者将模型 scale 到了 16B 和 125B。结果显示模型的效果均超过了以前的工作。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2401.06066" target="_blank" rel="noopener"
+>arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on DeepSeek-LLM</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-deepseek-llm/</link><pubDate>Tue, 26 Aug 2025 10:53:10 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-deepseek-llm/</guid><description>&lt;p>DeepSeek 在 2024 年 1 月 5 日发布了 DeepSeek LLM, 包括 7B 和 67B 两个 size, 作者主要强调了对于 scaling law 的探究&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>已有的 scaling law 如 &lt;a class="link" href="https://maosong.website/p/kaplan-scaling-law/" target="_blank" rel="noopener"
+>Kaplan&lt;/a> 和 &lt;a class="link" href="https://maosong.website/p/chinchilla-scaling-law/" target="_blank" rel="noopener"
+>Chinchilla&lt;/a> 介绍了 model size, dataset size, compute budget 与模型表现之间的关系。在本文中，作者进一步探究了 learning rate 和 batch size 等超参数与模型表现之间的关系。基于发现的 scaling law, 作者为不同大小的模型设置了最优的超参数。并且，作者还发现不同数据集与模型表现之间的关系。&lt;/p>
+&lt;p>最终，基于这些实验结果，作者提出了 DeepSeek LLM, 模型使用 &lt;strong>2T token&lt;/strong> 进行预训练，使用 1M samples 进行后训练，后训练包括 SFT 以及 &lt;a class="link" href="https://maosong.website/p/notes-on-dpo/" target="_blank" rel="noopener"
+>DPO&lt;/a>.&lt;/p>
+&lt;h2 id="pre-training">&lt;a href="#pre-training" class="header-anchor">&lt;/a>Pre-training
+&lt;/h2>&lt;h3 id="architecture">&lt;a href="#architecture" class="header-anchor">&lt;/a>Architecture
+&lt;/h3>&lt;p>DeepSeek-LLM 的架构与 LLaMA 基本相同，作者在 67B 的模型上使用了 &lt;a class="link" href="https://maosong.website/p/notes-on-gqa/" target="_blank" rel="noopener"
+>GQA&lt;/a> 来提高 inference 效率。最终模型的配置如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Params&lt;/th>
+&lt;th>7B&lt;/th>
+&lt;th>67B&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$n_{\text{layers}}$&lt;/td>
+&lt;td>$30$&lt;/td>
+&lt;td>$95$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$d_{\text{model}}$&lt;/td>
+&lt;td>$4096$&lt;/td>
+&lt;td>$8192$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$n_{\text{heads}}$&lt;/td>
+&lt;td>$32$&lt;/td>
+&lt;td>$64$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$n_{\text{kv\_heads}}$&lt;/td>
+&lt;td>$32$&lt;/td>
+&lt;td>$8$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Context Length&lt;/td>
+&lt;td>$4096$&lt;/td>
+&lt;td>$4096$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Sequence Batch Size&lt;/td>
+&lt;td>$2304$&lt;/td>
+&lt;td>$4608$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Learning Rate&lt;/td>
+&lt;td>$4.2e-4$&lt;/td>
+&lt;td>$3.2e-4$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Tokens&lt;/td>
+&lt;td>2T&lt;/td>
+&lt;td>2T&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="data">&lt;a href="#data" class="header-anchor">&lt;/a>Data
+&lt;/h3>&lt;p>作者主要从 Common Crawl 构建预训练数据，数据处理过程包括：去重，过滤以及 remixing 三个步骤。&lt;/p>
+&lt;p>对于 tokenizer, 作者使用了 &lt;a class="link" href="https://maosong.website/p/hands-on-llm1-tokenizer/" target="_blank" rel="noopener"
+>BBPE&lt;/a> 算法，tokenizer 的大小设置为 100,000, 最终的 tokenizer 大小为 102400.&lt;/p>
+&lt;h3 id="hyper-parameters">&lt;a href="#hyper-parameters" class="header-anchor">&lt;/a>Hyper Parameters
+&lt;/h3>&lt;p>作者主要对比了一下不同 learning rate schedule 的表现：&lt;/p>
+&lt;ol>
+&lt;li>cosine learning schedule&lt;/li>
+&lt;li>multi-step learning rate schedule: 包含三个 Stage, 第一个 stage 保持最大学习率，第二个 stage 将学习率降低为最大学习率的 $31.6\%$, 第三个 stage 降低为最大学习率的 $10\%$.&lt;/li>
+&lt;/ol>
+&lt;p>对比的实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-llm/DeepSeek-LLM-learning-rate-ablation.png"
+width="1077"
+height="381"
+loading="lazy"
+alt="Comparison of different learning schedulers"
+class="gallery-image"
+data-flex-grow="282"
+data-flex-basis="678px"
+>&lt;/p>
+&lt;p>实验结果显示，multi-step learning rate scheduler 的表现与 cosine learning rate 表现差不多。并且，multi-step learning rate scheduler 对于 continue pretraining 支持更好。因此在本文中作者使用了 multi-step learning rate scheduler.&lt;/p>
+&lt;h3 id="infra">&lt;a href="#infra" class="header-anchor">&lt;/a>Infra
+&lt;/h3>&lt;p>作者使用了数据并行，张量并行，序列并行以及 1F1B pipeline 并行。作者还使用了 &lt;a class="link" href="https://maosong.website/p/notes-on-flashattention/" target="_blank" rel="noopener"
+>flash attention&lt;/a> 来提高硬件利用率。&lt;/p>
+&lt;h2 id="scaling-law">&lt;a href="#scaling-law" class="header-anchor">&lt;/a>Scaling Law
+&lt;/h2>&lt;p>本节中，作者分析了 scaling law, 主要有以下三点：&lt;/p>
+&lt;ol>
+&lt;li>构建了针对 learning rate 和 batch size 的 scaling law&lt;/li>
+&lt;li>作者使用 non-embedding FLOPs/token $M$ 来表示 model scale&lt;/li>
+&lt;li>预训练数据的质量对最后中的 scaling 影响很大&lt;/li>
+&lt;/ol>
+&lt;p>作者首先构建了针对 batch size 和 learning rate 的 scaling law, 结果显示最优的 learning rate 和 batch size 范围都比较广，这个结论与 &lt;a class="link" href="https://maosong.website/p/kaplan-scaling-law/" target="_blank" rel="noopener"
+>Kaplan&lt;/a> 一致。&lt;/p>
+&lt;p>接下来，作者构建了 batch size $B$, learning rate $\eta$ 与 compute budget $C 之间的关系，实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-llm/DeepSeek-LLM-scaling-curve-bsz-lr.png"
+width="1066"
+height="379"
+loading="lazy"
+alt="Scaling curves of batch size and learning rate"
+class="gallery-image"
+data-flex-grow="281"
+data-flex-basis="675px"
+>&lt;/p>
+&lt;p>拟合得到的曲线为&lt;/p>
+$$
+\begin{aligned}
+\eta_{opt} &amp;= 0.3118* C^{-0.1250}\\
+B_{opt} &amp;= 0.2920 * C^{0.3271}
+\end{aligned}
+$$&lt;p>可以看到，随着 compute budget 增加，$B_{opt}$ 也逐渐增加，而 $\eta_{opt}$ 逐渐减小。并且，最优参数的范围都比较广。&lt;/p>
+&lt;p>接下来，作者进一步探究了 batch size 与 generalization error $L$ 之间的关系。作者希望找到 model scale $N$, data scale $D$ 与 compute budget $C$ 之间的关系，即&lt;/p>
+$$
+N_{opt} \varpropto C^a,D_{opt} \varpropto C^b
+$$&lt;p>compute budget 与 model scale, data scale 之间的关系可以近似表示为 $C=6ND$, 这个公式的推导见 &lt;a class="link" href="https://maosong.website/p/llm-flops-computation/" target="_blank" rel="noopener"
+>LLM FLOPs computation&lt;/a>。我们用 $N_1,N_2$ 分别表示模型的 non-embedding parameter 以及 complete parameters, 则我们可以用 $6N_1$ 或者 $6N_2$ 来近似 model scale, 但是 $6N_1$ 和 $6N_2$ 均没有考虑 attention 的计算开销，因此这两种近似的误差都比较大。&lt;/p>
+&lt;p>为了解决这个问题，作者提出了一个新的 model scale 表示形式，即 non-embedding FLOPS/token $M$, 其中 $M$ 包含 attention 的计算开销但是不包含 vocabulary computation. 基于这种表示，compute budget 可以近似表示为 $C=MD$. $M$ 与 $6N_1,6N_2$ 的区别表示如下所示&lt;/p>
+$$
+\begin{aligned}
+6N_1 &amp;= 72nd^2\\
+6N_2 &amp;= 72nd^2 + 6Vd\\
+M &amp;= 72nd^2+12ndl
+\end{aligned}
+$$&lt;p>其中, $d$ 是 hidden size, $n$ 是 layers 个数, $V$ 是 vocabulary size, $l$ 是 sequence length. 作者在不同 scale 的模型上比较了三种表示方式，结果发现 $6N_1$ 和 $6N_2$ 要么低估，要么高估了模型的参数量。&lt;/p>
+&lt;p>基于 model scale 的表示方式，作者构建了如下的优化问题&lt;/p>
+$$
+M_{opt}(C), D_{opt}(C) = {\arg\min}_{M,D\ s.t.\ C=MD} L(N,D)
+$$&lt;p>作者使用了 &lt;a class="link" href="https://maosong.website/p/chinchilla-scaling-law/" target="_blank" rel="noopener"
+>Chinchilla&lt;/a> 提出来的 IsoFLOP 曲线进行拟合，实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-llm/DeepSeek-LLM-IsoFLOP-curve.png"
+width="1070"
+height="398"
+loading="lazy"
+alt="IsoFLOP curve and optimal model/data allocation"
+class="gallery-image"
+data-flex-grow="268"
+data-flex-basis="645px"
+>&lt;/p>
+&lt;p>拟合的曲线为&lt;/p>
+$$
+M_{opt}(C) = 0.1715*C^{0.5243}, D_{opt}(C) = 5.8316*C^{0.4757}
+$$&lt;p>作者还进一步拟合了 compute budget 与 optimal generalization error 之间的关系，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-llm/DeepSeek-LLM-performance-scaling-curve.png"
+width="662"
+height="414"
+loading="lazy"
+alt="Performance Scaling curve"
+class="gallery-image"
+data-flex-grow="159"
+data-flex-basis="383px"
+>&lt;/p>
+&lt;p>实验结果显示，作者提出的 scaling law 可以很好预测模型的表现。&lt;/p>
+&lt;p>最后，作者探究了以下不同数据集的 scaling law, 作者使用 early in-house data, current in-house data 以及 OpenWebText2 来将进行实验，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-deepseek-llm/DeepSeek-LLM-dataset-ablation.png"
+width="746"
+height="285"
+loading="lazy"
+alt="Comparison of different dataset scaling"
+class="gallery-image"
+data-flex-grow="261"
+data-flex-basis="628px"
+>&lt;/p>
+&lt;p>结果显示，scaling law 与数据质量高度相关。当数据质量提升时，model scaling exponent $a$ 逐步提升，data scaling exponent $b$ 逐步下降，说明 compute budget 更多由模型参数量决定。因此，作者认为提升 compute budget 之后，我们应该优先提高模型的 model size.&lt;/p>
+&lt;h2 id="post-training">&lt;a href="#post-training" class="header-anchor">&lt;/a>Post-training
+&lt;/h2>&lt;p>作者构建了 1.5M 的中英文指令数据。其中安全性的数据有 300K, 有帮助性的数据有 1.2M, 其中包括 $31.2\%$ 的通用数据，$46.6\%$ 的数学相关数据，$22.2\%$ 的代码数据。&lt;/p>
+&lt;p>post-training 包含两个阶段：&lt;/p>
+&lt;ol>
+&lt;li>SFT:7B 的模型训练了 4 个 epoch, 67B 的模型训练了 2 个 epoch, 作者发信进一步训练 67B 的模型会导致过拟合。作者发现，模型在训练过程中会出现重复输出的情况，特别是数学 SFT 数据，为了解决这个问题，作者使用了一个两阶段的 SFT 以及 DPO.&lt;/li>
+&lt;li>&lt;a class="link" href="https://maosong.website/p/notes-on-dpo/" target="_blank" rel="noopener"
+>DPO&lt;/a>: 提高模型的能力，作者发现 DPO 可以提高模型 open-ended generation skill.&lt;/li>
+&lt;/ol>
+&lt;h2 id="evaluation">&lt;a href="#evaluation" class="header-anchor">&lt;/a>Evaluation
+&lt;/h2>&lt;p>我们主要关注一下消融实验。&lt;/p>
+&lt;p>首先作者探究了分阶段 SFT 对模型表现的影响。作者发现，小模型在 math 和 code 数据集上需要训练更长时间，但是这也损害了模型的对话能力。为了解决这个问题，作者使用两阶段的训练模式，第一个阶段使用所有的数据进行训练，第二个阶段仅使用对话数据进行训练，实验结果如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>HumanEval&lt;/th>
+&lt;th>GSM8K&lt;/th>
+&lt;th>Repetition&lt;/th>
+&lt;th>IFEval&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>DeepSeek LLM 7B Chat Stage1&lt;/td>
+&lt;td>48.2&lt;/td>
+&lt;td>63.9&lt;/td>
+&lt;td>0.020&lt;/td>
+&lt;td>38.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>DeepSeek LLM 7B Chat Stage2&lt;/td>
+&lt;td>48.2&lt;/td>
+&lt;td>63.0&lt;/td>
+&lt;td>0.014&lt;/td>
+&lt;td>41.2&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>可以看到，经过第二阶段训练之后，模型的表现有所提升&lt;/p>
+&lt;p>接下来，作者探究了 Multi-choice question 对模型表现的影响，MCQ 要求模型不仅需要有相关的知识，还要理解每个选项的含义。作者使用 20M 中文 MCQ 来进行消融实验，结果如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>MMLU&lt;/th>
+&lt;th>CEval&lt;/th>
+&lt;th>CMMLU&lt;/th>
+&lt;th>TriviaQA&lt;/th>
+&lt;th>ChineseQA&lt;/th>
+&lt;th>&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>DeepSeek LLM 7B Chat&lt;/td>
+&lt;td>49.4&lt;/td>
+&lt;td>47.0&lt;/td>
+&lt;td>49.7&lt;/td>
+&lt;td>57.9&lt;/td>
+&lt;td>75.0&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>DeepSeek LLM 7B Chat + MC&lt;/td>
+&lt;td>60.9&lt;/td>
+&lt;td>71.3&lt;/td>
+&lt;td>73.8&lt;/td>
+&lt;td>57.9&lt;/td>
+&lt;td>74.4&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>实验结果显示，MCQ 确实可以提高模型在上述几个 benchmark 上的表现，但是其泛化性会下降。因此，作者在 pre-training 和 fine-tuning 阶段并没有使用 MCQ 数据进行训练。&lt;/p>
+&lt;p>作者还探究了在 pre-training 阶段加入 instruction data, 来提高 base model 在下游 benchmark 上的表现。结果发现，base model 的表现提升优先。作者认为，尽管 instruction data 可以提高 base model 表现，但是如果 Instruction data 数量过少，则模型表现不太可能学习到有用的知识。因此，作者的做法是不在 pretraining 阶段加入 Instruction data.&lt;/p>
+&lt;p>最后，作者探究了 system prompt 对模型表现的影响。受 LLaMA 2 启发，作者也尝试在输入中加入 system prompt. 实验结果如下所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>MT Bench&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>DeepSeek LLM 7B Chat&lt;/td>
+&lt;td>7.15&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>DeepSeek LLM 7B Chat + System Prompt&lt;/td>
+&lt;td>7.11&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>DeepSeek LLM 67B Chat&lt;/td>
+&lt;td>8.35&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>DeepSeek LLM 67B Chat + System Prompt&lt;/td>
+&lt;td>8.58&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>可以看到，7B 的模型加入 system prompt 之后，模型表现有所下降；67B 的模型加入 system prompt 之后，模型表现有所提升。作者认为，大模型更容易理解 system prompt 的意图，而小模型的指令跟随能力则较差，因此 system prompt 反而会影响模型表现。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者在本文中提出了 DeepSeek LLM 系列大语言模型，作者详细介绍了超参数的选择以及 scaling law 等。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2401.02954" target="_blank" rel="noopener"
+>arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

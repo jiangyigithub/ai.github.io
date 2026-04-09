@@ -1,0 +1,1417 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Machine Learning on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/categories/machine-learning/</link><description>Recent content in Machine Learning on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/categories/machine-learning/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on KL divergence</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-kl-divergence/</link><pubDate>Sat, 24 Jan 2026 16:32:14 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-kl-divergence/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>在本节中，我们先介绍 KL divergence 的基本定义，然后我们介绍 KL divergence 的一般形式，即 f-divergence.&lt;/p>
+&lt;h3 id="kl-divergence">&lt;a href="#kl-divergence" class="header-anchor">&lt;/a>KL-divergence
+&lt;/h3>&lt;p>KL divergence 用于衡量近似概率分布 $Q(x)$ 到真实概率分布 $P(x)$ 的误差，我们可以将其理解为：如果我们用 $Q(x)$ 来替换 $P(x)$, 会有多大的信息损失？&lt;/p>
+&lt;p>连续概率分布的 KL divergence 的定义如下&lt;/p>
+$$
+D_{KL}(P\parallel Q) =\mathbb{E}_{x\sim P}\left[\log \frac{P(x)}{Q(x)}\right]=\int P(x)\log\left(\frac{P(x)}{Q(x)}\right)dx
+$$&lt;p>离散概率分布的 KL divergence 定义如下&lt;/p>
+$$
+D_{KL}(P\parallel Q) = \sum_{x} P(x)\log\left(\frac{P(x)}{Q(x)}\right)
+$$&lt;p>KL divergence 有两几个关键性质：&lt;/p>
+&lt;ol>
+&lt;li>非负性：$D_{KL}(P\parallel Q)\geq0$, 且 $D_{KL}(P\parallel Q)=0$ 当且仅当 $P(x)=Q(x)$ 对任意 $x$ 成立&lt;/li>
+&lt;li>非对称性： 一般情况下，$D_{KL}(P\parallel Q)\neq D_{KL}(Q\parallel P)$.&lt;/li>
+&lt;li>有限性：如果存在 $x$ 使得 $P(x)>0$ 但是 $Q(x)=0$, 则 $D_{\mathrm{KL}}(P\parallel Q)=\infty$.&lt;/li>
+&lt;/ol>
+&lt;p>一般我们称 $D_{KL}(P\parallel Q)$ 为 &lt;strong>forward KL&lt;/strong> (相对于 $Q$), 对应的还有 &lt;strong>reverse KL&lt;/strong> $D_{KL}(Q\parallel P)$ (相对于 $Q$).&lt;/p>
+&lt;h3 id="f-divergence">&lt;a href="#f-divergence" class="header-anchor">&lt;/a>F-divergence
+&lt;/h3>&lt;p>KL divergence 是 f-divergence 的一种特殊情况。 f-divergence 是一类衡量不同概率分布 $P$ 和 $Q$ 的函数 $D_f(P\parallel Q)$.&lt;/p>
+&lt;p>假设函数 $f:(0,\infty)\to\mathbb{R}$ 是一个凸函数，且 $f(1)=0$. $P$ 和 $Q$ 是两个概率分布，则 f-divergence 定义如下&lt;/p>
+$$
+D_f(P\parallel Q) = \mathbb{E}_{x\sim Q}\left[ f\left(\frac{P(x)}{Q(x)}\right)\right]=\int Q(x)f\left(\frac{P(x)}{Q(x)}\right)dx
+$$&lt;p>我们称 $f$ 为 $D_f$ 的 &lt;strong>generator&lt;/strong>.&lt;/p>
+&lt;p>以下是几种常见的 f-divergence:&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Name&lt;/th>
+&lt;th>generator&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>forward KL divergence&lt;/td>
+&lt;td>$f(x)=x\log x$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>reverse KL divergence&lt;/td>
+&lt;td>$f(x)=-\log x$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Total variation&lt;/td>
+&lt;td>$f(x)=1/2\vert x-1\vert$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\chi^2$-divergence&lt;/td>
+&lt;td>$f(x)=(x-1)^2$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>JS-divergence&lt;/td>
+&lt;td>$f(x)=x\log\frac{2x}{x+1}+\log\frac{2}{x+1}$&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>我们这里推导一下 KL divergence 对应的 generator.&lt;/p>
+&lt;p>对于 forward KL, 注意到&lt;/p>
+$$
+D_f(P \parallel Q) = \int Q(x) \left( \frac{P(x)}{Q(x)} \log \frac{P(x)}{Q(x)} \right) dx = \int P(x) \log \frac{P(x)}{Q(x)} dx = D_{KL}(P \parallel Q)
+$$&lt;p>因此 forward KL 对应的 generator 为 $f=x\log x$.&lt;/p>
+&lt;p>对于 reverse KL, 注意到&lt;/p>
+$$
+D_f(P \parallel Q) = \int Q(x) \left( -\log \frac{P(x)}{Q(x)} \right) dx = \int Q(x) \log \frac{Q(x)}{P(x)} dx = D_{KL}(Q \parallel P)
+$$&lt;p>因此 forward KL 对应的 generator 为 $f=-\log x$.&lt;/p>
+&lt;h4 id="properties-of-f-divergence">&lt;a href="#properties-of-f-divergence" class="header-anchor">&lt;/a>Properties of F-divergence
+&lt;/h4>&lt;p>f-divergence 性质如下&lt;/p>
+&lt;ol>
+&lt;li>linearity: $D_{a_1f_1+a_2f_2}=a_1D_{f_1}+a_2D_{f_2}$.&lt;/li>
+&lt;li>$D_f=D_g$ 当且仅当存在 $c\in\mathbb{R}$ 使得 $f(x)=g(x)+c(x-1)$.&lt;/li>
+&lt;li>non-negativity. $D_f(P\parallel Q)\geq0$ 且 $D_f(P\parallel Q)$ 当且仅当 $P=Q$.&lt;/li>
+&lt;/ol>
+&lt;p>性质 2 证明如下：&lt;/p>
+&lt;p>如果 $f(x)=g(x)+c(x-1)$, 则通过定义，我们可以验证得到 $D_f=D_g$.&lt;/p>
+&lt;p>反之，如果 $D_f=D_g$, 令 $h=f-g$, 对任意两个在集合 $\{0, 1\}$ 上的概率分布 $P,Q$, 由于 $D_f(P\parallel Q) - D_g(P\parallel Q)=0$, 我们有&lt;/p>
+$$
+h\left(\frac{P(1)}{Q(1)}\right) = -\frac{Q(0)}{Q(1)}h\left(\frac{P(0)}{Q(0)}\right)
+$$&lt;p>我们不妨假设 $P(0)=aQ(0)$, $P(1)=bQ(1)$, 结合 $P(0)+P(1)=1$ 和 $Q(0)+Q(1)=1$ 我们有&lt;/p>
+$$
+Q(0) = \frac{1-a}{b-a}, Q(1) = \frac{b-1}{b-a}
+$$&lt;p>从而&lt;/p>
+$$
+\frac{h(b)}{b-1}=\frac{h(a)}{a-1}
+$$&lt;p>由于我们可以任意选定 $P$ 和 $Q$, 因此 $h$ 是一个线性函数，形式为 $h(x)=c(x-1)$. $\blacksquare$&lt;/p>
+&lt;h2 id="approximation">&lt;a href="#approximation" class="header-anchor">&lt;/a>Approximation
+&lt;/h2>&lt;p>本节中，我们将介绍针对 KL divergence 的三种近似形式。&lt;/p>
+&lt;p>在实际计算 KL divergence 时，由于：&lt;/p>
+&lt;ol>
+&lt;li>完整计算 KL divergence 需要的算力或内存过高&lt;/li>
+&lt;li>没有闭式解&lt;/li>
+&lt;li>我们可以仅保存 log-probability, 而不是整个概率分布&lt;/li>
+&lt;/ol>
+&lt;p>因此，我们假设我们只能计算输入 $x$ 对应的概率 $P(x)$ 和 $Q(x)$. 一般来说，我们会通过 Monte Carlo estimate 来进行近似。即我们先对 $P$ 进行采样得到 $x_1,\dots,x_N\sim P$, 然后我们构建估计量。&lt;/p>
+&lt;p>一个高的估计量应该是无偏 (unbiased) 并且方差低 (low variance) 的。John Schulman 给出了三种 estimator. 我们分别针对 forward KL 和 reverse KL 进行介绍。这里我们定义&lt;/p>
+$$
+r = \frac{P(x)}{Q(x)}
+$$&lt;h3 id="forward-kl-estimation">&lt;a href="#forward-kl-estimation" class="header-anchor">&lt;/a>Forward KL Estimation
+&lt;/h3>&lt;p>对于 forward KL $D_{KL}(P\parallel Q)$, 其对应的 generator 为 $f(x)=x\log x$, 注意到 $\mathbb{E}_{x\sim Q}[r]=1$, 且 $f$ 是一个凸函数，因此我们有 $f(r)-f'(1)(r-1)\geq0$, 从而我们可以得到一个新的估计为 $\boxed{k=r\log r - (r-1)}$.&lt;/p>
+&lt;h3 id="reverse-kl-estimation">&lt;a href="#reverse-kl-estimation" class="header-anchor">&lt;/a>Reverse KL Estimation
+&lt;/h3>&lt;p>对于 reverse KL $D_{KL}(Q\parallel P)$, 其对应的 generator 为 $f(x)=-\log x$, 由概率性质，$\boxed{k_1=-\log r}$ 是 $D_{KL}(Q\parallel P)$ 的一个无偏估计。但是 $k_1$ 的问题在于 当 $r$ 非常小时，$k_1$ 会变得非常大。也就是说，$k_1$ 的 variance 比较高。&lt;/p>
+&lt;p>John Schulman 基于 f-divergence 泰勒展开给出了一个新的估计 $k_2$, 其定义为&lt;/p>
+$$
+\boxed{k_2 = \frac12(\log r)^2}
+$$&lt;p>其期望为&lt;/p>
+$$
+\mathbb{E}_Q[k_2] = \mathbb{E}_Q\left[\frac12(\log r)^2\right]
+$$&lt;p>这是一个 f-divergence, 对应的 generator 为 $f_{k_2}(x)=1/2(\log x)^2$, 而 $D_{KL}(Q\parallel P)$ 对应的 generator 为 $f_{k_1}(x)=-\log x$.&lt;/p>
+&lt;p>当 $P$ 和 $Q$ 比较靠近时，我们记 $\theta=r-1$， 对 $D_{f}(P\parallel Q)$ 在 $x=1$ 处进行展开得到&lt;/p>
+$$
+\begin{aligned}
+D_f(P\parallel Q) &amp;= \mathbb{E}_{x\sim Q}\left[ f(r)\right]\\
+&amp;= \mathbb{E}_{x\sim Q}\left[ f(1) + f'(1)\theta + \frac{f''(1)}{2}f(1+\lambda)\theta^2+O(\theta^3)\right]\\
+&amp;= \frac{f''(1)}{2}F\theta^2+O(\theta^3)
+\end{aligned}
+$$&lt;p>这里我们应用了 $f(1)=0$, $\mathbb{E}[\theta]=0$, $F=\mathbb{E}[f(1+\lambda\theta)$ 是 Fisher information matrix.&lt;/p>
+&lt;p>我们分别带入 $f_{k_1}(x)$ 和 $f_{k_2}(x)$ 得到 $f_{k_1}''(1)=f_{k_2}''(1)=1$, 即 $k_1$ 和 $k_2$ 在 $P$ 和 $Q$ 比较靠近时二阶近似是相同的。因此，**$k_2$ 表面上是一个二阶近似，在分布接近时有效，但本质上是在优化 &lt;em>另一个 f-divergence&lt;/em>*&lt;/p>
+&lt;p>John Schulman 还构造了第三种估计。回顾前面 f-divergence 的性质 2，即当 $f(x)=g(x)+c(x-1)$ 时，我们有 $D_f=D_g$, 因此我们可以选取合适的 $c$ 来降低估计的 variance. 注意到 $k_1$ 的主要问题在于存在负数的可能性，因此我们就构建一个对应的估计量来解决这个问题。注意到 $\log x \leq x -1$, 因此我们可以令 $c=1$, 此时就得到了新的估计&lt;/p>
+$$
+\boxed{k_3 =(r-1)- \log r }
+$$&lt;p>$k_3$ 继承了 $k_1$ 的无偏性，并且 $k_3$ 通过 f-divergence 等价类消除了负值，兼顾无偏与低方差，解决了 $k_1$ variance 过大的问题&lt;/p>
+&lt;h3 id="experiments-on-approximation">&lt;a href="#experiments-on-approximation" class="header-anchor">&lt;/a>Experiments on Approximation
+&lt;/h3>&lt;p>对于分布 $P=\mathcal{N}(0,1)$ 以及 $Q=\mathcal{N}(0.1, 1)$, 真实的 KV divergence 为 0.005, 三个 estimator 的误差如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Method&lt;/th>
+&lt;th>Bias&lt;/th>
+&lt;th>Std Dev&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$k_1$&lt;/td>
+&lt;td>0.0001&lt;/td>
+&lt;td>20.0005&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$k_2$&lt;/td>
+&lt;td>0.0025&lt;/td>
+&lt;td>1.4175&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$k_3$&lt;/td>
+&lt;td>0.0000&lt;/td>
+&lt;td>1.4163&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>当 $P=\mathcal{N}(1,1)$, $Q=\mathcal{N}(0.1, 1)$ 时， 真实的 KV divergence 为 0.405, 三个 estimator 的误差如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Method&lt;/th>
+&lt;th>Bias&lt;/th>
+&lt;th>Std Dev&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$k_1$&lt;/td>
+&lt;td>-0.0000&lt;/td>
+&lt;td>2.2223&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$k_2$&lt;/td>
+&lt;td>0.2025&lt;/td>
+&lt;td>1.6762&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$k_3$&lt;/td>
+&lt;td>0.0000&lt;/td>
+&lt;td>1.6342&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>可以看到 $k_1$ 的 variance 非常大，$k_2$ 是一个有偏估计，$k_3$ 既满足了无偏又满足了 low variance.&lt;/p>
+&lt;h3 id="summary">&lt;a href="#summary" class="header-anchor">&lt;/a>Summary
+&lt;/h3>&lt;p>我们接下来总结 reverse KL $D_{KL}(Q\parallel P)$ 的近似 $k_1$, $k_2$ 和 $k_3$ 的性质如下 ($r=P(x)/Q(x)$)&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>estimation&lt;/th>
+&lt;th>definition&lt;/th>
+&lt;th>motivation&lt;/th>
+&lt;th>bias&lt;/th>
+&lt;th>variance&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$k_1$&lt;/td>
+&lt;td>$-\log r$&lt;/td>
+&lt;td>naive estimation&lt;/td>
+&lt;td>unbiased&lt;/td>
+&lt;td>high&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$k_2$&lt;/td>
+&lt;td>$\frac12(\log r)^2$&lt;/td>
+&lt;td>f-divergence, taylor expansion&lt;/td>
+&lt;td>biased&lt;/td>
+&lt;td>low&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$k_3$&lt;/td>
+&lt;td>$(r-1)- \log r$&lt;/td>
+&lt;td>f-divergence, non-negativity&lt;/td>
+&lt;td>unbiased&lt;/td>
+&lt;td>low&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="applications-to-ml">&lt;a href="#applications-to-ml" class="header-anchor">&lt;/a>Applications to ML
+&lt;/h2>&lt;blockquote>
+&lt;p>Remark
+本节内容主要参考了 &lt;a class="link" href="https://dibyaghosh.com/blog/probability/kldivergence/" target="_blank" rel="noopener"
+>KL Divergence for Machine Learning&lt;/a>&lt;/p>
+&lt;/blockquote>
+&lt;p>我们假设真实目标分布和近似的目标分布分别记为 $p_{data}(x)$ 和 $p_\theta(x)$. 由于 KL divergence 的非对称性，因此我们需要考虑两种目标函数：&lt;/p>
+&lt;ol>
+&lt;li>forward KL: $\arg\min_\theta D_{KL}(p_{data}\parallel p_\theta)$&lt;/li>
+&lt;li>reverse KL: $\arg\min_\theta D_{KL}(p_\theta \parallel p_{data})$&lt;/li>
+&lt;/ol>
+&lt;p>我们将会看到，这两种不同的目标函数导致的结果也不尽相同&lt;/p>
+&lt;h3 id="forward-kl">&lt;a href="#forward-kl" class="header-anchor">&lt;/a>Forward KL
+&lt;/h3>&lt;p>对目标函数进行简化得到&lt;/p>
+$$
+\arg\min_\theta D_{KL}(p_{data}\parallel p_\theta) = \arg\max_\theta \mathbb{E}_{x\sim p_{data}}\left[\log p_\theta(x)\right]
+$$&lt;p>实际在计算时，我们会使用 Monte Carlo 的方式对真实分布进行采样然后进行估计。&lt;/p>
+&lt;p>Forward KL 其代表的含义为，我们从分布 $p_{data}$ 中进行采样，然后求 $p_\theta$ 的最大似然估计。最终的结果满足：&lt;strong>当 $p_{data}(x)$ 概率很高时，$p_\theta(x)$ 的概率也需要很高&lt;/strong>. 这是一种 &lt;strong>mean-seeking&lt;/strong> behavior, 因为 $p_\theta$ 必须覆盖 $p_{data}$ 的所有 modes.&lt;/p>
+&lt;p>一般来说，supervised learning 对应的就是 forward KL. 我们可以证明 forward KL divergence 和 MLE 是等价的。也就是说，最大似然估计得到的分布就是 KL divergence 最小的近似分布。我们将 $p_{data}(x)$ 和 $p_\theta(x)$ 对应的 KL divergence 进行展开得到&lt;/p>
+$$
+\begin{aligned}
+\theta_{KL}^* &amp;= \arg\min_{\theta}D_{KL}(p_{data}(x)\parallel p_\theta(x))\\
+&amp;= \arg\min_{\theta} \int p_{data}(x)\frac{p_{data}(x)}{p_\theta(x)} dx\\
+&amp;= \arg\min_{\theta}\int p_{data}(x)\log p_{data}(x) dx - \int p_{data}(x)\log p_\theta(x)dx \\
+&amp;= \arg\min_{\theta} - \int p_{data}(x)\log p_\theta(x)dx \\
+&amp;= \arg\max_{\theta} \int p_{data}(x)\log p_\theta(x)dx
+\end{aligned}
+$$&lt;p>实际上，真实的数据分布 $p_{data}(x)$ 是未知的，我们只有从 $p_{data}(x)$ 采样得到的一批数据 $X=\{x_1,\dots,x_n\}\sim p_{data}(x)$. 基于大数定律，我们有&lt;/p>
+$$
+\frac{1}{n}\sum_{i=1}^n\log p(\theta_i\mid \theta)=\mathbb{E}_{x\sim p_{data}}[\log p_\theta(x)] = \int p_{data}(x)\log p_\theta(x)dx, n\to \infty
+$$&lt;p>这样，最大似然估计就与最小化 KL divergence 构建起了联系：&lt;/p>
+$$
+\begin{aligned}
+\theta_{MLE}^*&amp;=\arg\max_{\theta} \sum_{i=1}^n \log p(x_i\mid \theta)\\
+&amp;= \arg\max_{\theta} \int p_{data}(x)\log p_\theta(x)dx\\
+&amp;= \theta_{KL}^*, n\to\infty.
+\end{aligned}
+$$&lt;p>也就是说，当采样样本足够多的时候，最大似然估计和最小 KL divergence 是等价的。监督学习中，我们先从真实分布 $p_{data}(x,y)$ 中收集一个数据集 $\mathcal{D}=\{(x_i,y_i)\}$, 然后我们会基于模型 $f_\theta:\mathcal{X}\to\mathcal{Y}$ 和损失函数 $\mathcal{L}:\mathcal{Y}\times\mathcal{Y}\to\mathbb{R}$ 来优化模型参数 $\theta$:&lt;/p>
+$$
+\arg\min_\theta \mathbb{E}_{(x_i,y_i)\sim\mathcal{D}}[\mathcal{L}(f_\theta(x_i), y_i)]
+$$&lt;p>对于使用 cross-entropy loss 的分类问题以及 MSE loss 的回归问题，其目标函数实际上都是最小化 KL divergence.&lt;/p>
+&lt;h3 id="reverse-kl">&lt;a href="#reverse-kl" class="header-anchor">&lt;/a>Reverse KL
+&lt;/h3>&lt;p>对目标函数进行简化，得到&lt;/p>
+$$
+\arg\min_\theta D_{KL}(Q_\theta\parallel p_{data}) = \arg\max_\theta \mathbb{E}_{x\sim Q_\theta}\left[\log p_{data}(x)\right] - \mathbb{E}_{x\sim Q_\theta}\left[\log Q_\theta(x)\right]
+$$&lt;p>实际在计算时，我们需要知道真实概率分布在采样点上的概率值 $p_{data}(x)$.&lt;/p>
+&lt;p>Reverse KL 代表的含义为，我们从分布 $p_\theta(x)$ 中进行采样，然后最大化采样点在 $p_{data}(x)$ 中的概率分布。entropy item 鼓励 $p_\theta$ 尽可能均匀分布（覆盖广），从而最终结果满足：&lt;strong>当 $p_\theta(x)$ 概率很高时，$p_{data}(x)$ 的概率也需要很高&lt;/strong>。注意到与 forward KL 不同，Reverse KL 中包含 entropy 项，其避免了 $p_\theta$ 收缩到 $p_{data}$ 的某一个 非常窄的 mode 上，最终结果是 $p_\theta$ 会找到 $p_{data}$ 的一个 &lt;strong>high probability&lt;/strong> 以及 &lt;strong>wide support&lt;/strong> 的 mode, 然后进行覆盖。&lt;/p>
+&lt;p>一般来说，reinforcement learning 对应的就是 reverse KL, 这是因为我们希望 policy model 不要离 reference model 太远，并不一定要 cover 所有的 mode.&lt;/p>
+&lt;h3 id="experiments-on-forward-and-reverse-kl">&lt;a href="#experiments-on-forward-and-reverse-kl" class="header-anchor">&lt;/a>Experiments on forward and Reverse KL
+&lt;/h3>&lt;p>我们通过概率分布来可视化 forward RL 与 reverse RL 的区别，验证 forward KL 与 reverse KL 不同的模式。&lt;/p>
+&lt;p>我们假设 $p_{data}=w_1\mathcal{N}(\mu_1, \sigma_1^2)+w_2\mathcal{N}(\mu_2, \sigma_2^2)$, 然后我们用一个 normal distribution $p_\theta=\mathcal{N}(\mu, \sigma^2)$ 来近似 $p_{data}$, 这里 $\theta=(\mu, \sigma^2)$. 对于 forward KL, 我们可以从理论上得出最优解，对应的 $\mu=w_1\mu_1+w_2\mu_2$, 而 reverse KL 则只能通过优化的方式进行求解，并且解与初始化条件相关，下面是相关的实验结果&lt;/p>
+&lt;p>首先我们令 $w_1=w_2=0.5$, $\mu_1=\mu_2=4.0$, $\sigma_1=\sigma_2=1$, reverse KL 的初始化条件为 $\theta_0=(2,1)$, 对应的结果为&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kl-divergence/KL-divergence-reverse-kl-vis1.png"
+width="1010"
+height="549"
+loading="lazy"
+alt="visualization of forward KL v.s. reverse KL (1)"
+class="gallery-image"
+data-flex-grow="183"
+data-flex-basis="441px"
+>&lt;/p>
+&lt;p>接下来我们改变 reverse KL 的初始化条件为 $\theta_0=(-2,1)$, 对应的结果为&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kl-divergence/KL-divergence-reverse-kl-vis2.png"
+width="1010"
+height="549"
+loading="lazy"
+alt="visualization of forward KL v.s. reverse KL (2)"
+class="gallery-image"
+data-flex-grow="183"
+data-flex-basis="441px"
+>&lt;/p>
+&lt;p>可以看到，与前面分析一致，使用 forward KL 时，最终得到的 $p_\theta$ 会倾向于拟合分布的中心 (mean seeking), 即 $\mu(p_\theta)=\mu(p_{data})$, 而使用 reverse KL 时，最终得到的 $P$ 会倾向于拟合分布的 mode (mode seeking).&lt;/p>
+&lt;h2 id="applications-to-rl">&lt;a href="#applications-to-rl" class="header-anchor">&lt;/a>Applications to RL
+&lt;/h2>&lt;blockquote>
+&lt;p>Remark
+本节内容主要参考了 &lt;a class="link" href="https://xihuai18.github.io/reinforcement-learning/2025/12/01/kl-estimators-en.html" target="_blank" rel="noopener"
+>Understanding KL Divergence Estimators in RL: From Value Approximation to Gradient Estimation&lt;/a>&lt;/p>
+&lt;/blockquote>
+&lt;p>在本节中，我们将基于 RL 来推导 KL 的相关性质。为了统一，这里我们使用 RL 中常见的 notation 来进行计算&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>notation&lt;/th>
+&lt;th>description&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$\pi_\theta$&lt;/td>
+&lt;td>policy model with parameter $\theta$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\pi_{ref}$&lt;/td>
+&lt;td>reference model&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\pi_{old}$&lt;/td>
+&lt;td>behavior model to sample from&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$s_\theta(x)=\nabla_\theta \log \pi_\theta(x)$&lt;/td>
+&lt;td>score function&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\rho(x)=\pi_\theta(x)/\pi_{old}(x)$&lt;/td>
+&lt;td>importance weight&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\mathrm{sg}(\cdot)$&lt;/td>
+&lt;td>stop gradient operation&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>首先 score function 有一个期望为 0 的性质：&lt;/p>
+$$
+\mathbb{E}_{x\sim\pi_\theta}[s_\theta(x)]=\int_x \pi_\theta(x)\nabla_\theta \log \pi_\theta(x)dx = \int_x\nabla_\theta \pi_\theta(x)dx= \nabla_\theta\int_x \pi_\theta(x)dx =\nabla_\theta1 = 0
+$$&lt;p>接下来，我们分别推导 forward KL 和 reverse KL 的梯度。对于 forward KL, 我们有&lt;/p>
+$$
+\nabla_\theta D_{KL}(\pi_{ref}\parallel \pi_\theta) = -\int \pi_{ref}\nabla_\theta \log \pi_\theta dx=-\mathbb{E}_{\pi_{ref}}[s_\theta] = \boxed{-\mathbb{E}_{\pi_\theta}\left[\frac{\pi_{ref}}{\pi_\theta}s_\theta\right]}
+$$&lt;p>对于 reverse KL,我们有&lt;/p>
+$$
+\begin{aligned}
+\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})&amp; = \int\left[\nabla_\theta \pi_\theta\cdot\log\frac{\pi_\theta}{\pi_{ref}} + \pi_\theta \nabla_\theta\log \frac{\pi_\theta}{\pi_{ref}}\right]dx\\
+&amp;= \int \pi_\theta s_\theta\log \frac{\pi_\theta}{\pi_{ref}}dx + \int \pi_\theta s_\theta dx\\
+&amp;= \mathbb{E}_{\pi_\theta}\left[s_\theta\log \frac{\pi_\theta}{\pi_{ref}}\right]+\mathbb{E}_{\pi_\theta}[s_\theta]\\
+&amp;= \boxed{\mathbb{E}_{\pi_\theta}\left[s_\theta\log \frac{\pi_\theta}{\pi_{ref}}\right]}
+\end{aligned}
+$$&lt;p>这里我们使用了 $\nabla_\theta\pi_\theta=\pi_\theta s_\theta$ , $\nabla_\theta\log\pi_\theta=s_\theta$ 以及 前面推导的 $\mathbb{E}_{\pi_\theta}[s_\theta]=0$ 的结论.&lt;/p>
+&lt;p>RL 的目标函数如下&lt;/p>
+$$
+\mathcal{J}(\theta) = \mathbb{E}_{\tau\sim \pi_\theta}\left[\sum_{t=0}^T\gamma^tr(s_t,a_t)\right] - \beta D_{KL}(\pi_\theta\parallel \pi_{ref})
+$$&lt;h3 id="ki-as-loss">&lt;a href="#ki-as-loss" class="header-anchor">&lt;/a>Ki as Loss
+&lt;/h3>&lt;p>由于 KL divergcne 不能直接计算（或者计算难度较大），因此，基于前面对 KL divergence estimation 的分析，我们可以使用如下代理损失函数来优化我们的模型：&lt;/p>
+$$
+\mathcal{J}_1(\theta) = \mathbb{E}_{\tau\sim \pi_\theta}\left[\sum_{t=0}^T\gamma^tr(s_t,a_t)\right] - \beta k_i(\pi_\theta, \pi_{ref})
+$$&lt;p>这里 $i\in\{1,2,3\}$ 代表了我们使用的估计。从直觉上来说，这样做是没问题的，但是我们将从数学分析上说明，$k_1,k_3$ 作为损失函数都存在问题。其核心问题在于&lt;/p>
+$$
+\mathbb{E}[\widehat{D_{KL}}]=D_{KL} \nRightarrow \mathbb{E}[\nabla_\theta \widehat{D_{KL}}] =\nabla_\theta D_{KL}
+$$&lt;p>也就是说，&lt;strong>KL divergence estimation 的无偏性不能推导出 KL divergence estimation gradient 的无偏性，这是因为我们在求期望时，对应的概率分布可能也与参数相关&lt;/strong>。实际上，我们有&lt;/p>
+$$
+\begin{aligned}
+\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref}) &amp;= \nabla_\theta \mathbb{E}_{x\sim\pi_\theta}[\widehat{D_{KL}}(\pi_\theta\parallel \pi_{ref})]\\
+&amp;= \mathbb{E}_{x\sim\pi_\theta}[\nabla_\theta \widehat{D_{KL}}(\pi_\theta\parallel \pi_{ref})] + \mathbb{E}_{x\sim\pi_\theta}[\widehat{D_{KL}}(\pi_\theta\parallel \pi_{ref})\nabla_\theta \pi_\theta(x)]\\
+&amp;\neq \mathbb{E}_{x\sim\pi_\theta}[\nabla_\theta \widehat{D_{KL}}(\pi_\theta\parallel \pi_{ref})]
+\end{aligned}
+$$&lt;p>因此 $\nabla_\theta \widehat{D_{KL}}$ 是 $\nabla_\theta D_{KL}$ 的一个有偏估计。&lt;/p>
+&lt;p>我们分别来分析一下 $k_1,k_2,k_3$ 梯度，&lt;/p>
+$$
+\begin{aligned}
+\nabla_\theta k_1 &amp;= \nabla_\theta\left[-\log \frac{\pi_{ref}}{\pi_\theta}\right] = s_\theta\\
+\nabla_\theta k_2 &amp;= \nabla_\theta\left[\frac12\left(\log \frac{\pi_{ref}}{\pi_\theta}\right)^2\right] = -\log \frac{\pi_{ref}}{\pi_\theta}s_\theta\\
+\nabla_\theta k_3 &amp;= \nabla_\theta\left[\frac{\pi_{ref}}{\pi_\theta}-1- \log \frac{\pi_{ref}}{\pi_\theta}\right] = \left(1 - \frac{\pi_{ref}}{\pi_\theta}\right)s_\theta
+\end{aligned}
+$$&lt;p>此时对应的梯度的期望为&lt;/p>
+$$
+\begin{aligned}
+\mathbb{E}_{\pi_{\theta}}[\nabla_\theta k_1] &amp;= \mathbb{E}_{\pi_{\theta}}[s_\theta]=0\\
+\mathbb{E}_{\pi_{\theta}}[\nabla_\theta k_2] &amp;= \mathbb{E}_{\pi_{\theta}}\left[-\log \frac{\pi_{ref}}{\pi_\theta}s_\theta\right]=\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})\\
+\mathbb{E}_{\pi_{\theta}}[\nabla_\theta k_3] &amp;= \mathbb{E}_{\pi_{\theta}}\left[\left(1 - \frac{\pi_{ref}}{\pi_\theta}\right)s_\theta\right]=\nabla_\theta D_{KL}(\pi_{ref}\parallel \pi_\theta)\\
+\end{aligned}
+$$&lt;p>也就是说，$k_1$ 估计的梯度的期望为 0，对整体训练没有任何帮助，$k_3$ 估计的梯度的期望等价于优化 forward KL, **只有 $k_2$ 估计的梯度的期望等价于优化 reverse KL.&lt;/p>
+&lt;hr>
+&lt;p>在实际代码实现的时候，KL divergence 有两种不同的实现形式：&lt;/p>
+&lt;p>第一种是根据定义将 KL divergence 作为损失函数的一部分，此时我们的 KL divergence 参与反向传播，对应的实现方式如下&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&lt;span class="line">&lt;span class="cl">loss = -advantage * log_prob + beta * kl
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>第二种是只调整 reward, 而不参与反向传播（通过 $\mathrm{sg}(\cdot)$ 实现），对应的实现方式如下所示&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&lt;span class="line">&lt;span class="cl">shaped_reward = reward - beta * kl.detach()
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>这两者对于模型的训练影响很大，下面我们分别来进行介绍&lt;/p>
+&lt;h3 id="kl-as-loss">&lt;a href="#kl-as-loss" class="header-anchor">&lt;/a>KL as Loss
+&lt;/h3>&lt;p>为了统一 on-policy 和 off-policy 两种形式，我们使用一个统一的表达形式，即&lt;/p>
+$$
+L=\rho k_i
+$$&lt;p>此时对应的 RL 目标函数为&lt;/p>
+$$
+\mathcal{J}_2(\theta) = \mathbb{E}_{\tau\sim \pi_\theta}\left[\sum_{t=0}^T\gamma^tr(s_t,a_t)\right] - \beta\rho k_i(\pi_\theta, \pi_{ref})
+$$&lt;p>这里&lt;/p>
+$$
+\rho = \frac{\pi_\theta}{\mathrm{sg}(\pi_{old})}
+$$&lt;p>是 importance weight,&lt;/p>
+&lt;ol>
+&lt;li>当算法为 on-policy 时，$\pi_\theta=\pi_{old}$, $\rho\equiv1$.&lt;/li>
+&lt;li>当算法为 off-policy 时，$\rho=\pi_\theta/\pi_{old}$, $\nabla_\theta \rho=\rho s_\theta$.&lt;/li>
+&lt;/ol>
+&lt;p>通过这种方式，我们使得参数分布本身不会对梯度计算产生影响，从而使得对期望进行求导和对导数求期望相等，即&lt;/p>
+$$
+\nabla_\theta\mathbb{E}_{\pi_{old}}[k] = \int \pi_{old}(x)\nabla_\theta kdx= \mathbb{E}_{\pi_{old}}[\nabla_\theta k]
+$$&lt;p>接下来我们来计算对应估计的梯度的期望，即 $\mathbb{E}[\nabla_\theta(\rho k_i)]$, 首先我们计算对应的梯度&lt;/p>
+$$
+\begin{aligned}
+\nabla_\theta (\rho k_1) &amp;= \rho s_\theta k_1+r\rho_\theta=\rho s_\theta(k_1+1)\\
+\nabla_\theta (\rho k_2) &amp;= \rho s_\theta k_2+\rho\left(-\log \frac{\pi_{ref}}{\pi_\theta}s_\theta\right)=\rho s_\theta(k_1+k_2)\\
+\nabla_\theta (\rho k_3) &amp;= \rho s_\theta k_3+\rho\left(1 - \frac{\pi_{ref}}{\pi_\theta}\right)s_\theta=\rho s_\theta\left(k_3+1-\frac{\pi_{ref}}{\pi_\theta}\right)=\rho s_\theta k_1
+\end{aligned}
+$$&lt;p>注意到 $\mathbb{E}_{\pi_{old}} [\rho k_i]=\mathbb{E}_{\pi_{\theta}}[k_i]$ 以及 $\mathbb{E}_{\pi_{\theta}}[s_\theta]=0$, 我们对上述梯度求期望得到&lt;/p>
+$$
+\begin{aligned}
+\mathbb{E}_{\pi_{old}}[\nabla_\theta (\rho k_1)] &amp;= \mathbb{E}_{\pi_{old}}[\rho s_\theta(k_1+1)]=\mathbb{E}_{\pi_{\theta}}[s_\theta k_1]=\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})\\
+\mathbb{E}_{\pi_{old}}[\nabla_\theta (\rho k_2)] &amp;= \mathbb{E}_{\pi_{old}}[\rho s_\theta(k_1+k_2)]=\nabla_\theta \mathbb{E}_{\pi_\theta}[k_2]\\
+\mathbb{E}_{\pi_{old}}[\nabla_\theta (\rho k_3)] &amp;= \mathbb{E}_{\pi_{old}}[\rho s_\theta k_1]=\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})
+\end{aligned}
+$$&lt;p>这里在计算 $\mathbb{E}_{\pi_{old}}[\nabla_\theta (\rho k_2)]$ 时，我们使用了 Leibniz 乘法法则：&lt;/p>
+$$
+\mathbb{E}_{\pi_{old}}[\rho s_\theta(k_1+k_2)]= \mathbb{E}_{\pi_{\theta}}[s_\theta k_2]+\mathbb{E}_{\pi_{\theta}}[\nabla_\theta k_2]=\nabla_\theta\mathbb{E}_{\pi_{\theta}}[k_2]
+$$&lt;p>可以看到，$\rho k_1$ 和 $\rho k_3$ 都满足梯度与期望的可交换性，而 $\rho k_2$ 不满足，为了解决这个问题，我们可以使用 stop gradient, 即 $\mathrm{sg}(\rho)l_2$, 此时，我们有&lt;/p>
+$$
+\nabla_\theta(\mathrm{sg}(\rho) k_2) = \mathrm{sg}(\rho)\nabla_\theta k_2 = \rho s_\theta k_1
+$$&lt;p>对其求期望有&lt;/p>
+$$
+\mathbb{E}_{\pi_{old}}[\nabla_\theta(\mathrm{sg}(\rho) k_2)] = \mathbb{E}_{\pi_{old}}[\rho s_\theta k_1] = \mathbb{E}_{\pi_{\theta}}[s_\theta k_1]=\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})
+$$&lt;p>我们将如上结果总结为下表&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Loss&lt;/th>
+&lt;th>gradient&lt;/th>
+&lt;th>expected gradient&lt;/th>
+&lt;th>objective&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$\rho k_1$&lt;/td>
+&lt;td>$\rho s_\theta (k_1+1)$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\rho k_2$&lt;/td>
+&lt;td>$\rho s_\theta (k_1+k_2)$&lt;/td>
+&lt;td>$\nabla_\theta\mathbb{E}_{\pi_{\theta}}[k_2]$&lt;/td>
+&lt;td>f-divergence&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\mathrm{sg}(\rho) k_2$&lt;/td>
+&lt;td>$\rho s_\theta k_1$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\rho k_3$&lt;/td>
+&lt;td>$\rho s_\theta k_1$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>接下来，我们就可以分析在 on-policy 和 off-policy 场景下分析不同 estimator 的性质了。&lt;/p>
+&lt;p>如果说，我们显式加入 $\rho$, 则根据上表我们可以使用上表的 $\rho k_1$, $\mathrm{sg}(\rho) k_2$ 以及 $\rho k_3$ 都可以作为损失函数的代替。&lt;/p>
+&lt;blockquote>
+&lt;p>注
+实际上 on-policy 场景下使用 $k_2$ 也有用的原因在于 $\nabla_\theta k_2=s_\theta k_1$, 也就是 $k_2$ 和 $\rho k_3$ 的梯度相同，其本质上是一个等效梯度。但是其收敛得到的 policy 与 target optimal policy 不同&lt;/p>
+&lt;/blockquote>
+&lt;p>接下来，我们来分析一下 $\rho k_1, \mathrm{sg}(\rho)k_2, \rho k_3$ 这三种估计的梯度的 variance, 为了避免混淆，【2】使用了 &amp;ldquo;projection variance in any direction&amp;rdquo; 的概念，即任意取一个向量 $u$, 然后计算 $\rho k_1$ 和后两者之间对应的 variance 的差（由于 $\mathrm{sg}(\rho)k_2$ 的梯度与 $\rho k_3$ 相同，因此这里我们仅计算 $\rho k_3$），得到:&lt;/p>
+$$
+\begin{aligned}
+\mathrm{var}[\nabla_\theta (\rho k_1)^Tu] - \mathrm{var}[\nabla_\theta (\rho k_3)^Tu] &amp;= (\mathbb{E}_{\pi_{old}}[(\nabla_\theta (\rho k_1)^Tu)^2] -\mathbb{E}_{\pi_{old}}^2[\nabla_\theta (\rho k_1)^Tu] ) - (\mathbb{E}_{\pi_{old}}[(\nabla_\theta (\rho k_3)^Tu)^2] -\mathbb{E}_{\pi_{old}}^2[\nabla_\theta (\rho k_3)^Tu] ) \\
+&amp;= \mathbb{E}_{\pi_{old}}[(\nabla_\theta (\rho k_1)^Tu)^2] - \mathbb{E}_{\pi_{old}}[(\nabla_\theta (\rho k_3)^Tu)^2]\\
+&amp;= \mathbb{E}_{\pi_{old}}[\rho(x)^2(s(\theta)(x)^Tu)^2(2k_1(x)+1)]
+\end{aligned}
+$$&lt;p>当 $\pi_\theta$ 和 $\pi_{ref}$ 比较接近时，我们有&lt;/p>
+$$
+\frac{\pi_{ref}(x)}{\pi_\theta(x)} = 1+\epsilon(x), \text{ where } |\epsilon(x)| &lt;&lt; 1
+$$&lt;p>此时&lt;/p>
+$$
+2k_1(x) + 1 = 1-2\log(1+\epsilon(x))\approx 1-2\epsilon(x) \geq 0
+$$&lt;p>从而我们有&lt;/p>
+$$
+\boxed{\mathrm{var}[\nabla_\theta (\rho k_1)]\geq \mathrm{var}[\nabla_\theta (\rho k_3)]=\mathrm{var}[\nabla_\theta (\mathrm{sg}(\rho)k_2)]}
+$$&lt;p>即当 $\pi_\theta$ 和 $\pi_{ref}$ 比较接近时，$\rho k_3$ 的 variance 比 $\rho k_1$ 更小，这是由于 $\rho s_\theta (k_1+1)$ 额外包含了一个 期望为零的项，这导致了其 variance 比较高。在 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v3.2/" target="_blank" rel="noopener"
+>DeepSeek-V3.2&lt;/a> 中，作者就使用了 $\rho k_3$ 来降低梯度的 variance, 提高训练的稳定性。&lt;/p>
+&lt;p>【3】将相关的估计总结为了下表的形式&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Type&lt;/th>
+&lt;th>Loss&lt;/th>
+&lt;th>Gradient&lt;/th>
+&lt;th>Expected gradient&lt;/th>
+&lt;th>Objective&lt;/th>
+&lt;th>Biased&lt;/th>
+&lt;th>Variance&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\rho k_1$&lt;/td>
+&lt;td>$\rho s_\theta (k_1+1)$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;td>unbiased&lt;/td>
+&lt;td>high&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\rho k_2$&lt;/td>
+&lt;td>$\rho s_\theta (k_1+k_2)$&lt;/td>
+&lt;td>$\nabla_\theta\mathbb{E}_{\pi_{\theta}}[k_2]$&lt;/td>
+&lt;td>f-divergence&lt;/td>
+&lt;td>biased&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\mathrm{sg}(\rho) k_2$&lt;/td>
+&lt;td>$\rho s_\theta k_1$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;td>unbiased&lt;/td>
+&lt;td>low&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\rho k_3$&lt;/td>
+&lt;td>$\rho s_\theta k_1$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;td>unbiased&lt;/td>
+&lt;td>low&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>【3】还强调了一点就是我们的损失函数必须显式包含 $\rho$, 在 on-policy 场景下，虽然 $\rho\equiv1$, 但是在反向传播时我们通过 $\nabla_\theta \rho=s_\theta$ 保留了采样信息从而避免了梯度估计期望的错配问题。&lt;/p>
+&lt;p>对于 $\rho k_1$ variance 比较高的特点，我们还可以采用 variance reduction 的方法来降低不同估计的 variance. 【TODO】&lt;/p>
+&lt;p>&lt;strong>analytic gradient&lt;/strong>
+当 action space 有限时，我们还可以使用解析梯度【TODO】&lt;/p>
+&lt;h3 id="as-a-reward-reshaping-item">&lt;a href="#as-a-reward-reshaping-item" class="header-anchor">&lt;/a>As a Reward Reshaping Item
+&lt;/h3>&lt;p>接下来我们来探究一下第二种形式，即 KL divergence 只影响最终的 reward, 而不参与反向传播。对应的代理目标函数形式为&lt;/p>
+$$
+\mathcal{J}_3(\theta) = \mathbb{E}_{\tau\sim \pi_\theta}\left[R\right] - \beta\ \mathrm{sg}(k_i(\pi_\theta, \pi_{ref}))
+$$&lt;p>这里 $R=\sum_{t=0}^T\gamma^tr(s_t,a_t)$ 为 accumulative reward&lt;/p>
+&lt;p>首先，基于前面分析，我们可以得到原始目标函数的梯度为&lt;/p>
+$$
+\begin{aligned}
+\nabla_\theta \mathcal{J}(\theta) &amp;= \nabla_\theta\mathbb{E}_{\pi_\theta}\left[R\right] - \beta \nabla_\theta D_{KL}(\pi_\theta, \pi_{ref})\\
+&amp;= \mathbb{E}_{\pi_\theta}\left[s_\theta R\right]-\beta \mathbb{E}_{\pi_\theta}\left[s_\theta\log \frac{\pi_\theta}{\pi_{ref}}\right]\\
+&amp;= \mathbb{E}_{\pi_\theta}\left[s_\theta(R-\beta k_1) \right]
+\end{aligned}
+$$&lt;p>代理目标函数的梯度为&lt;/p>
+$$
+\nabla_\theta \mathcal{J}_3(\theta) = \mathbb{E}_{\pi_\theta}\left[s_\theta(R-\beta k_i) \right]
+$$&lt;p>显然，当我们使用 $k_1$ 时，我们有 $\nabla_\theta \mathcal{J}(\theta)=\nabla_\theta \mathcal{J}_3(\theta)$.&lt;/p>
+&lt;p>当我们使用 $k_2$ 时，带入 $k_2$ 表达式易知 $\nabla_\theta \mathcal{J}_3(\theta)\neq \nabla_\theta \mathcal{J}(\theta)$,&lt;/p>
+&lt;p>当我们使用 $k_3$ 时，&lt;/p>
+$$
+\begin{aligned}
+\mathbb{E}_{\pi_\theta}\left[s_\theta k_i \right] &amp;= \mathbb{E}_{\pi_\theta}\left[s_\theta \left(\frac{\pi_{ref}}{\pi_\theta}-1- \log \frac{\pi_{ref}}{\pi_\theta} \right)\right]\\
+&amp;= \mathbb{E}_{\pi_\theta}\left[s_\theta \frac{\pi_{ref}}{\pi_\theta}\right] - \mathbb{E}_{\pi_\theta}\left[s_\theta \right] - \mathbb{E}_{\pi_\theta}\left[s_\theta \log \frac{\pi_{ref}}{\pi_\theta} \right]\\
+&amp;=s_\theta k_1 -\nabla_\theta D_{KL}(\pi_{ref}\parallel \pi_\theta)
+\end{aligned}
+$$&lt;p>此时，$\nabla_\theta \mathcal{J}_3(\theta)\neq \nabla_\theta \mathcal{J}(\theta)$. 因此，&lt;strong>在 on-policy 场景下，只有 $k_1$ 对应的梯度是无偏的&lt;/strong>&lt;/p>
+&lt;p>在 off-policy 场景下，由于 Off-policy 只影响 $R$ 的计算，因此原始目标函数和代理目标函数的梯度仍然保持不变，on-policy 场景的结论也适用。&lt;/p>
+&lt;p>总之，&lt;strong>当我们将 KL divergence 作为 reward reshaping item 时，只有 $k_1$ 产生的梯度是无偏的。&lt;/strong>&lt;/p>
+&lt;h3 id="comparison-of-two-paradigms">&lt;a href="#comparison-of-two-paradigms" class="header-anchor">&lt;/a>Comparison of Two Paradigms
+&lt;/h3>&lt;p>接下来我们来比较一下 KL divergence 作为 loss 和 reward shaping item 的异同之处。首先，两者对于梯度的贡献分别为&lt;/p>
+$$
+\begin{align}
+&amp;\rho s_\theta k_1\tag{loss}\\
+&amp; \mathbb{E}_{\pi_{old}}[\rho s_\theta k_1]\tag{reward shaping}
+\end{align}
+$$&lt;p>即两者在期望上时一致的。但是两者也存在不一致的地方，即 KL divergence 作为 loss 时不会影响 $R$, 而作为 reward shaping item 时会影响。因此这就导致两者的优化方向不一致。&lt;/p>
+&lt;h3 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h3>&lt;p>首先，我们来验证前面的结论，我们构造一个包含 $100$ 个 arms 的 multi-arm bandits, 然后令&lt;/p>
+$$
+\pi_{ref}=\epsilon_1, \pi= \epsilon_1+\epsilon_2
+$$&lt;p>其中 $\epsilon_1,\epsilon_2\sim\mathcal{N}(0,1)$, 我们实验 100 次然后取平均值，然后分别计算 estimator 与真实 KL divergence 之间的 MSE 和 estimator gradient 与真实 kl divergence gradient 的 RMSE, 结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kl-divergence/KL-divergence-estimator-gradient-bias.png"
+width="1389"
+height="489"
+loading="lazy"
+alt="bias of KL divergence estimators and their gradients"
+class="gallery-image"
+data-flex-grow="284"
+data-flex-basis="681px"
+>&lt;/p>
+&lt;p>可以看到，这验证了我们之前分析的结论，即 $k_1$ 和 $k_3$ 是无偏估计，而在计算梯度时，只有 $k_2$ 梯度的期望与真实 KL divergence 的梯度相同。&lt;/p>
+&lt;h3 id="overview">&lt;a href="#overview" class="header-anchor">&lt;/a>Overview
+&lt;/h3>&lt;p>我们在本节总结前面的分析，如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Type&lt;/th>
+&lt;th>Loss&lt;/th>
+&lt;th>Gradient&lt;/th>
+&lt;th>Expected gradient&lt;/th>
+&lt;th>Objective&lt;/th>
+&lt;th>Biased&lt;/th>
+&lt;th>Variance&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>on-policy&lt;/td>
+&lt;td>$k_1$&lt;/td>
+&lt;td>$s_\theta$&lt;/td>
+&lt;td>$0$&lt;/td>
+&lt;td>constants&lt;/td>
+&lt;td>biased&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on-policy&lt;/td>
+&lt;td>$k_2$&lt;/td>
+&lt;td>$-\log r s_\theta$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;td>&lt;strong>unbiased&lt;/strong>&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on-policy&lt;/td>
+&lt;td>$k_3$&lt;/td>
+&lt;td>$(1-r)s_\theta$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_{ref}\parallel \pi_\theta)$&lt;/td>
+&lt;td>forward KL&lt;/td>
+&lt;td>biased&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\rho k_1$&lt;/td>
+&lt;td>$\rho s_\theta (k_1+1)$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;td>unbiased&lt;/td>
+&lt;td>high&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\rho k_2$&lt;/td>
+&lt;td>$\rho s_\theta (k_1+k_2)$&lt;/td>
+&lt;td>$\nabla_\theta\mathbb{E}_{\pi_{\theta}}[k_2]$&lt;/td>
+&lt;td>f-divergence&lt;/td>
+&lt;td>biased&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\mathrm{sg}(\rho) k_2$&lt;/td>
+&lt;td>$\rho s_\theta k_1$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;td>&lt;strong>unbiased&lt;/strong>&lt;/td>
+&lt;td>low&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\rho k_3$&lt;/td>
+&lt;td>$\rho s_\theta k_1$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;td>&lt;strong>unbiased&lt;/strong>&lt;/td>
+&lt;td>low&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\rho\mathrm{sg}(k_1)$&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>&lt;strong>unbiased&lt;/strong>&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\rho \mathrm{sg}(k_2)$&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>biased&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\rho \mathrm{sg}(k_3)$&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>biased&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>在本文中，我们详细介绍了 KL-divergence 的基本性质，相关估计方法以及在机器学习特别是 RL 领域中的应用。最终结论为：&lt;/p>
+&lt;ol>
+&lt;li>如果希望稳定可控，则将 KL divergence 作为 loss item; 如果希望更灵活，与奖励信号结合的话，则将其作为 reward shaping item.&lt;/li>
+&lt;li>使用 KL divergence 作为 loss item 时，on-policy 场景下使用 $k_2$ 近似 KL divergence 效果最好；off-policy 场景下，使用 $\mathrm{sg}(\rho)k_2, \rho k_3$ 效果最好&lt;/li>
+&lt;li>使用 KL divergence 作为 reward shaping item 时，$k_1$ 的效果最好&lt;/li>
+&lt;/ol>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://joschu.net/blog/kl-approx.html" target="_blank" rel="noopener"
+>Approximating KL Divergence&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://dibyaghosh.com/blog/probability/kldivergence/" target="_blank" rel="noopener"
+>KL Divergence for Machine Learning&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://xihuai18.github.io/reinforcement-learning/2025/12/01/kl-estimators-en.html" target="_blank" rel="noopener"
+>Understanding KL Divergence Estimators in RL: From Value Approximation to Gradient Estimation&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2506.09477" target="_blank" rel="noopener"
+>On a few pitfalls in KL divergence gradient estimation for RL&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on Softmax</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-softmax/</link><pubDate>Sat, 27 Dec 2025 16:39:53 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-softmax/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>softmax 函数用于将 $K$ 个实数转换为一个 $K$ 维概率分布。其具体做法是先对所有元素指数化，即求 $e^x$, 然后每个元素除以所有指数的和。即&lt;/p>
+$$
+\begin{aligned}
+\mathrm{softmax}:\mathbb{R}^K&amp;\to (0,1)^K\\
+\mathrm{softmax}(\mathbf{z}) &amp;=\left[\frac{e^{z_1}}{\sum_{j=1}^Ke^{z_j}},\dots,\frac{e^{z_K}}{\sum_{j=1}^Ke^{z_j}}\right]
+\end{aligned}
+$$&lt;h2 id="analysis">&lt;a href="#analysis" class="header-anchor">&lt;/a>Analysis
+&lt;/h2>&lt;h3 id="properties">&lt;a href="#properties" class="header-anchor">&lt;/a>Properties
+&lt;/h3>&lt;p>softmax 的第一个性质是 shift invariance, 即&lt;/p>
+$$
+\mathrm{softmax}(\mathbf{z}+c) = \mathrm{softmax}(\mathbf{z})
+$$&lt;p>证明比较容易：&lt;/p>
+$$
+\mathrm{softmax}(\mathbf{z}+c)_i = \frac{e^{z_i+c}}{\sum_{j=1}^Ke^{z_j+c}} = \frac{e^ce^{z_i}}{e^c\sum_{j=1}^Ke^{z_j}} = \frac{e^{z_i}}{\sum_{j=1}^Ke^{z_j}}=\mathrm{softmax}(\mathbf{z})_i,\ i=1,\dots,K
+$$&lt;h3 id="gradient">&lt;a href="#gradient" class="header-anchor">&lt;/a>Gradient
+&lt;/h3>&lt;p>向量输入下 Softmax 函数的 Jacobian 矩阵推导&lt;/p>
+&lt;p>设输入为向量 $\mathbf{z} = [z_1, z_2, \dots, z_d]^\top \in \mathbb{R}^d$，Softmax 函数的输出为向量 $\mathbf{a} = [a_1, a_2, \dots, a_d]^\top \in \mathbb{R}^d$，其中每个元素定义为：&lt;/p>
+$$
+a_j = \text{softmax}(\mathbf{z})_j = \frac{e^{z_j}}{\sum_{k=1}^d e^{z_k}}
+$$&lt;p>记分母（归一化因子）为 $S = \sum_{k=1}^d e^{z_k}$，则 $a_j = e^{z_j}/S$.&lt;/p>
+&lt;p>我们分两种情况计算 $\frac{\partial a_j}{\partial z_k}$：&lt;/p>
+&lt;p>当 $j = k$ 时， 此时求 $a_j$ 对自身输入 $z_j$ 的偏导数：&lt;/p>
+$$
+\frac{\partial a_j}{\partial z_j} = \frac{\partial}{\partial z_j} \left( \frac{e^{z_j}}{S} \right) = \frac{e^{z_j}S-e^{z_j}e^{z_j}}{S^2}=\frac{e^{z_j}}{S}\left(1-\frac{e^{z_j}}{S}\right)=a_j(1-a_j)
+$$&lt;p>当 $j \neq k$ 时， 此时求 $a_j$ 对输入 $z_k$ 的偏导数有：&lt;/p>
+$$
+\frac{\partial a_j}{\partial z_k} = \frac{\partial}{\partial z_k} \left( \frac{e^{z_j}}{S} \right) = \frac{0\cdot S-e^{z_j}e^{z_k}}{S^2}=-\frac{e^{z_j}e^{z_k}}{S}=-a_ja_j
+$$&lt;p>综合以上两种情况，Jacobian 矩阵 $\mathbf{J}$ 可表示为：&lt;/p>
+$$
+\mathbf{J} = \text{diag}(\mathbf{a}) - \mathbf{a} \mathbf{a}^\top
+$$&lt;h2 id="interpretation">&lt;a href="#interpretation" class="header-anchor">&lt;/a>Interpretation
+&lt;/h2>&lt;h3 id="soft-argmax">&lt;a href="#soft-argmax" class="header-anchor">&lt;/a>Soft Argmax
+&lt;/h3>&lt;p>softmax 是 argmax 的 smooth approximation, 所以实际上 softmax 指的是 “soft argmax&amp;quot;. 为了证明这一点，我们首先定义如下函数&lt;/p>
+$$
+\mathrm{softmax}(\mathbf{z};\tau) =\mathrm{softmax}(\mathbf{z}/\tau)=\left[\frac{e^{z_1/\tau}}{\sum_{j=1}^Ke^{z_j/\tau}},\dots,\frac{e^{z_K/\tau}}{\sum_{j=1}^Ke^{z_j/\tau}}\right]
+$$&lt;p>易知， $\mathrm{softmax}(\mathbf{z})=\mathrm{softmax}(\mathbf{z};1)$. 并且，$\mathrm{softmax}$ 还是一个光滑函数&lt;/p>
+&lt;p>我们定义 smooth approximation 为&lt;/p>
+&lt;blockquote>
+&lt;p>Definition
+如果 $\lim_{\tau\to0^+}\mathrm{softmax}(\mathbf{z};\tau)=\mathbb{1}_{\arg\max(\mathbf{z})}$, 则我们说 $\mathrm{softmax}(\cdot;\tau)$ 是 $\arg\max$ 的光滑近似，特别地，$\mathrm{softmax}(\cdot)$ 是 $\arg\max$ 的光滑近似。
+这里 $\arg\max(\mathbf{z})=\arg\max_k z_k$ 是最大值的索引， $\mathbb{1}\in\{0,1\}^K$ 是示性函数 (indicator function), 即 $\mathbb{1}_{\arg\max(\mathbf{z})}[i]=1$ 当且仅当 $z_i=\max_jz_j$.&lt;/p>
+&lt;/blockquote>
+&lt;p>我们下面来进行证明。我们不妨假设最大值唯一，其 index 为 $m$, 即 $z_m = \max_i z_i$. 由前面的性质，我们有：&lt;/p>
+$$
+\mathrm{softmax}(\mathbf{z};\tau) = \mathrm{softmax}(\mathbf{z}-z_m;\tau) =\left[\frac{e^{(z_1-z_m)/\tau}}{\sum_{j=1}^Ke^{(z_j-z_m)/\tau}},\dots,\frac{e^{(z_K-z_m)/\tau}}{\sum_{j=1}^Ke^{(z_j-z_m)/\tau}}\right]
+$$&lt;p>此时，我们有&lt;/p>
+$$
+\lim_{\tau\to0^+}\mathrm{softmax}(\mathbf{z};\tau)_i = \begin{cases}
+1, &amp;\text{if }i = m\\
+0, &amp;\text{otherwise}
+\end{cases}
+$$&lt;p>当最大值不唯一的时候，我们记 $\mathcal{I} = \{i\in[K]\mid z_i=\max_j z_j\}$, 与上面方法类似，最终 $\mathrm{softmax}(\cdot;\tau)$ 的结果为&lt;/p>
+$$
+\lim_{\tau\to0^+}\mathrm{softmax}(\mathbf{z};\tau)_i = \begin{cases}
+1/|\mathcal{I}|, &amp;\text{if }i \in \mathcal{I}\\
+0, &amp;\text{otherwise}
+\end{cases}
+$$&lt;p>因此，我们就证明了 softmax 是 argmax 函数的 smooth approximation.&lt;/p>
+&lt;h3 id="statistical-mechanics">&lt;a href="#statistical-mechanics" class="header-anchor">&lt;/a>Statistical Mechanics
+&lt;/h3>&lt;h3 id="temperature">&lt;a href="#temperature" class="header-anchor">&lt;/a>Temperature
+&lt;/h3>&lt;p>我们前面介绍了 $\mathrm{softmax}(\mathbf{z};\tau)$ 函数，这里的 $\tau$ 实际上被称为温度 (temperature), 它控制了输入的 variance, $T$ 越大，输入的 variance 越低，输出就倾向于均匀分布，而 $T$ 越小，则说明输入的 variance 越高，输出就倾向于 one-hot 分布。&lt;/p>
+&lt;p>我们前面已经证明了后者，现在我们来证明一下前者，证明思路也很简单，$T\to+\infty$ 时，$e^{x/T}\to 1$, 因而&lt;/p>
+$$
+\lim_{\tau\to+\infty}\mathrm{softmax}(\mathbf{z};\tau)_i =\frac1K,\ i=1,\dots,K
+$$&lt;p>下面是可视化的代码以及结果&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;span class="lnt">28
+&lt;/span>&lt;span class="lnt">29
+&lt;/span>&lt;span class="lnt">30
+&lt;/span>&lt;span class="lnt">31
+&lt;/span>&lt;span class="lnt">32
+&lt;/span>&lt;span class="lnt">33
+&lt;/span>&lt;span class="lnt">34
+&lt;/span>&lt;span class="lnt">35
+&lt;/span>&lt;span class="lnt">36
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="kn">import&lt;/span> &lt;span class="nn">numpy&lt;/span> &lt;span class="k">as&lt;/span> &lt;span class="nn">np&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="kn">import&lt;/span> &lt;span class="nn">matplotlib.pyplot&lt;/span> &lt;span class="k">as&lt;/span> &lt;span class="nn">plt&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="kn">from&lt;/span> &lt;span class="nn">scipy.interpolate&lt;/span> &lt;span class="kn">import&lt;/span> &lt;span class="n">make_interp_spline&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">softmax&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">):&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">e_x&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">np&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">exp&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">np&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">max&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">e_x&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="n">e_x&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">sum&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">num_elements&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">15&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">indices&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">np&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">arange&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">num_elements&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">logits&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">np&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">linspace&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mf">3.5&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mf">3.5&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">num_elements&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">scales&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[&lt;/span>&lt;span class="mf">0.01&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mf">0.1&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mf">1.0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mf">5.0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mf">10.0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mf">100.0&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">figure&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">figsize&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">10&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">6&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">for&lt;/span> &lt;span class="n">s&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="n">scales&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">probs&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">softmax&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">logits&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">s&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">x_smooth&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">np&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">linspace&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">indices&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">min&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="n">indices&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">max&lt;/span>&lt;span class="p">(),&lt;/span> &lt;span class="mi">300&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">spl&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">make_interp_spline&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">indices&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">probs&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">k&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">3&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">y_smooth&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">np&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">clip&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">spl&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x_smooth&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="kc">None&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="c1"># Clip to ensure no negative artifacts&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">plot&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x_smooth&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">y_smooth&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">label&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s1">&amp;#39;Scale = &lt;/span>&lt;span class="si">{&lt;/span>&lt;span class="n">s&lt;/span>&lt;span class="si">}&lt;/span>&lt;span class="s1">&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">linewidth&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">uniform_prob&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mf">1.0&lt;/span> &lt;span class="o">/&lt;/span> &lt;span class="nb">len&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">indices&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">axhline&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">y&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">uniform_prob&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">color&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="s1">&amp;#39;black&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">linestyle&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="s1">&amp;#39;:&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">alpha&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mf">0.6&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">label&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="sa">f&lt;/span>&lt;span class="s1">&amp;#39;Uniform distribution&amp;#39;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">xticks&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">indices&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">xlabel&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;Logit Index&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">fontsize&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">12&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">ylabel&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;Softmax Probability&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">fontsize&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">12&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">title&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="s1">&amp;#39;Impact of Variance Scaling on Softmax Distribution&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">fontsize&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">14&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">legend&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">title&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="s2">&amp;#34;Variance Scale&amp;#34;&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">grid&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="kc">True&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">linestyle&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="s1">&amp;#39;--&amp;#39;&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">alpha&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mf">0.5&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">tight_layout&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">plt&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">show&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-softmax/softmax_impact_variance.png"
+width="989"
+height="590"
+loading="lazy"
+alt="impact of variance on softmax"
+class="gallery-image"
+data-flex-grow="167"
+data-flex-basis="402px"
+>&lt;/p>
+&lt;p>可以看到，当 variance 比较小的时候，输出的分布接近于均匀分布，而 variance 越大，输出的分布越接近 One-hot 分布。&lt;/p>
+&lt;p>在 attention 的计算过程中，我们也有 softmax 函数，为了在 softmax 过程中避免 variance 的影响，现在会在计算 softmax 之前加入 normalization layer 来提前进行归一化。见 &lt;a class="link" href="https://maosong.website/p/notes-on-qk-norm/" target="_blank" rel="noopener"
+>QK-norm&lt;/a>.&lt;/p>
+&lt;h2 id="algorithms">&lt;a href="#algorithms" class="header-anchor">&lt;/a>Algorithms
+&lt;/h2>&lt;h3 id="implementation">&lt;a href="#implementation" class="header-anchor">&lt;/a>Implementation
+&lt;/h3>&lt;p>由于 $e^x$ 在实际计算时，非常容易溢出，因此在实现的时候，我们往往会考虑其数值稳定性。实际上，现在的 softmax 函数基本由 logsumexp 实现，logsumexp 函数定义如下&lt;/p>
+$$
+\mathrm{logsumexp}(\mathbf{z}) = \log \left(\sum_{i=1}^K e^{z_i}\right)
+$$&lt;p>softmax 函数与 logsumexp 函数的关系如下&lt;/p>
+$$
+\begin{aligned}
+\mathrm{softmax}(\mathbf{z}) &amp;=\exp\log\left(\frac{e^{\mathbf{z}}}{\sum_{j=1}^Ke^{z_j}}\right)\\
+&amp;= \exp\left(\mathbf{z} - \log\left(\sum_{i=1}^K e^{z_i}\right)\right)\\
+&amp;= \exp(\mathbf{z} - \mathrm{logsumexp}(\mathbf{z}))
+\end{aligned}
+$$&lt;p>考虑前面提到的 $e^x$ 数值溢出的问题，我们的输入会先经过 shift, 减掉最大值。此时我们有&lt;/p>
+$$
+\mathrm{softmax}(\mathbf{z}) = \mathrm{softmax}(\mathbf{z}-c) = \exp((\mathbf{z}-c) - \mathrm{logsumexp}(\mathbf{z}-c))
+$$&lt;p>这里我们使用了前面推导出来的 shift invariance 性质。对应的代码实现如下：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">softmax&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">int&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">x&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">x&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">max&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">dim&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">keepdim&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="kc">True&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">values&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">log_sum_exp&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">log&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">sum&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">exp&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span>&lt;span class="p">),&lt;/span> &lt;span class="n">dim&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="n">dim&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">keepdim&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="kc">True&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">exp&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">x&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">log_sum_exp&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h3 id="gumbel-softmax-reparametrization-trick">&lt;a href="#gumbel-softmax-reparametrization-trick" class="header-anchor">&lt;/a>Gumbel-softmax Reparametrization Trick
+&lt;/h3>&lt;p>TODO&lt;/p>
+&lt;h3 id="online-softmax">&lt;a href="#online-softmax" class="header-anchor">&lt;/a>Online Softmax
+&lt;/h3>&lt;p>注意到我们在计算 softmax 时，需要加载 $\mathbf{z}$ 的全部信息，如果 $\mathbf{z}$ 非常大的话，会产生频繁的内存读写进而影响整体效率。因此 &lt;a class="link" href="https://maosong.website/p/notes-on-flashattention/" target="_blank" rel="noopener"
+>flash attention&lt;/a> 中提出了 online softmax 算法来减少内存访问开销。&lt;/p>
+&lt;p>其具体做法是假设我们的输入被分为若干个 block, 即 $\mathbf{z}=[\mathbf{z}^1;\dots,\mathbf{z}^n]\in\mathbb{R}^K$, 这里 $\mathbf{z}^i\in\mathbb{R}^{K/n}$ ($K\mod n=0$).&lt;/p>
+&lt;p>对于 $\mathbf{z}\in\mathbb{R}^K$, flash attention 定义如下结果&lt;/p>
+$$
+m(\mathbf{z}) = \max_i z_i,\ f(\mathbf{z}) = [e^{z_1-m(\mathbf{z})},\dots,e^{z_K-m(\mathbf{z})}], \ \ell(\mathbf{z})=\sum_if(z)_i, \ \mathrm{softmax}(\mathbf{z}) = \frac{f(\mathbf{z})}{\ell(\mathbf{z})}
+$$&lt;p>对于 $\mathbf{z}=[\mathbf{z}^1;\dots,\mathbf{z}^n]\in\mathbb{R}^K$, 我们现在的计算方式为&lt;/p>
+$$
+\begin{aligned}
+m_i(\mathbf{z}) &amp;= \max([\mathbf{z}^1;\dots;\mathbf{z}^i]) = \max(m_{i-1}(\mathbf{z}),m(\mathbf{z}^i))\\
+\ell_i(\mathbf{z}) &amp;= \sum_{j=1}^if(\mathbf{z}^j) = \exp(m_{i-1}(\mathbf{z}) - m_i(\mathbf{z}))\ell(\mathbf{z}^{i-1}) + \exp(\mathbf{z}^i-m_i(\mathbf{z}))
+\end{aligned}
+$$&lt;p>因此，如果我们额外记录 $m(x)$ 以及 $\ell(x)$ 这两个量，那么我们可以每次仅计算 softmax 的一个 block. 计算完毕之后，$m_i(\mathbf{z})$ 和 $\ell_i(\mathbf{z})$ 就分别代表了 global max 和 global denominator.&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>我们回顾了机器学习中 softmax function 的基本定义与性质&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://en.wikipedia.org/wiki/Softmax_function" target="_blank" rel="noopener"
+>Softmax function&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://blog.ando.ai/posts/softmax-to-the-max/" target="_blank" rel="noopener"
+>Softmax to the Max&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://arxiv.org/pdf/1805.02867" target="_blank" rel="noopener"
+>Online normalizer calculation for softmax&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Relationship between MLE and KL divergence</title><link>https://github.com/jiangyigithub/ai.github.io/p/relationship-between-mle-and-kl-divergence/</link><pubDate>Fri, 27 Jun 2025 11:35:33 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/relationship-between-mle-and-kl-divergence/</guid><description>&lt;h1 id="mle">&lt;a href="#mle" class="header-anchor">&lt;/a>MLE
+&lt;/h1>&lt;p>最大似然估计，即MLE (maximum likelihood estimation), 是一个估计参数分布的方法，其核心思想是：模型的参数，应该让观察样本出现的概率最大。&lt;/p>
+&lt;p>假设我们有一个参数分布 $p(x\mid \theta)$, 其中 $\theta$ 是参数，如正态分布中的均值和方差。我们从$p(x\mid \theta)$进行采样得到 $i.i.d.$ 的数据 $X=\{x_1,\dots,x_n\}$.&lt;/p>
+&lt;p>似然函数 (likelihood function) 定义为给定数据 $X$ 的联合分布，即：&lt;/p>
+$$
+\mathcal{L}(\theta\mid X) = P(X\mid \theta)
+$$&lt;p>由于 $X=\{x_1,\dots,x_n\}$ 是 $i.i.d.$, 因此，我们可以将上式改写为：&lt;/p>
+$$
+\mathcal{L}(\theta\mid X) = \prod_{i=1}^n p(x_i\mid \theta)
+$$&lt;p>这样我们的优化目标就是&lt;/p>
+$$
+\begin{aligned}
+\theta_{MLE}^* &amp;= \arg\max_{\theta} \mathcal{L}(\theta\mid X)\\
+&amp;= \arg\max_{\theta} \prod_{i=1}^n p(x_i\mid \theta)\\
+&amp;= \arg\max_{\theta} \log\prod_{i=1}^n p(x_i\mid \theta)\\
+&amp;=\arg\max_{\theta} \sum_{i=1}^n \log p(x_i\mid \theta)\\
+\end{aligned}
+$$&lt;p>即&lt;/p>
+$$
+\theta_{MLE}^* = \arg\max_{\theta} \sum_{i=1}^n \log p(x_i\mid \theta)
+$$&lt;h1 id="kl-divergence">&lt;a href="#kl-divergence" class="header-anchor">&lt;/a>KL divergence
+&lt;/h1>&lt;p>KL divergence 用于衡量概率分布 $Q(x)$ 到概率分布 $P(x)$ 的不同程度，我们可以将其理解为：如果我们用 $Q(x)$来替换 $P(x)$, 会有多大的信息损失？&lt;/p>
+&lt;p>连续概率分布的KL divergence的定义如下&lt;/p>
+$$
+D_{KL}(P\mid\mid Q) =\int P(x)\log\left(\frac{P(x)}{Q(x)}\right)dx
+$$&lt;p>
+离散概率分布的KL divergence定义如下&lt;/p>
+$$
+D_{KL}(P\mid\mid Q) = \sum_{x} P(x)\log\left(\frac{P(x)}{Q(x)}\right)
+$$&lt;p>KL divergence有两个关键性质：&lt;/p>
+&lt;ol>
+&lt;li>非负性：$D_{KL}(P\mid\mid Q)\geq0$, 且 $D_{KL}(P\mid\mid Q)=0$ 当且仅当 $P(x)=Q(x)$ 对任意 $x$成立&lt;/li>
+&lt;li>非对称性： 一般情况下，$D_{KL}(P\mid\mid Q)\neq D_{KL}(Q\mid\mid P)$.&lt;/li>
+&lt;/ol>
+&lt;h1 id="mle和kl-divergence的等价性">&lt;a href="#mle%e5%92%8ckl-divergence%e7%9a%84%e7%ad%89%e4%bb%b7%e6%80%a7" class="header-anchor">&lt;/a>MLE和KL Divergence的等价性
+&lt;/h1>&lt;p>我们假设 $p_{data}(x)$ 是数据$X$的真实分布， 我们现在需要找到合适的参数 $\theta$ 以及其对应的分布 $p(x\mid \theta)$ 来近似 $p_{data}(x)$, 此时我们可以用KL Divergence作为我们的目标函数，即&lt;/p>
+$$
+\theta_{KL} = \arg\min_{\theta}D_{KL}(p_{data}(x)\mid\mid p(x\mid \theta))
+$$&lt;p>我们将上面的式子进行展开得到&lt;/p>
+$$
+\begin{aligned}
+\theta_{KL}^* &amp;= \arg\min_{\theta}D_{KL}(p_{data}(x)\mid\mid p(x\mid \theta))\\
+&amp;= \arg\min_{\theta} \int p_{data}(x)\frac{p_{data}(x)}{p(x\mid \theta)} dx\\
+&amp;= \arg\min_{\theta}\int p_{data}(x)\log p_{data}(x) dx - \int p_{data}(x)\log p(x\mid \theta)dx \\
+&amp;= \arg\min_{\theta} - \int p_{data}(x)\log p(x\mid \theta)dx \\
+&amp;= \arg\max_{\theta} \int p_{data}(x)\log p(x\mid \theta)dx
+\end{aligned}
+$$&lt;p>实际上，真实的数据分布 $p_{data}(x)$ 是未知的，我们只有从 $p_{data}(x)$ 采样得到的一批数据 $X=\{x_1,\dots,x_n\}\sim p_{data}(x)$.&lt;/p>
+&lt;p>基于大数定律，我们有&lt;/p>
+$$
+\frac{1}{n}\sum_{i=1}^n\log p(\theta_i\mid \theta)=\mathbb{E}_{x\sim p_{data}}[\log p(x\mid \theta)] = \int p_{data}(x)\log p(x\mid \theta)dx, n\to \infty
+$$&lt;p>这样，最大似然估计就与最小化KL divergence构建起了联系：&lt;/p>
+$$
+\begin{aligned}
+\theta_{MLE}^*&amp;=\arg\max_{\theta} \sum_{i=1}^n \log p(x_i\mid \theta)\\
+&amp;= \arg\max_{\theta} \int p_{data}(x)\log p(x\mid \theta)dx\\
+&amp;= \theta_{KL}^*, n\to\infty.
+\end{aligned}
+$$&lt;p>也就是说，当采样样本足够多的时候，最大似然估计和最小KL divergence是等价的。&lt;/p></description></item><item><title>Understanding Sigmoid Loss in SigLip</title><link>https://github.com/jiangyigithub/ai.github.io/p/understanding-sigmoid-loss-in-siglip/</link><pubDate>Fri, 28 Mar 2025 14:55:50 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/understanding-sigmoid-loss-in-siglip/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>A simple note to understand Sigmoid Loss in SigLip &lt;sup id="fnref:1">&lt;a href="#fn:1" class="footnote-ref" role="doc-noteref">1&lt;/a>&lt;/sup>. Supported by DeepSeek&lt;sup id="fnref:2">&lt;a href="#fn:2" class="footnote-ref" role="doc-noteref">2&lt;/a>&lt;/sup>&lt;/p>
+&lt;h2 id="binary-cross-entropy-loss">&lt;a href="#binary-cross-entropy-loss" class="header-anchor">&lt;/a>Binary cross entropy loss
+&lt;/h2>&lt;p>Suppose we want to solve the binary classification problem, with label $y\in\{0, 1\}$, a common option is to use binary cross entropy loss:&lt;/p>
+$$\mathcal{L}(x, y) = -[y\log (\sigma(z)) + (1-y)\log (1-\sigma(z))]$$&lt;p>where $z=f_\theta(x)$ is the logits predicted by our model $f_\theta$, and $\sigma$ is the sigmoid function:&lt;/p>
+$$\sigma(z) := \frac{1}{1 + e^{-z}}$$&lt;p>Let $\sigma(\cdot)$ be the sigmoid function, then we have:&lt;/p>
+$$
+\sigma(-z) = \frac{1}{1 + e^{z}} = \frac{e^{-z}}{1 + e^{-z}} = 1 - \frac{1}{1 + e^{-z}} = 1- \sigma(z)
+$$&lt;p>Now we substitute $\sigma(-z)=1-\sigma(z)$ into the loss function, we obtain:&lt;/p>
+$$\mathcal{L}(x, y) = -[y\log (\sigma(z)) + (1-y)\log (\sigma(-z))]$$&lt;p>Note that $y\in\{0, 1\}$ thus for each instance, there are two cases:&lt;/p>
+&lt;ul>
+&lt;li>If $y=0$, then $\mathcal{L}(x, y) =-\log (\sigma(-z))$&lt;/li>
+&lt;li>If $y=1$, then $\mathcal{L}(x, y) =-\log (\sigma(z))$&lt;/li>
+&lt;/ul>
+&lt;p>Now we want to use a unified expression to express these two cases. Note that this requires fitting a curve that passes two points $(0, -1)$ and $(1, 1)$. The simplest curve is a straight line $y=2x-1$. So, we can further simplify the loss expression into:&lt;/p>
+$$\mathcal{L}(x, y) = -\log\left[\sigma((2y-1)z)\right]$$&lt;h2 id="sigmoid-loss-in-siglip">&lt;a href="#sigmoid-loss-in-siglip" class="header-anchor">&lt;/a>Sigmoid Loss in SigLip
+&lt;/h2>&lt;p>Now we recall the sigmoid loss in SigLip:&lt;/p>
+$$\mathcal{L}(\{\bm{x}, \bm{y}\}_{i=1}^N)=-\frac{1}{N}\sum_{i=1}^N\sum_{j=1}^N\log \frac{1}{1+\exp\left[z_{ij}(-t\bm{x}_i\cdot \bm{y_j}+b)\right]}$$&lt;p>where $t, b$ are learnable parameters, and $z_{ij}=1$ if $i=j$ and $z_{ij}=-1$ otherwise.&lt;/p>
+&lt;p>To understand Sigmoid loss, notice that $z_{ij}=2\mathbb{I}_{i=j}-1$, which exactly matches the form we derived earlier.&lt;/p>
+&lt;h2 id="why-use-sigmoid-loss">&lt;a href="#why-use-sigmoid-loss" class="header-anchor">&lt;/a>Why Use Sigmoid Loss?
+&lt;/h2>&lt;ol>
+&lt;li>More stable: avoids $\log 0$.&lt;/li>
+&lt;li>More efficient: Compute Sigmoid once.&lt;/li>
+&lt;li>More Precise: one line of code without condition checking.&lt;/li>
+&lt;/ol>
+&lt;h1 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h1>&lt;div class="footnotes" role="doc-endnotes">
+&lt;hr>
+&lt;ol>
+&lt;li id="fn:1">
+&lt;p>&lt;a class="link" href="https://openaccess.thecvf.com/content/ICCV2023/papers/Zhai_Sigmoid_Loss_for_Language_Image_Pre-Training_ICCV_2023_paper.pdf" target="_blank" rel="noopener"
+>SigLip&lt;/a>&amp;#160;&lt;a href="#fnref:1" class="footnote-backref" role="doc-backlink">&amp;#x21a9;&amp;#xfe0e;&lt;/a>&lt;/p>
+&lt;/li>
+&lt;li id="fn:2">
+&lt;p>&lt;a class="link" href="https://chat.deepseek.com/" target="_blank" rel="noopener"
+>DeepSeek&lt;/a>&amp;#160;&lt;a href="#fnref:2" class="footnote-backref" role="doc-backlink">&amp;#x21a9;&amp;#xfe0e;&lt;/a>&lt;/p>
+&lt;/li>
+&lt;/ol>
+&lt;/div></description></item><item><title>Notes on t-SNE</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-t-sne/</link><pubDate>Thu, 02 May 2024 13:13:12 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-t-sne/</guid><description>&lt;p>This post introduces how to understand t-SNE.&lt;/p>
+&lt;h1 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h1>&lt;p>t-SNE an dimension reduction algorithm, which projects high-dimensional data into low-dimensional space. Thus the algorithm can be used to visualize the data distribution.&lt;/p>
+&lt;p>To understand how t-SNE works, we first review the SNE algorithms, then we introduce the t-SNE algorithm.&lt;/p>
+&lt;h1 id="sne">&lt;a href="#sne" class="header-anchor">&lt;/a>SNE
+&lt;/h1>&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;p>Stochastic Neighbor Embedding, or SNE, is the previous version of t-SNE.&lt;/p>
+&lt;p>The basic idea behind SNE is that: &lt;em>data points that are close in high-dimensional space should be close in lower-dimensional space too&lt;/em>.&lt;/p>
+&lt;p>Formally speaking, given a data set $X\in\mathbb{R}^{D\times N}$ consisting of $N$ data points, with each data point lies in $D$ dimensional space. Our goal is to reduce the data points into $d&lt;&lt; D$ dimensional space $Y\in\mathbb{R}^{d\times N}$, that is, we seek to find a map $f:\mathbb{R}^{D\times N}\to \mathbb{R}^{d\times N}$ such that $f(X)=Y$. Usually, $d=2$ or $d=3$ for visualization use.&lt;/p>
+&lt;p>SNE measures &amp;ldquo;close&amp;rdquo; in a probabilistic way. The similarity is represented by converting Euclidean distance between data points to condition probabilities:&lt;/p>
+$$ p_{j\mid i} = \frac{\exp\left(-\Vert\bm{x}_i-\bm{x}_j\Vert^2/(2\sigma_i^2)\right)}{\sum_{k\neq i}\exp\left(-\Vert\bm{x}_i-\bm{x}_k\Vert^2/(2\sigma_i^2)\right)} $$&lt;p>the above equation can be interpreted as &lt;em>the probability of point $\bm{x}_j$ being a neighbor of point $\bm{i}$ is proportional to the distance between them&lt;/em>. $\sigma_i$ is the variance of the Gaussian distribution that is centered on data point $\bm{x}_i$. We introduce the method for determining $\sigma_i$ later.&lt;/p>
+&lt;p>Similarly, we can construct a probability distribution $q$ based on $Y$.&lt;/p>
+$$ q_{j\mid i} = \frac{\exp\left(-\Vert\bm{x}_i-\bm{x}_j\Vert^2\right)}{\sum_{k\neq i}\exp\left(-\Vert\bm{x}_i-\bm{x}_k\Vert^2\right)} $$&lt;p>where we set the variance as $1/\sqrt{2}$ following the original paper.&lt;/p>
+&lt;p>$p_{i\mid i}$ and $q_{i\mid i}$ are set $0$ since we are only interested in modeling pairwise similarities.&lt;/p>
+&lt;p>Now we want $q_{j\mid i}$ are as close as $p_{j\mid i}$, that is, we want two distributions are as close as to each other. This can be measured by &lt;strong>Kullback- Leibler divergence&lt;/strong>, which is written as:&lt;/p>
+$$ C(P, Q) = \sum_{i=1}^N\mathrm{KL}(P_i\Vert Q_i)=\sum_{i=1}^N\sum_{j=1}^N p_{j\mid i}\log \frac{p_{i\mid j}}{q_{i\mid j}} $$&lt;p>where $P_i=[p_{1\mid i},\dots,p_{N\mid i}]\in\mathbb{R}^N$ and $Q_i=[q_{1\mid i},\dots,q_{N\mid i}]\in\mathbb{R}^N$.&lt;/p>
+&lt;h2 id="choosing-sigma">&lt;a href="#choosing-sigma" class="header-anchor">&lt;/a>Choosing $\sigma$
+&lt;/h2>&lt;p>Now we introduce how to choose $\sigma$. Note that $\sigma$ determines the distribution of data points, larger $\sigma$ indicates sparser distribution of data points. The original paper uses &lt;em>perplexity&lt;/em> to measure such sparsity. It is defined as&lt;/p>
+$$ \mathrm{Perp}(P_i) = 2^{H(P_i)} $$&lt;p>where $H(P_i)$ is the &lt;em>Shannon entropy&lt;/em> of $P_i$ measured in bits:&lt;/p>
+$$ H(P_i) = -\sum_{i=1}^N p_{j\mid i}\log p_{j\mid i} $$&lt;p>The perplexity can be interpreted as a smooth measure of the effective number of neighbors. The performance of SNE is fairly robust to changes in the perplexity, and typical values are between 5 and 50.&lt;/p>
+&lt;p>Notice that $p_{j\mid i}$, by setting different value on $\mathrm{Perp}(P_i)$, we can obtain different $\sigma_i$ via binary search.&lt;/p>
+&lt;h2 id="optimization">&lt;a href="#optimization" class="header-anchor">&lt;/a>Optimization
+&lt;/h2>&lt;p>Our goal now becomes minimizing $C(p, q)$ over variables $\bm{y}_1,\dots,\bm{y}_N\in\mathbb{R}^d$, given $p$ and hyperparameter $\sigma_i, i=1,\dots,N$. This can be done via gradient descent methods. The gradient is now given by&lt;/p>
+$$ \frac{d C}{d\bm{y}_i}=2\sum_{j=1}^N\left(p_{j\mid i} - q_{j\mid i} + p_{i\mid j}- q_{i\mid j} \right)(\bm{y}_i-\bm{y}_j)\in\mathbb{R}^d, \ i=1,\dots,N $$&lt;p>We can write it in matrix form and add a momentum term:&lt;/p>
+$$ Y^{t+1} = Y^t + \beta\frac{dC}{dY} + \alpha_t\left(Y^{t-1}-Y^{t-2}\right) $$&lt;p>where $\beta$ is the step size and $\alpha_t$ is momentum parameter,&lt;/p>
+$$ Y^t = [\bm{y}_1^t,\dots, \bm{y}_N^t]\in\mathbb{R}^{d\times N} ,\ \frac{dC}{dY} = \left[\frac{d C}{d\bm{y}_1},\dots,\frac{d C}{d\bm{y}_N}\right]\in\mathbb{R}^{d\times N} $$&lt;h1 id="t-sne">&lt;a href="#t-sne" class="header-anchor">&lt;/a>t-SNE
+&lt;/h1>&lt;h2 id="symmetric-sne">&lt;a href="#symmetric-sne" class="header-anchor">&lt;/a>Symmetric SNE
+&lt;/h2>&lt;p>The first difference between t-SNE and SNE is the probability, t-SNE uses symmetric version of SNE to simplify computations.&lt;/p>
+&lt;p>Different from SNE, symmetric SNE uses a joint probability instead of a condition probability:&lt;/p>
+$$ C(P, Q) = \sum_{i=1}^N\mathrm{KL}(P\Vert Q)=\sum_{i=1}^N\sum_{j=1}^N p_{ij}\log \frac{p_{ij}}{q_{ij}} $$&lt;p>where $p_{ij}$ and $q_{ij}$ are defined as&lt;/p>
+$$ p_{ij} = \frac{\exp\left(-\Vert\bm{x}_i-\bm{x}_j\Vert^2/(2\sigma^2)\right)}{\sum_{k\neq r}\exp\left(-\Vert\bm{x}_r-\bm{x}_k\Vert^2/(2\sigma^2)\right)},q_{ij} = \frac{\exp\left(-\Vert\bm{x}_i-\bm{x}_j\Vert^2\right)}{\sum_{k\neq r}\exp\left(-\Vert\bm{x}_r-\bm{x}_k\Vert^2\right)} $$&lt;p>the problem if joint probability $p_{ij}$ is that if there is an outlier $\bm{x}_i$, then $p_{ij}$ will be extremely small for all $j$. This problem can be solved by defining $p_{ij}$ from the conditional probability $p_{i\mid j}$ and $p_{j\mid i}$&lt;/p>
+$$ p_{ij} = \frac{p_{j\mid i}+p_{i\mid j}}{2N} $$&lt;p>This ensures that&lt;/p>
+$$ \sum_{j=1}^N p_{ij} > \frac{1}{2N} $$&lt;p>for all $\bm{x}_i$, in result, each data point makes a significant contribution to the cost function.&lt;/p>
+&lt;p>In this case, the gradient of the cost function is now given by&lt;/p>
+$$ \frac{d C}{d\bm{y}_i}=4\sum_{j=1}^N\left(p_{ij} - q_{ij}\right)(\bm{y}_i-\bm{y}_j)\in\mathbb{R}^d, \ i=1,\dots,N $$&lt;h2 id="t-sne-1">&lt;a href="#t-sne-1" class="header-anchor">&lt;/a>t-SNE
+&lt;/h2>&lt;p>Experiments show that symmetric SNE seems to produce maps that are just as good as asymmetric SNE, and sometimes even a little better.&lt;/p>
+&lt;p>However, there is a problem with SNE, that is, the &lt;em>crowding problem&lt;/em>, which manifests as a tendency for points in the low-dimensional space to be clustered too closely together, particularly in high-density regions of the data.&lt;/p>
+&lt;p>The causes of the crowding problems are:&lt;/p>
+&lt;ol>
+&lt;li>Data points in high dimensional space tend to far from each other, which makes the distance information less useful.&lt;/li>
+&lt;li>SNE aims to preserve the local structure of the data points, but it can struggle with non-linear relationships. The projected data points will be closed to each other due to this reason.&lt;/li>
+&lt;li>The optimization algorithm used by SNE can get stuck in local minimum.&lt;/li>
+&lt;/ol>
+&lt;p>To alleviate the crowding problem, t-SNE is introduced in the following way:
+&lt;em>In the high-dimensional space, we convert distances into probabilities using a Gaussian distribution. In the low-dimensional map, we can use a probability distribution that has much heavier tails than a Gaussian to convert distances into probabilities.&lt;/em>
+This allows a moderate distance in the high-dimensional space to be faithfully modeled by a much larger distance in the map and, as a result, it eliminates the unwanted attractive forces between map points that represent moderately dissimilar data points.&lt;/p>
+&lt;p>t-SNE uses student t-distribution in low-dimensional map:&lt;/p>
+$$ q_{ij} = \frac{\left(1+\Vert\bm{y}_i-\bm{y}_j\Vert^2\right)^{-1}}{\sum_{k\neq r}\left(1+\Vert\bm{y}_i-\bm{y}_j\Vert^2\right)^{-1}} $$&lt;p>A Student t-distribution with a single degree of freedom is used, because it has the particularly nice property that $\left(1+\Vert\bm{y}_i-\bm{y}_j\Vert^2\right)^{-1}$ approaches an inverse square law for large pairwise distances $\Vert\bm{y}_i-\bm{y}_j\Vert$ in the low-dimensional map.&lt;/p>
+&lt;p>Compared to Gaussian distribution, t-distribution is heavily tailed。&lt;/p>
+&lt;p>A computationally convenient property of t-SNE is that it is much faster to evaluate the density of a point under a Student t-distribution than under a Gaussian because it does not involve an exponential, even though the Student t-distribution is equivalent to an infinite mixture of Gaussians with different variances.&lt;/p>
+&lt;p>The gradient of t-SNE is given by&lt;/p>
+$$ \frac{d C}{d\bm{y}_i}=4\sum_{j=1}^N\left(p_{ij} - q_{ij}\right)(\bm{y}_i-\bm{y}_j)\left(1+\Vert\bm{y}_i-\bm{y}_j\Vert^2\right)^{-1}\in\mathbb{R}^d, \ i=1,\dots,N $$&lt;p>The advantages of t-SNE gradients over SNE are given by:&lt;/p>
+&lt;ol>
+&lt;li>The t-SNE gradient strongly repels dissimilar data points that are modeled by a small pairwise distance in the low-dimensional representation.&lt;/li>
+&lt;li>Second, although t-SNE introduces strong repulsions between dissimilar data points that are modeled by small pairwise distances, these repulsions do not go to infinity.&lt;/li>
+&lt;/ol>
+&lt;p>The algorithm is given as follows:&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-t-sne/t-SNE-algorithm.png"
+width="1910"
+height="1096"
+loading="lazy"
+alt="algorithm"
+class="gallery-image"
+data-flex-grow="174"
+data-flex-basis="418px"
+>&lt;/p>
+&lt;h2 id="optimization-1">&lt;a href="#optimization-1" class="header-anchor">&lt;/a>Optimization
+&lt;/h2>&lt;p>There are some optimizations that can be used to improve performance of t-SNE:&lt;/p>
+&lt;ol>
+&lt;li>Early compression, which is used to force the map points to stay close together at the start of the optimization&lt;/li>
+&lt;li>Early exaggeration, which is used to multiply all of the pi j’s by, for example, 4, in the initial stages of the optimization&lt;/li>
+&lt;/ol>
+&lt;h1 id="implementation">&lt;a href="#implementation" class="header-anchor">&lt;/a>Implementation
+&lt;/h1>&lt;h1 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="http://jmlr.org/papers/v9/vandermaaten08a.html" target="_blank" rel="noopener"
+>Visualizing Data using t-SNE&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Practical advice for analysis of large, complex data sets</title><link>https://github.com/jiangyigithub/ai.github.io/p/practical-advice-for-analysis-of-large-complex-data-sets/</link><pubDate>Wed, 17 Apr 2024 22:40:11 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/practical-advice-for-analysis-of-large-complex-data-sets/</guid><description>&lt;h1 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h1>&lt;p>These advises are given by Patrick Riley in 2016, though it has been years util now, I think some of them are still useful.&lt;/p>
+&lt;p>The advice is organized into three general areas:&lt;/p>
+&lt;ul>
+&lt;li>Technical: Ideas and techniques for how to manipulate and examine your data.&lt;/li>
+&lt;li>Process: Recommendation on how you approach your data, what questions to ask, and what things to check.&lt;/li>
+&lt;li>Social: How to work with others and communicate about your data and insights.&lt;/li>
+&lt;/ul>
+&lt;h1 id="technical">&lt;a href="#technical" class="header-anchor">&lt;/a>Technical
+&lt;/h1>&lt;h2 id="look-at-your-distribution">&lt;a href="#look-at-your-distribution" class="header-anchor">&lt;/a>Look at your distribution
+&lt;/h2>&lt;p>Besides the typically used summary metrics, we should looking at a much richer representation of the distribution, such as histograms, CDFs, Q-Q plots, etc. This allows us to see some interesting features.&lt;/p>
+&lt;h2 id="consider-the-outliers">&lt;a href="#consider-the-outliers" class="header-anchor">&lt;/a>Consider the outliers
+&lt;/h2>&lt;p>We should look at the outliers in our data. It&amp;rsquo;s fine to exclude them from our data or to lump them together into an unusual category, but we should make sure we know why.&lt;/p>
+&lt;h2 id="report-noise-confidence">&lt;a href="#report-noise-confidence" class="header-anchor">&lt;/a>Report noise/ confidence
+&lt;/h2>&lt;p>Every estimator that you produce should have a notion of your confidence in this estimate attached to it.&lt;/p>
+&lt;h2 id="look-at-examples">&lt;a href="#look-at-examples" class="header-anchor">&lt;/a>Look at examples
+&lt;/h2>&lt;p>Anytime you are producing new analysis code, you need to look at examples of the underlying data and how your code is interpreting those examples.&lt;/p>
+&lt;h2 id="slice-your-data">&lt;a href="#slice-your-data" class="header-anchor">&lt;/a>Slice your data
+&lt;/h2>&lt;p>slicing help us obtain underlying features of the data subgroups easier. However, when we use slicing, we need to care about the mix shift.&lt;/p>
+&lt;h2 id="consider-practical-significance">&lt;a href="#consider-practical-significance" class="header-anchor">&lt;/a>Consider practical significance
+&lt;/h2>&lt;p>Don&amp;rsquo;t be blind by statistics, watch out those may have an impact on deploying or ethical problems.&lt;/p>
+&lt;h2 id="check-for-consistency-over-time">&lt;a href="#check-for-consistency-over-time" class="header-anchor">&lt;/a>Check for consistency over time
+&lt;/h2>&lt;p>One particular slicing you should almost always employ is to slice by units of time.
+This is because many disturbances to underlying data happen as our systems evolve over time.&lt;/p>
+&lt;h1 id="process">&lt;a href="#process" class="header-anchor">&lt;/a>Process
+&lt;/h1>&lt;h2 id="separate-validation-description-and-evaluation">&lt;a href="#separate-validation-description-and-evaluation" class="header-anchor">&lt;/a>Separate Validation, description, and evaluation
+&lt;/h2>&lt;ul>
+&lt;li>Description should be things that everyone can agree on from the data.&lt;/li>
+&lt;li>Evaluation is likely to have much more debate because you imbuing meaning and value to the data.&lt;/li>
+&lt;/ul>
+&lt;h2 id="confirm-exptdata-collection-setup">&lt;a href="#confirm-exptdata-collection-setup" class="header-anchor">&lt;/a>Confirm expt/data collection setup
+&lt;/h2>&lt;p>Before looking at any data, make sure you understand the experiment and data collection setup&lt;/p>
+&lt;h2 id="check-vital-signs">&lt;a href="#check-vital-signs" class="header-anchor">&lt;/a>Check vital signs
+&lt;/h2>&lt;p>Before actually answering the question you are interested in you need to check for a lot of other things that may not be related to what you are interested in but may be useful in later analysis or indicate problems in the data&lt;/p>
+&lt;h2 id="standard-first-custom-second">&lt;a href="#standard-first-custom-second" class="header-anchor">&lt;/a>Standard first, custom second
+&lt;/h2>&lt;p>When we use metric, we should always look at standard metrics first, even if we expect them to change.&lt;/p>
+&lt;h2 id="measure-twice-or-more">&lt;a href="#measure-twice-or-more" class="header-anchor">&lt;/a>Measure twice, or more
+&lt;/h2>&lt;p>If you are trying to capture a new phenomenon, try to measure the same underlying thing in multiple ways.
+Then, check to see if these multiple measurements are consistent&lt;/p>
+&lt;h2 id="check-for-reproducibility">&lt;a href="#check-for-reproducibility" class="header-anchor">&lt;/a>Check for reproducibility
+&lt;/h2>&lt;p>Both slicing and consistency over time are particular examples of checking for reproducibility.
+If a phenomenon is important and meaningful, you should see it across different user populations and time.&lt;/p>
+&lt;h2 id="check-for-consistency-with-past-measurements">&lt;a href="#check-for-consistency-with-past-measurements" class="header-anchor">&lt;/a>Check for consistency with past measurements
+&lt;/h2>&lt;p>You should compare your metrics to metrics reported in the past, even if these measurements are on different user populations.&lt;/p>
+&lt;p>New metrics should be applied to old data/features first&lt;/p>
+&lt;h2 id="make-hypothesis-and-look-for-evidence">&lt;a href="#make-hypothesis-and-look-for-evidence" class="header-anchor">&lt;/a>Make hypothesis and look for evidence
+&lt;/h2>&lt;p>Typically, exploratory data analysis for a complex problem is iterative. You will discover anomalies, trends, or other features of the data. Naturally, you will make hypotheses to explain this data. It’s essential that you don’t just make a hypothesis and proclaim it to be true. Look for evidence (inside or outside the data) to confirm/deny this theory.&lt;/p>
+&lt;h2 id="exploratory-analysis-benefits-from-end-to-end-iteration">&lt;a href="#exploratory-analysis-benefits-from-end-to-end-iteration" class="header-anchor">&lt;/a>Exploratory analysis benefits from end to end iteration
+&lt;/h2>&lt;p>When doing exploratory analysis, you should strive to get as many iterations of the whole analysis as possible.&lt;/p>
+&lt;h1 id="social">&lt;a href="#social" class="header-anchor">&lt;/a>Social
+&lt;/h1>&lt;h2 id="data-analysis-starts-with-questions-not-data-or-a-technique">&lt;a href="#data-analysis-starts-with-questions-not-data-or-a-technique" class="header-anchor">&lt;/a>Data analysis starts with questions, not data or a technique
+&lt;/h2>&lt;p>Ask question first and use tools to answer the questions.&lt;/p>
+&lt;h2 id="acknowledge-and-count-your-filtering">&lt;a href="#acknowledge-and-count-your-filtering" class="header-anchor">&lt;/a>Acknowledge and count your filtering
+&lt;/h2>&lt;ul>
+&lt;li>Acknowledge and clearly specify what filtering you are doing&lt;/li>
+&lt;li>Count how much is being filtered at each of your steps
+the best way to do the latter is to actually compute all your metrics even for the population you are excluding&lt;/li>
+&lt;/ul>
+&lt;h2 id="ratios-should-have-clear-numerator-and-denominators">&lt;a href="#ratios-should-have-clear-numerator-and-denominators" class="header-anchor">&lt;/a>Ratios should have clear numerator and denominators
+&lt;/h2>&lt;p>When you communicate results containing ratios, you must be clear about the numerator and denominator.&lt;/p>
+&lt;h2 id="educate-your-consumers">&lt;a href="#educate-your-consumers" class="header-anchor">&lt;/a>Educate your consumers
+&lt;/h2>&lt;p>You are responsible for providing the context and a full picture of the data and not just the number a consumer asked for.&lt;/p>
+&lt;h2 id="be-both-skeptic-and-champion">&lt;a href="#be-both-skeptic-and-champion" class="header-anchor">&lt;/a>Be both skeptic and champion
+&lt;/h2>&lt;p>As you work with data, you must be both the champion of the insights you are gaining as well as a skeptic.&lt;/p>
+&lt;h2 id="share-with-peers-first-external-consumers-second">&lt;a href="#share-with-peers-first-external-consumers-second" class="header-anchor">&lt;/a>Share with peers first, external consumers second
+&lt;/h2>&lt;p>A skilled peer reviewer can provide qualitatively different feedback and sanity-checking than the consumers of your data can, especially since consumers generally have an outcome they want to get&lt;/p>
+&lt;h1 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="https://www.unofficialgoogledatascience.com/2016/10/practical-advice-for-analysis-of-large.html" target="_blank" rel="noopener"
+>Practical advice for analysis of large, complex data sets&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Rules of Machine Learning</title><link>https://github.com/jiangyigithub/ai.github.io/p/rules-of-machine-learning/</link><pubDate>Sat, 13 Apr 2024 19:57:47 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/rules-of-machine-learning/</guid><description>&lt;p>Best practice for machine learning.&lt;/p>
+&lt;h1 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h1>&lt;p>Google posts a guide on how to uses machine learning in practice.
+It represents a style for machine learning, similar to Google C++ Style Guide.&lt;/p>
+&lt;p>In overview, to make great products:&lt;/p>
+&lt;blockquote>
+&lt;p>Do machine learning like the great engineer your are, not like the great machine learning expert you are.&lt;/p>
+&lt;/blockquote>
+&lt;p>Most algorithms we are facing are engineering problems instead of machine learning algorithms. A basic approach Google recommends is:&lt;/p>
+&lt;ol>
+&lt;li>Make sure your pipeline is solid end to end&lt;/li>
+&lt;li>Start with a reasonable objective&lt;/li>
+&lt;li>Add a common-sense features in a simple way&lt;/li>
+&lt;li>Make sure that your pipeline stays solid.&lt;/li>
+&lt;/ol>
+&lt;p>Google separates rules with respect to different stages.&lt;/p>
+&lt;h1 id="before-machine-learning">&lt;a href="#before-machine-learning" class="header-anchor">&lt;/a>Before machine learning
+&lt;/h1>&lt;p>These rules help us understand whether the time is right for building a machine learning system.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #1: Do not be afraid of lunch a product without machine learning.&lt;/p>
+&lt;/blockquote>
+&lt;p>This rule tells us that is not absolutely necessary, if rule-based methods work well, there is no need to develop a machine learning algorithm.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #2: First, design and implement metrics.&lt;/p>
+&lt;/blockquote>
+&lt;p>This rule tells us that tracking as much as possible before we formalize what our machine learning system will do. This step helps us construct the goal of our system, that is, a metric.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #3: Choose machine learning over a complex heuristic.&lt;/p>
+&lt;/blockquote>
+&lt;p>Considering using machine learning algorithms only if the heuristic algorithm doesn&amp;rsquo;t work well, since a complex heuristic is not maintainable. Meanwhile, machine-learned models are easier to update and maintain.&lt;/p>
+&lt;h1 id="ml-phase-1-your-first-pipeline">&lt;a href="#ml-phase-1-your-first-pipeline" class="header-anchor">&lt;/a>ML phase 1: Your First Pipeline
+&lt;/h1>&lt;p>When creating our first pipeline, we should focus on our system infrastructure&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #4: Keep the first model simple and get the infrastructure right.&lt;/p>
+&lt;/blockquote>
+&lt;p>Remember infrastructure issues are many more than model problems when we creating the first machine learning model. We have to determine:&lt;/p>
+&lt;ol>
+&lt;li>How to obtain data for our model&lt;/li>
+&lt;li>How to evaluate the performance of our model&lt;/li>
+&lt;li>How to integrate our model into our application&lt;/li>
+&lt;/ol>
+&lt;p>Moreover, we should choose simple features to ensure that:&lt;/p>
+&lt;ul>
+&lt;li>The features reach our learning algorithm correctly&lt;/li>
+&lt;li>The model learns reasonably weights&lt;/li>
+&lt;li>The features reach our model in the sever correctly&lt;/li>
+&lt;/ul>
+&lt;p>Once we have a system that does above things reliably, we have done most of the work.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #5: Test the infrastructure independently from the machine learning.&lt;/p>
+&lt;/blockquote>
+&lt;p>This rule tells us split the infrastructure and the machine learning model and test them separately to avoid dependency issue occurs. In this way, our model can be developed without worrying about environment. Specifically:&lt;/p>
+&lt;ol>
+&lt;li>Test getting data into algorithm. Check the data that are feed into the models and do some statistics before using the data&lt;/li>
+&lt;li>Testing getting models out of the training algorithm. Make sure our algorithms work in the same way in our serving environment as the training environment.&lt;/li>
+&lt;/ol>
+&lt;blockquote>
+&lt;p>Rule #6: Be careful about dropped data.&lt;/p>
+&lt;/blockquote>
+&lt;p>Do not drop data without thoroughly test, this may data loss.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #7: Turn heuristics into features, or handle them externally.&lt;/p>
+&lt;/blockquote>
+&lt;p>Before using machine learning models, if we have tried some heuristic algorithms, then these algorithms may help us to improve the overall performance. Some ways we can use an existing heuristic algorithm:&lt;/p>
+&lt;ol>
+&lt;li>Preprocessing using the heuristic. If the feature is incredibly awesome, then do not try to relearn the feature. Just use the heuristic way to pre-process the data.&lt;/li>
+&lt;li>Create a feature. We can use the heuristic way to create a new feature to help improve the machine learning performance.&lt;/li>
+&lt;li>Mine the raw inputs of the heuristic. We can use the inputs of heuristic as features to learn the heuristic implicitly.&lt;/li>
+&lt;li>Modify the label.&lt;/li>
+&lt;/ol>
+&lt;h2 id="monitoring">&lt;a href="#monitoring" class="header-anchor">&lt;/a>Monitoring
+&lt;/h2>&lt;p>In general, such as making alerts and having a dashboard page.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #8: Know the freshness requirements of our system.&lt;/p>
+&lt;/blockquote>
+&lt;p>It is important for us to know the freshness of our model, for example, how much does performance degrade if we have a model that is a day old. The freshness helps us monitor and improve the performance.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #9: Detect problems before exporting models.&lt;/p>
+&lt;/blockquote>
+&lt;p>This rule tells us that evaluating the performance of the model before serving. The evaluation includes the testing on hold-out data, check AUC metric.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #10: Watch for silent failures.&lt;/p>
+&lt;/blockquote>
+&lt;p>Since the continuos change of data, silent failures may occur, so keep tracking statistics of the data as well as manually inspect the data on occasion help us reduce these kind of issues.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #11: Give feature owners and documentation.&lt;/p>
+&lt;/blockquote>
+&lt;p>Knowing who created the feature helps us gain information about data. A detailed documentation helps user understand how it works.&lt;/p>
+&lt;h2 id="your-first-objective">&lt;a href="#your-first-objective" class="header-anchor">&lt;/a>Your first objective
+&lt;/h2>&lt;blockquote>
+&lt;p>Rule #12: Don&amp;rsquo;t overthink which objective you choose to optimize.&lt;/p>
+&lt;/blockquote>
+&lt;p>There are many metrics to optimize according to Rule #2. However, it turns out in early stage, some metrics are optimized even though we not directly optimizing them.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #13: Choose simple, observable and attributable metric for your first objective.&lt;/p>
+&lt;/blockquote>
+&lt;p>This rule tells us the strategy of choosing metric in the beginning. In principal, The ML objective should be something that is easy to measure and is a proxy for the &amp;ldquo;true&amp;rdquo; objective. In fact however, there is no such &amp;ldquo;true&amp;rdquo; objective, so we should keep the objective as simple as possible, it&amp;rsquo;s better if the objective is observable. Then, we can modify the objective based on the performance of the model.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #14: Starts with an interpretable model makes debugging easier.&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;p>Rule #15: Separate spam filtering and quality ranking in a policy layer.&lt;/p>
+&lt;/blockquote>
+&lt;p>Sometimes, spam filtering confuses quality ranking, when we do quality ranking, we should clean the data.&lt;/p>
+&lt;h1 id="ml-phase-2-feature-engineering">&lt;a href="#ml-phase-2-feature-engineering" class="header-anchor">&lt;/a>ML phase 2: Feature engineering
+&lt;/h1>&lt;p>After we have a working end to end system with unit and system tests instrumented, Phase II begins.
+In this phase, we should make use of features.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #16: Plan to lunch and iterate.&lt;/p>
+&lt;/blockquote>
+&lt;p>There are three reasons to lunch new models:&lt;/p>
+&lt;ol>
+&lt;li>You are coming up with new features&lt;/li>
+&lt;li>You are tuning regularization and combining old features in new ways&lt;/li>
+&lt;li>You are tuning the objectives&lt;/li>
+&lt;/ol>
+&lt;p>When lunch a new model, we should think about:&lt;/p>
+&lt;ol>
+&lt;li>How easy is it to add or remove or recombine features&lt;/li>
+&lt;li>How easy is it to create a fresh copy of the pipeline and verify its correctness.&lt;/li>
+&lt;li>Is it possible to have two or three copies running in parallel.&lt;/li>
+&lt;/ol>
+&lt;blockquote>
+&lt;p>Rule #17: Start with directly observed and reported features as opposed to learned features.&lt;/p>
+&lt;/blockquote>
+&lt;p>a learned feature is a feature generated by an external system or by the learner itself.
+If the learned feature comes from an external system, then bias or being out-of-date may affect the model. If the learned feature comes from the learner itself, then it is hard to tell the impact of the feature.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #18: Explore with features of content that generalize across contexts.&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;p>Rule #19: Use very specific features when you can.&lt;/p>
+&lt;/blockquote>
+&lt;p>It is simpler to learn millions of simple features than a few complex features.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #20: Combine and modify existing features to create new features in human-understanding ways.&lt;/p>
+&lt;/blockquote>
+&lt;p>Combine features may causing overfitting problems&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #21: The number of feature weights we can learn in a linear model is roughly proportional to the number of data you have.&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;p>Rule #22: Clean up features you are no longer using.&lt;/p>
+&lt;/blockquote>
+&lt;p>If you find that you are not using a feature, and that combining it with other features is not working, then drop it out of your infrastructure.&lt;/p>
+&lt;h2 id="human-analysis-of-the-system">&lt;a href="#human-analysis-of-the-system" class="header-anchor">&lt;/a>Human analysis of the system
+&lt;/h2>&lt;p>This subsection teaches us how to look at an existing model and improve it.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #23: You are not a typical end user.&lt;/p>
+&lt;/blockquote>
+&lt;p>Check carefully before we deploying the model.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #24: Measure the delta between models&lt;/p>
+&lt;/blockquote>
+&lt;p>Make sure the system is stable when making small changes. Make sure that a model when compared with itself has a low (ideally zero) symmetric difference.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #25: When choosing models, utilitarian performance trumps predictive power.&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;p>Rule #26: Look for patterns in the measured errors, and create new features.&lt;/p>
+&lt;/blockquote>
+&lt;p>Once you have examples that the model got wrong, look for trends that are outside your current feature set.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #27: Try to quantify observed undesired behavior&lt;/p>
+&lt;/blockquote>
+&lt;p>If your issues are measurable, then you can start using them as features, objectives, or metrics. The general rule is &amp;ldquo;&lt;strong>measure first, optimize second&lt;/strong>&amp;rdquo;.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #28: Be aware that identical short-term behavior does not imply identical long-term behavior.&lt;/p>
+&lt;/blockquote>
+&lt;h2 id="training-serving-skew">&lt;a href="#training-serving-skew" class="header-anchor">&lt;/a>Training-Serving skew
+&lt;/h2>&lt;p>Training-serving skew is a difference between performance during training and performance during serving.
+This skew can be caused by:&lt;/p>
+&lt;ol>
+&lt;li>A discrepancy between how you handle data in the training and serving pipelines&lt;/li>
+&lt;li>A change in the data between when you train and when you serve&lt;/li>
+&lt;li>A feedback loop between your model and your algorithm.&lt;/li>
+&lt;/ol>
+&lt;p>The best solution is to explicitly monitor it so that system and data changes don&amp;rsquo;t introduce skew unnoticed.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #29: The best way to make sure that you train like you serve is to save the set of features used at the serving time, and then pipe those features to a log to use them at training time.&lt;/p>
+&lt;/blockquote>
+&lt;p>This can help verify the consistency between the training and serving.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #30: Importance-weight sampled data, don&amp;rsquo;t arbitrarily drop it.&lt;/p>
+&lt;/blockquote>
+&lt;p>Importance weighting means that if you decide that you are going to sample example X with a 30% probability, then give it a weight of 10/3. With importance weighting, all of the calibration properties discussed in Rule #14 still hold.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #31: Beware that if your join data from a table at training and serving time, the data in the table may change.&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;p>Rule #32: Re-use code between your training pipeline and your serving pipeline whenever possible.&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;p>Rule #33: If you produce a model based on the data until January 5th, test the model on the data from January 6th and after.&lt;/p>
+&lt;/blockquote>
+&lt;p>In general, measure performance of a model on the data gathered after the data you trained the model on, as this better reflects what your system will do in production&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #37: Measure Training-Serving Skew.&lt;/p>
+&lt;/blockquote>
+&lt;p>We can divide causes of Training-Serving Skew into several parts:&lt;/p>
+&lt;ol>
+&lt;li>The difference between the performance on the training data and the holdout data. In general, this will always exist, and it is not always bad.&lt;/li>
+&lt;li>The difference between the performance on the holdout data and the &amp;ldquo;next­day&amp;rdquo; data. Again, this will always exist&lt;/li>
+&lt;li>The difference between the performance on the &amp;ldquo;next-day&amp;rdquo; data and the live data.&lt;/li>
+&lt;/ol>
+&lt;h1 id="ml-phase-3-slowed-growth-optimization-refinement-and-complex-models">&lt;a href="#ml-phase-3-slowed-growth-optimization-refinement-and-complex-models" class="header-anchor">&lt;/a>ML phase 3: Slowed growth, Optimization refinement, and complex models
+&lt;/h1>&lt;blockquote>
+&lt;p>Rule #38: Don’t waste time on new features if unaligned objectives have become the issue.&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;p>Rule #39: Launch decisions are a proxy for long-term product goals.&lt;/p>
+&lt;/blockquote>
+&lt;p>The only easy launch decisions are when all metrics get better (or at least do not get worse).&lt;/p>
+&lt;p>Individuals, on the other hand, tend to favor one objective that they can directly optimize.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #40: Keep ensembles simple.&lt;/p>
+&lt;/blockquote>
+&lt;p>To keep things simple, each model should either be an ensemble only taking the input of other models, or a base model taking many features, but not both.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #41: When performance plateaus, look for qualitatively new sources of information to add rather than refining existing signals.&lt;/p>
+&lt;/blockquote>
+&lt;p>As in any engineering project, you have to weigh the benefit of adding new features against the cost of increased complexity.&lt;/p>
+&lt;blockquote>
+&lt;p>Rule #42: Don’t expect diversity, personalization, or relevance to be as correlated with popularity as you think they are.&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;p>Rule #43: Your friends tend to be the same across different products. Your interests tend not to be.&lt;/p>
+&lt;/blockquote>
+&lt;h1 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h1>&lt;p>In early stage, make sure that the infrastructure is well constructed, the used model can be simple.&lt;/p>
+&lt;p>In main stage, focusing on the utilitarian performance and the gap between training data and test data.&lt;/p>
+&lt;p>When utilizing features, use simple, observable features.&lt;/p>
+&lt;p>When deploying models, watch out training-serving skew.&lt;/p>
+&lt;h1 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="https://developers.google.com/machine-learning/guides/rules-of-ml" target="_blank" rel="noopener"
+>Rules of Machine Learning&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

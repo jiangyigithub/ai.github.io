@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Paper Reading on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/paper-reading/</link><description>Recent content in Paper Reading on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/paper-reading/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on VITA</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-vita/</link><pubDate>Tue, 13 Aug 2024 14:36:45 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-vita/</guid><description>&lt;h1 id="tldr">&lt;a href="#tldr" class="header-anchor">&lt;/a>TLDR
+&lt;/h1>&lt;p>This paper proposes a Multimodal Large Language Model VITA (Video, Image, Text, Audio).
+VITA supports non-awakening interaction and audio interruption for better interactive experience.
+VITA aims to be an open-sourced version of GPT-4o.&lt;/p>
+&lt;h1 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h1>&lt;p>Features of GPT-4o:&lt;/p>
+&lt;ol>
+&lt;li>a unified framework that processes text, vision, and audio signals in an end-to-end manner,&lt;/li>
+&lt;li>the capability to enable natural multimodal human-computer interaction.&lt;/li>
+&lt;/ol>
+&lt;p>Similar to Mini-GPT4, this paper tries to proposed an open-sourced version of GPT-4o.&lt;/p>
+&lt;h1 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h1>&lt;h2 id="model">&lt;a href="#model" class="header-anchor">&lt;/a>Model
+&lt;/h2>&lt;p>The architecture of VITA is shown as follows:
+&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vita/VITA_architecture.png"
+width="1282"
+height="1069"
+loading="lazy"
+alt="Architecture of VITA"
+class="gallery-image"
+data-flex-grow="119"
+data-flex-basis="287px"
+>&lt;/p>
+&lt;ul>
+&lt;li>LLM: Mixtral $8\times 7$ B&lt;/li>
+&lt;li>Visual Encoder: InternViT-300M-448px&lt;/li>
+&lt;li>Audio Encoder: Mel Filter Bank block&lt;/li>
+&lt;/ul>
+&lt;p>To support audio interruption, the author uses two model at the same time, where the generation model is responsible for handling user queries and the other model monitors the environment. The other models starts to work is there is an audio interruption.&lt;/p>
+&lt;h2 id="data">&lt;a href="#data" class="header-anchor">&lt;/a>Data
+&lt;/h2>&lt;h3 id="multimodal-instruction-tuning">&lt;a href="#multimodal-instruction-tuning" class="header-anchor">&lt;/a>multimodal instruction tuning
+&lt;/h3>&lt;p>Training data of multimodal instruction tuning is given as follows:&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vita/VITA_SFT_data.png"
+width="1286"
+height="672"
+loading="lazy"
+alt="Training data of multimodal instruction tuning"
+class="gallery-image"
+data-flex-grow="191"
+data-flex-basis="459px"
+>&lt;/p>
+&lt;p>Improvements are made:&lt;/p>
+&lt;ol>
+&lt;li>The questions are randomly (about half) replaced with their audio versions, using TTS technique such as GPT-SoVITS&lt;/li>
+&lt;li>Different system prompts are set to avoid conflicts between different types of data&lt;/li>
+&lt;/ol>
+&lt;p>To support human-AI interaction, the noisy audio data are also constructed. Noisy audio samples are generated from existed QA data. These negative sample texts aim to improve the ability of VITA to not respond to non-query-related content.&lt;/p>
+&lt;p>To distinguish three types of queries, the author uses three state tokens:&lt;/p>
+&lt;ul>
+&lt;li>Token &lt;code>&amp;lt;1&amp;gt;&lt;/code> denotes that the question input is the query audio&lt;/li>
+&lt;li>Token &lt;code>&amp;lt;2&amp;gt;&lt;/code> denotes that the question input is the noisy audio.&lt;/li>
+&lt;li>Token &lt;code>&amp;lt;3&amp;gt;&lt;/code> signifies the question of pure text.&lt;/li>
+&lt;/ul>
+&lt;h2 id="training-pipeline">&lt;a href="#training-pipeline" class="header-anchor">&lt;/a>Training pipeline
+&lt;/h2>&lt;p>Training pipeline of VITA consists of three stages:&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vita/VITA_training_pipeline.png"
+width="1301"
+height="852"
+loading="lazy"
+alt="Training pipeline of VITA"
+class="gallery-image"
+data-flex-grow="152"
+data-flex-basis="366px"
+>&lt;/p>
+&lt;h3 id="non-awakening-interaction">&lt;a href="#non-awakening-interaction" class="header-anchor">&lt;/a>Non-awakening Interaction
+&lt;/h3>&lt;p>There are following requirements and solutions:&lt;/p>
+&lt;ol>
+&lt;li>
+&lt;p>Real-time Tracking of Environmental Sounds. This paper uses SileroVAD to complete the Voice Activity Detection (VAD) task.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>Filtering out noisy audio. This is done by making use of token &lt;code>&amp;lt;2&amp;gt;&lt;/code>.&lt;/p>
+&lt;/li>
+&lt;/ol>
+&lt;h3 id="audio-interrupt-interaction">&lt;a href="#audio-interrupt-interaction" class="header-anchor">&lt;/a>Audio Interrupt Interaction
+&lt;/h3>&lt;p>There are following requirements and solutions:&lt;/p>
+&lt;ol>
+&lt;li>Real-time Tracking and Filtering of External Queries. This is done by use another VITA model as stated in Model section.&lt;/li>
+&lt;/ol>
+&lt;h1 id="evaluation">&lt;a href="#evaluation" class="header-anchor">&lt;/a>Evaluation
+&lt;/h1>&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vita/VITA_evaluation.png"
+width="1297"
+height="536"
+loading="lazy"
+alt="Evaluation on image and video understanding"
+class="gallery-image"
+data-flex-grow="241"
+data-flex-basis="580px"
+>&lt;/p>
+&lt;h1 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h1>&lt;p>The paper points out three limitations of VITA:&lt;/p>
+&lt;ol>
+&lt;li>Enhancement of Foundational Capabilities.&lt;/li>
+&lt;li>Refinement of Noisy Audio Construction.&lt;/li>
+&lt;li>Building end-to-end TTS in conjunction with LLM.&lt;/li>
+&lt;/ol>
+&lt;h1 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2408.05211" target="_blank" rel="noopener"
+>Arxiv paper&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://vita-home.github.io" target="_blank" rel="noopener"
+>Github&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>MiniGPT-4-Enhancing Vision-Language Understanding with Advanced Large Language Models</title><link>https://github.com/jiangyigithub/ai.github.io/p/minigpt-4-enhancing-vision-language-understanding-with-advanced-large-language-models/</link><pubDate>Thu, 02 May 2024 13:13:12 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/minigpt-4-enhancing-vision-language-understanding-with-advanced-large-language-models/</guid><description>&lt;h1 id="tldr">&lt;a href="#tldr" class="header-anchor">&lt;/a>TLDR
+&lt;/h1>&lt;p>This paper proposed an open-sourced, GPT-4 liked multimodal language model (MLLM), mini-GPT4, aiming to provide inspiration of how to build an MLLM.&lt;/p>
+&lt;h1 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h1>&lt;p>GPT-4 has exhibited remarkable vision language abilities, however, due to it is not open sourced, it is hard to explore the construction and how the GPT-4 is trained.&lt;/p>
+&lt;p>To solve this problem, this paper builds mini-GPT4, which utilizes an advanced LLM, Vicuna and BLIP-2, to build an open sourced MLLM. The result show that mini-GPT4 possesses numerous capabilities similar to those demostrated by GPT-4.&lt;/p>
+&lt;h1 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h1>&lt;p>The architecture of mini-GPT4 is shown as follows:&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/minigpt-4-enhancing-vision-language-understanding-with-advanced-large-language-models/mini-gpt4-architecture.png"
+width="907"
+height="600"
+loading="lazy"
+alt="mini-GPT4 architecture"
+class="gallery-image"
+data-flex-grow="151"
+data-flex-basis="362px"
+>&lt;/p>
+&lt;p>mini-GPT4 consists of three parts:&lt;/p>
+&lt;ol>
+&lt;li>Vision Encoder same as used in BLIP-2, which is built upon a ViT backbone and a Q-former network.&lt;/li>
+&lt;li>A single projection layer, which aligns the encoded visual features with the Vicuna language model.&lt;/li>
+&lt;li>Language decoder: Vicuna.&lt;/li>
+&lt;/ol>
+&lt;h2 id="training">&lt;a href="#training" class="header-anchor">&lt;/a>Training
+&lt;/h2>&lt;p>mini-GPT4 only trains the linear projection layer, this includes two stages:&lt;/p>
+&lt;ol>
+&lt;li>First pre-training stage: in this stage, the language decoder and vision encoder are remain frozen, only the linear projection layer is trained. The training dataset contains Conceptual Caption, SBU and LAION. The problem is that the output may be incoherent like repetitive words or sentences.&lt;/li>
+&lt;li>Fine-tune dataset generation: the pre-trained mini-GPT4 is used to generate image-text pair as fine-tune data, to improve the text quality, the generated text is polished with the help of ChatGPT. Finally, the dataset is manually refined.&lt;/li>
+&lt;li>Second-stage fine-tuning: Fine-tune the mini-GPT-4 with the high quality fine-tune data.&lt;/li>
+&lt;/ol>
+&lt;h1 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="https://github.com/Vision-CAIR/MiniGPT-4/tree/main" target="_blank" rel="noopener"
+>Github&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://openreview.net/forum?id=1tZbq88f27" target="_blank" rel="noopener"
+>Paper&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://minigpt-4.github.io/" target="_blank" rel="noopener"
+>Homepage&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

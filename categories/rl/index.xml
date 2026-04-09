@@ -1,0 +1,1224 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>RL on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/categories/rl/</link><description>Recent content in RL on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/categories/rl/index.xml" rel="self" type="application/rss+xml"/><item><title>(RL series 3) Policy evaluation</title><link>https://github.com/jiangyigithub/ai.github.io/p/rl-series-3-policy-evaluation/</link><pubDate>Wed, 18 Mar 2026 17:43:57 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/rl-series-3-policy-evaluation/</guid><description>&lt;p>这一节我们讨论如何评估 (evaluate) 一个 policy. 要评估一个 policy $\pi$, 我们需要求出对应的 value function $V^\pi$.&lt;/p>
+&lt;h2 id="value-function">&lt;a href="#value-function" class="header-anchor">&lt;/a>Value Function
+&lt;/h2>&lt;h3 id="monte-carlo">&lt;a href="#monte-carlo" class="header-anchor">&lt;/a>Monte Carlo
+&lt;/h3>&lt;p>注意到&lt;/p>
+$$
+V^\pi(s) = \mathbb{E}^\pi\left[\sum_{t=0}^{T-1}\gamma^tr_t\mid s_0=s\right]
+$$&lt;p>我们可以利用 Monte Carlo (MC) 方法来进行估计，即从 $s_0=s$ 出发，独立随机采样 $N$ 条轨迹&lt;/p>
+$$
+\{s, a_0^{(i)},r_0^{(i)},\dots,a_{T^{(i)}-1}^{(i)},r_{T^{(i)}-1}^{(i)}, s^{(i)}_{T^{(i)}}\}, i=1,\dots,N
+$$&lt;p>然后我们使用样本平均来近似期望&lt;/p>
+$$
+V^\pi(s) = \mathbb{E}^\pi\left[\sum_{t=0}^{T-1}\gamma^tr_t\mid s_0=s\right]\approx \frac{1}{N}\sum_{i=1}^N\sum_{t=0}^{T^{(i)}-1}\gamma^tr_t^{(i)}
+$$&lt;p>如果 $\mathcal{S}$ 比较小，我们可以遍历 $s\in\mathcal{S}$ 来估计 $V^\pi$.&lt;/p>
+&lt;p>当 $\mathcal{S}$ 非常大或者连续时，我们需要使用神经网络 $V_\phi$ 来近似 $V^\pi$,&lt;/p>
+$$
+\min_{\phi} \mathcal{L}(\phi) =\mathbb{E}_{s\sim p_0}\left[\frac12\left(V_\phi(s)-V^\pi(s)\right)^2\right]
+$$&lt;p>对上面的目标函数求导得到&lt;/p>
+$$
+\begin{align}
+\nabla_\phi \mathcal{L}(\phi) &amp;= \mathbb{E}_{s\sim p_0}\left[\left(V_\phi(s)-V^\pi(s)\right)\nabla_\phi V_\phi(s)\right]\\
+&amp;= \mathbb{E}_{s\sim p_0}\left[\left(V_\phi(s)- \mathbb{E}^\pi\left[\sum_{t=0}^{T-1}\gamma^tr_t\mid s_0=s\right]\right)\nabla_\phi V_\phi(s)\right]\\
+&amp;=\mathbb{E}_{s\sim p_0}\left[\mathbb{E}^\pi\left[\left(V_\phi(s)- \sum_{t=0}^{T-1}\gamma^tr_t\right)\nabla_\phi V_\phi(s)\mid s_0=s\right]\right]\\
+&amp;= \mathbb{E}_{s\sim p_0}^\pi\left[\left(V_\phi(s)- \sum_{t=0}^{T-1}\gamma^tr_t\right)\nabla_\phi V_\phi(s)\mid s_0=s\right]\\
+\end{align}
+$$&lt;p>这样，我们可以结合 SGD 与 MC 来近似 $V^\pi$&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/rl-series-3-policy-evaluation/value-function-MC.png"
+width="653"
+height="255"
+loading="lazy"
+alt="Value function approximation with MC"
+class="gallery-image"
+data-flex-grow="256"
+data-flex-basis="614px"
+>&lt;/p>
+&lt;h3 id="temporal-difference">&lt;a href="#temporal-difference" class="header-anchor">&lt;/a>Temporal Difference
+&lt;/h3>&lt;p>Temporal difference (TD) learning 通过相邻两步的转换关系来近似函数。注意到，&lt;/p>
+$$
+V^\pi(s) =\mathbb{E}^\pi[r_0 + \gamma V^\pi(s_1)\mid s_0=s]
+$$&lt;p>与前面的方法类似，我们先采样然后使用 MC 来进行估计&lt;/p>
+$$
+V^\pi(s) =\mathbb{E}^\pi[r_0 + \gamma V^\pi(s_1)\mid s_0=s]\approx \frac{1}N\sum_{i=1}^N\left(r_0^{(i)} + \gamma V^\pi(s_1^{(i)})\right)
+$$&lt;p>同样的，当 $\mathcal{S}$ 比较大或者连续时，我们构造损失函数&lt;/p>
+$$
+\min_{\phi} \mathcal{L}(\phi) =\mathbb{E}_{s\sim p_0}\left[\frac12\left(V_\phi(s)-V^\pi(s)\right)^2\right]
+$$&lt;p>对应的梯度为&lt;/p>
+$$
+\nabla_\phi \mathcal{L}(\phi) =\mathbb{E}_{s\sim p_0}^\pi\left[\left(V_\phi(s)- r_0-\gamma V^\pi(s_1)\right)\nabla_\phi V_\phi(s)\mid s_0=s\right]
+$$&lt;p>但是，这里存在的问题在于，我们使用了 $V^\pi(s_1)$, 而这个值是未知的，因此，一个做法是使用当前的 value function $V_\phi$ 来进行代替，即&lt;/p>
+$$
+\nabla_\phi \mathcal{L}(\phi) \approx \mathbb{E}_{s\sim p_0}^\pi\left[\left(V_\phi(s)- r_0-\gamma V_\phi(s_1)\right)\nabla_\phi V_\phi(s)\mid s_0=s\right]
+$$&lt;p>这样，我们结合 TD 和 GSD 的算法就变成了&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/rl-series-3-policy-evaluation/value-function-1-TD-wrong.png"
+width="656"
+height="171"
+loading="lazy"
+alt="Value function approximation with TD (wrong)"
+class="gallery-image"
+data-flex-grow="383"
+data-flex-basis="920px"
+>&lt;/p>
+&lt;p>接下来，我们需要关注如何计算 $g$, 直接通过 $g=\left(V_\phi(s)- r_0-\gamma V_\phi(s_1)\right)\nabla_\phi V_\phi(s)$ 来进行计算，这在数学上是没有问题的，但是从自动微分的角度不对，比如 Pytorch 对应的实现应该是&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="n">pred&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">V_phi&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">s0&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">target&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">r&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">gamma&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">V_phi&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">s1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">td_error&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">pred&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">target&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">loss&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mf">0.5&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">td_error&lt;/span> &lt;span class="o">**&lt;/span> &lt;span class="mi">2&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">loss&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">backward&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>可以看到，我们实际上求的梯度是&lt;/p>
+$$
+\nabla_\phi\left[\frac12\left(V_\phi(s)-(r+\gamma V_\phi(s'))\right)^2\right]=(V_\phi(s)-(r+\gamma V_\phi(s'))(\nabla_\phi V_\phi(s)-\nabla_\phi V_\phi(s'))
+$$&lt;p>这显然与 $g$ 不相等。&lt;/p>
+&lt;p>为了解决这个问题，我们需要使用 &lt;a class="link" href="stop-gradient.md" >stop-gradient&lt;/a> 的技巧来避免 $V_\phi(s')$ 参与反向传播，这个时候，我们的目标函数就变成了&lt;/p>
+$$
+\frac12\left(V_\phi(s)-(r+\gamma\ \mathrm{sg}[V_\phi(s')])\right)^2
+$$&lt;p>其中 $\mathrm{sg}[\cdot]$ 是 stop-gradient operator, 满足&lt;/p>
+$$
+\mathrm{sg}[x] = \begin{cases}
+x &amp;\text{forward pass}\\
+0 &amp;\text{backward pass}
+\end{cases}
+$$&lt;p>这样其梯度就是&lt;/p>
+$$
+\nabla_\phi\left[\frac12\left(V_\phi(s)-(r+\gamma\ \mathrm{sg}[V_\phi(s')])\right)^2\right]=(V_\phi(s)-(r+\gamma V_\phi(s'))\nabla_\phi V_\phi(s)=g
+$$&lt;p>对应的 python 代码为&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="n">pred&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">V_phi&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">s0&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">target&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">r&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">gamma&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">V_phi&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">s1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">td_error&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">pred&lt;/span> &lt;span class="o">-&lt;/span> &lt;span class="n">target&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">detach&lt;/span>&lt;span class="p">()&lt;/span> &lt;span class="c1"># sop gradient operator&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">loss&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mf">0.5&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">td_error&lt;/span> &lt;span class="o">**&lt;/span> &lt;span class="mi">2&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">loss&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">backward&lt;/span>&lt;span class="p">()&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>最终，我们的算法实现为&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/rl-series-3-policy-evaluation/value-function-1-TD.png"
+width="650"
+height="171"
+loading="lazy"
+alt="Value function approximation with TD"
+class="gallery-image"
+data-flex-grow="380"
+data-flex-basis="912px"
+>&lt;/p>
+&lt;p>上述这种做法其实是 semi-gradient methods, 这类方法在参数更新时，只计算部分梯度的方法。虽然这种方法牺牲了严格的梯度下降性质，但是其能够保证更好的表现。&lt;/p>
+&lt;h3 id="k-step-td">&lt;a href="#k-step-td" class="header-anchor">&lt;/a>K-step TD
+&lt;/h3>&lt;p>我们可以进一步推广 TD 到多步的场景，注意到&lt;/p>
+$$
+\begin{align}
+V^\pi(s) &amp;=\mathbb{E}^\pi[r_0 + \gamma V^\pi(s_1)\mid s_0=s]\\
+&amp;=\mathbb{E}^\pi[r_0 + \gamma \mathbb{E}^\pi[r_1 + \gamma V^\pi(s_1)\mid s_1]\mid s_0=s]\\
+&amp;= \mathbb{E}^\pi[\mathbb{E}^\pi[r_0 + \gamma r_1 + \gamma^2 V^\pi(s_2) \mid s_1] \mid s_0=s]
+\end{align}
+$$&lt;p>由重期望定理（Law of Total Expectation）：&lt;/p>
+$$
+\mathbb{E}^\pi[\mathbb{E}^\pi[X \mid s_1] \mid s_0=s] = \mathbb{E}^\pi[X \mid s_0=s]
+$$&lt;p>因此：&lt;/p>
+$$
+V^\pi(s) = \mathbb{E}^\pi[r_0 + \gamma r_1 + \gamma^2 V^\pi(s_2) \mid s_0=s]
+$$&lt;p>重复这个过程 k 次,得到 k 步展开：&lt;/p>
+$$
+\begin{align} V^\pi(s) &amp;= \mathbb{E}^\pi\left[\sum_{i=0}^{k-1} \gamma^i r_i + \gamma^k V^\pi(s_k) \mid s_0=s\right] \end{align}
+$$&lt;p>现在，我们可以基于 k-step transition 构建目标函数&lt;/p>
+$$
+\min_{\phi} \mathcal{L}(\phi) =\mathbb{E}_{s\sim p_0}\left[\frac12\left(V_\phi(s)-\left(\sum_{i=0}^{k-1} \gamma^i r_i + \gamma^k V^\pi(s_k)\right)\right)^2\right]
+$$&lt;p>使用前面分析的方法，我们就可以写出类似的算法&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/rl-series-3-policy-evaluation/value-function-k-TD.png"
+width="646"
+height="230"
+loading="lazy"
+alt="value function approximation with k-step TD"
+class="gallery-image"
+data-flex-grow="280"
+data-flex-basis="674px"
+>&lt;/p>
+&lt;p>一般来说，我们会令 $k=5$.&lt;/p>
+&lt;h3 id="mc-vs-td">&lt;a href="#mc-vs-td" class="header-anchor">&lt;/a>MC v.s. TD
+&lt;/h3>&lt;p>TD 本质上一种 bootstrapping, 当需要使用 $V^\pi$ 时，我们使用 $V_\phi$ 来代替。两者对比如下&lt;/p>
+&lt;ol>
+&lt;li>MC 需要完整的一次采样，但是 TD 可以通过 bootstrap 提高采样效率。&lt;/li>
+&lt;li>当 $V_\phi$ 与 $V^\pi$ 差距较大时，boostraping 会导致训练不稳定，而 MC 则相对稳定&lt;/li>
+&lt;/ol>
+&lt;h2 id="q-function">&lt;a href="#q-function" class="header-anchor">&lt;/a>Q-function
+&lt;/h2>&lt;p>对于 Q-function, 我们也可以设计类似的算法。&lt;/p>
+&lt;p>对于 MC, 我们有&lt;/p>
+$$
+Q^{\pi}(s,a) = \mathbb{E}^{\pi}\left[\sum_{t=0}^{T-1}\gamma^tr_t\mid s_0=s, a_0=a\right]\approx \frac1N\sum_{i=1}^N\sum_{t=0}^{T^{(i)}-1}\gamma^tr_t^{(i)}
+$$&lt;p>当使用模型来近似时，我们的目标函数为&lt;/p>
+$$
+\min_{\phi} \mathcal{L}(\phi) =\mathbb{E}_{s\sim p_0, a\sim\pi(\cdot\mid s)}\left[\frac12\left(Q_\phi(s,a)-Q^\pi(s,a)\right)^2\right]
+$$&lt;p>对应的梯度&lt;/p>
+$$
+\nabla_\phi \mathcal{L}(\phi)= \mathbb{E}_{s\sim p_0}^\pi\left[\left(Q_\phi(s_0,a_0)-\sum_{t=0}^{T-1}\gamma^tr_t\right)\nabla_\phi Q_\phi(s_0,a_0)\right]
+$$&lt;p>下面是对应的算法&lt;/p>
+&lt;p>MC&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/rl-series-3-policy-evaluation/q-function-1-TD.png"
+width="647"
+height="178"
+loading="lazy"
+alt="Q function approximation with TD"
+class="gallery-image"
+data-flex-grow="363"
+data-flex-basis="872px"
+>&lt;/p>
+&lt;p>1-step Q-function TD learning&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/rl-series-3-policy-evaluation/q-function-1-TD.png"
+width="647"
+height="178"
+loading="lazy"
+alt="Q function approximation with TD"
+class="gallery-image"
+data-flex-grow="363"
+data-flex-basis="872px"
+>&lt;/p>
+&lt;p>k-step Q-function TD learning&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/rl-series-3-policy-evaluation/q-function-k-TD.png"
+width="651"
+height="231"
+loading="lazy"
+alt="Q function approximation with k-step TD"
+class="gallery-image"
+data-flex-grow="281"
+data-flex-basis="676px"
+>&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>在本节中，我们介绍了给定 policy $\pi$, 我们如何求解对应的 value function 和 Q-function.&lt;/p></description></item><item><title>(RL series 2) Bellman Equation</title><link>https://github.com/jiangyigithub/ai.github.io/p/rl-series-2-bellman-equation/</link><pubDate>Wed, 18 Mar 2026 17:39:45 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/rl-series-2-bellman-equation/</guid><description>&lt;h2 id="bellman-equations">&lt;a href="#bellman-equations" class="header-anchor">&lt;/a>Bellman Equations
+&lt;/h2>&lt;p>本节中，我们将要定义 value function, Q-function 以及这两个函数与 policy 之间的关系，这是我们介绍不同 RL 算法的基础。这一节需要使用到 &lt;a class="link" href="https://maosong.website/p/fix-point-theorem/" target="_blank" rel="noopener"
+>不动点定理&lt;/a>.&lt;/p>
+&lt;p>我们定义 Value function 如下：&lt;/p>
+$$
+V^{\pi}(s) = \mathbb{E}^{\pi}[G_0\mid s_0=s]
+$$&lt;p>value function 的具体含义为：&lt;em>agent 从当前状态 $s$ 出发，一直遵循当前策略 $\pi$， 最后获取到的 expected discounted return&lt;/em>.&lt;/p>
+&lt;p>state-action value function, 或者 Q-value function 定义如下：&lt;/p>
+$$
+Q^{\pi}(s,a) = \mathbb{E}^{\pi}[G_0\mid s_0=s, a_0=a]
+$$&lt;p>其具体含义为：&lt;em>agent 从当前状态 $s$ 出发，执行 action $a$, 再遵循当前策略 $\pi$, 最后获取到的 expected discounted return&lt;/em>.&lt;/p>
+&lt;blockquote>
+&lt;p>注意
+这里为了方便，我们令 $V^{\pi}(\langle term\rangle)=0$, $Q^{\pi}(\langle term\rangle,a)=0,\forall a\in\mathcal{A}$.&lt;/p>
+&lt;/blockquote>
+&lt;p>由全概率公式，我们有&lt;/p>
+$$
+\mathbb{E}[G_0\mid s_0=s] = \sum_{a\in\mathcal{A}}\mathbb{E}\left[G_0\mid s_t=s, a_0=a\right]\pi(a\mid s_0=s)
+$$&lt;p>即&lt;/p>
+$$
+\boxed{V^{\pi}(s) = \mathbb{E}_{a_0\sim \pi(\cdot\mid s_0)}[Q^{\pi}(s,a)]}
+$$&lt;p>一般来说，我们会使用 value function 和 Q-value function 的如下递推性质：&lt;/p>
+$$
+\boxed{
+\begin{aligned}V^\pi(s) &amp;= \mathbb{E}_{a_0\sim \pi(\cdot\mid s),\ (r_0,s_0)\sim p(\cdot,\cdot\mid s,a_0)}[r_0 + \gamma V^\pi(s_1)\mid s_0=s]\\
+Q^\pi(s,a) &amp;= \mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a),\ a'\sim \pi(\cdot\mid s')}[r + \gamma Q^\pi(s',a')\mid s,a]
+\end{aligned}}
+$$&lt;p>证明需要利用 Markov property:&lt;/p>
+$$
+\begin{aligned}
+V^{\pi}(s) &amp;= \mathbb{E}^{\pi}\left[r_0 + \gamma\sum_{t=1}^{T-1}\gamma^{t-1}r_t\mid s_0=s\right]\\
+&amp;= \mathbb{E}^{\pi}[r_0+\gamma G_1\mid s_0=s]\\
+&amp;= \mathbb{E}_{a_0\sim \pi(\cdot\mid s,\ (r_0,s_0)\sim p(\cdot,\cdot\mid s,a_0))}\left[\mathbb{E}^\pi[r_0 + \gamma G_1\mid s_0,a_0,r_0,s_1]\mid s_0=s\right]\\
+&amp;= \mathbb{E}_{a_0\sim \pi(\cdot\mid s,\ (r_0,s_0)\sim p(\cdot,\cdot\mid s,a_0))}\left[r_0 + \gamma \mathbb{E}^\pi[G_1\mid s_1]\mid s_0=s\right]\\
+&amp;= \mathbb{E}_{a_0\sim \pi(\cdot\mid s,\ (r_0,s_0)\sim p(\cdot,\cdot\mid s,a_0))}\left[r_0 + \gamma V^\pi[s_1)\mid s_0=s\right]
+\end{aligned}
+$$&lt;p>对于 $Q^\pi(s,a)$ 的推导同理。&lt;/p>
+&lt;p>我们接下来介绍 RL 的核心：Bellman equation Theorem, 其阐述了策略 $\pi$ 与 value function 所满足的充分必要条件。&lt;/p>
+&lt;p>&lt;strong>Theorem&lt;/strong>&lt;/p>
+&lt;blockquote>
+&lt;p>令 $\pi$ 为一个策略，假设 $\gamma\in(0,1)$, $|\mathcal{S}|&lt;\infty$ 以及 $|r|\leq R&lt;\infty, \mathrm{a.s.}$. 那么 $\pi$ 对应的 value function $V^\pi:\mathcal{S}^+\to\mathbb{R}$ 存在，且满足 Bellman equation:&lt;/p>
+&lt;/blockquote>
+$$
+\boxed{
+V^\pi(s) = \mathbb{E}_{a\sim \pi(\cdot\mid s),\ (r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[r+\gamma V(s')\mid s\right]
+}
+$$&lt;blockquote>
+&lt;p>反之，如果存在函数 $V:\mathcal{S}^+\to\mathbb{R}$ 满足 Bellman equation, 则 $V=V^\pi$.&lt;/p>
+&lt;/blockquote>
+&lt;p>&lt;strong>证明&lt;/strong>&lt;/p>
+&lt;p>由 $V^\pi$ 定义，我们有&lt;/p>
+$$
+\left|\sum_{t=0}^{\infty}\gamma^tr_t\right|\leq \sum_{t=0}^\infty \gamma^t R=\frac{R}{1-\gamma}&lt;\infty
+$$&lt;p>因此，$\sum_{t=0}^{\infty}\gamma^tr_t$ 是一个绝对收敛的序列，从而其期望存在且有界。&lt;/p>
+&lt;p>对于 $V^\pi(s)=\mathbb{E}^{\pi}[G_0\mid s_0=s]$ , 我们有&lt;/p>
+$$
+\begin{aligned}
+V^\pi(s)&amp;=\mathbb{E}^{\pi}\left[G_0\mid s_0=s\right]\\
+&amp;= \mathbb{E}^{\pi}\left[r_0+\gamma G_1\mid s_0=s\right]\\
+&amp;=\mathbb{E}_{a\sim\pi(\cdot\mid s), (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[\mathbb{E}^\pi\left[r_0+\gamma G_1\mid s_0,a_0,r_0,s'\right]\right]\\
+&amp;= \mathbb{E}_{a\sim\pi(\cdot\mid s), (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[r_0+\gamma\mathbb{E}^\pi\left[ G_1\mid s_0,a_0,r_0,s'\right]\right]\\
+&amp;= \mathbb{E}_{a\sim\pi(\cdot\mid s), (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[r_0+\gamma\mathbb{E}^\pi\left[ G_1\mid s_1\right]\right]\\
+&amp;=\mathbb{E}_{a\sim\pi(\cdot\mid s'), (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[r_0+V^{\pi}(s')\right]
+\end{aligned}
+$$&lt;p>其中第 5 个等式为 Markov property.&lt;/p>
+&lt;p>最后，我们证明方程解的唯一性，假设存在函数 $V:\mathcal{S}^+\to\mathbb{R}$ 满足 Bellman equation. 我们定义 Bellman 算子 $\mathcal{T}^\pi$ 为&lt;/p>
+$$
+(\mathcal{T}^\pi V)(s) := \mathbb{E}_{a\sim \pi(\cdot\mid s),\ (r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[r+\gamma V(s')\mid s\right]
+$$&lt;p>我们证明该算子是一个 contraction mapping, 考虑范数 $\|V\|_\infty = \max_{s\in\mathcal{S}} |V(s)|$, 我们有&lt;/p>
+$$
+\begin{aligned}
+\left|(\mathcal{T}^\pi V_1)(s)-(\mathcal{T}^\pi V_2)(s)\right| &amp;= \left|\mathbb{E}_{a\sim\pi(\cdot\mid s'), (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[\gamma V_1^{\pi}(s')-\gamma V_2^{\pi}(s')\right]\right|\\
+&amp;\leq \gamma \mathbb{E}_{a\sim\pi(\cdot\mid s'), (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left|V_1^{\pi}(s')-V_2^{\pi}(s')\right|\\
+&amp;\leq \gamma \max_{s''\in\mathcal{S}}\left|V_1(s'')-V_2(s'')\right|\\
+&amp;= \gamma \left\|V_1-V_2\right\|_\infty
+\end{aligned}
+$$&lt;p>上式对于任意 $s\in\mathcal{S}$ 都成立，因此&lt;/p>
+$$
+\left\|\mathcal{T}^\pi V_1-\mathcal{T}^\pi V_2\right\|_\infty \leq \gamma \left\|V_1-V_2\right\|_\infty
+$$&lt;p>由于 $\gamma &lt; 1$, 从而 $\mathcal{T}^\pi$ 是一个 contraction mapping.&lt;/p>
+&lt;p>根据不动点定理，已知 $V^\pi$ 是一个不动点，而不动点唯一，因此我们有 $V=V^\pi$. $\blacksquare$&lt;/p>
+&lt;p>同理，我们可以推导出关于 Q-function 的 Bellman equation:&lt;/p>
+&lt;p>&lt;strong>Theorem&lt;/strong>&lt;/p>
+&lt;blockquote>
+&lt;p>令 $\pi$ 为一个策略，假设 $\gamma\in(0,1)$, $|\mathcal{S}|&lt;\infty$ $|\mathcal{A}|&lt;\infty$ 以及 $|r|\leq R&lt;\infty, \mathrm{a.s.}$. 那么 $\pi$ 对应的 Q-function $Q^\pi:\mathcal{S}^+\times\mathcal{A}\to\mathbb{R}$ 存在，且满足 Bellman equation:&lt;/p>
+&lt;/blockquote>
+$$
+\boxed{
+Q^\pi(s, a) = \mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a),\ a'\sim \pi(\cdot\mid s')}\left[r+\gamma Q(s', a')\mid s, a\right]
+}
+$$&lt;blockquote>
+&lt;p>反之，如果存在函数 $Q:\mathcal{S}^+\times\mathcal{A}\to\mathbb{R}$ 满足 Bellman equation, 则 $Q=Q^\pi$.&lt;/p>
+&lt;/blockquote>
+&lt;p>&lt;strong>证明&lt;/strong>&lt;/p>
+&lt;p>证明与 value function 的证明基本类似，我们这里略过。&lt;/p>
+&lt;h2 id="bellman-optimal-equation">&lt;a href="#bellman-optimal-equation" class="header-anchor">&lt;/a>Bellman Optimal Equation
+&lt;/h2>&lt;p>前面介绍了针对一般策略的 Bellman equation, 特别地，对于我们的目标最优策略，我们也可以而推导出对应的 Bellman equation.&lt;/p>
+&lt;p>首先我们定义最优策略如下&lt;/p>
+&lt;p>&lt;strong>Definition&lt;/strong>&lt;/p>
+&lt;blockquote>
+&lt;p>如果策略 $\pi^*$ 满足&lt;/p>
+&lt;/blockquote>
+$$
+V^{\pi^*}(s)\geq V^{\pi}(s), \forall s\in\mathcal{S}^+, \forall \pi
+$$&lt;blockquote>
+&lt;p>则我们称策略 $\pi^*$ 是 &lt;strong>optimal policy&lt;/strong>. 对应的 $V^{\pi^*}$ 和 $Q^{\pi^*}$ 分别称之为 &lt;strong>optimal value function&lt;/strong> 以及 &lt;strong>optimal Q-function&lt;/strong>, 我们简记为 $V^*=V^{\pi^*}$, $Q^*=Q^{\pi^*}$.
+注意 optimal policy 与状态 $s$ 无关，并且 optimal policy 是不唯一的，但是所有的 optimal policy 对应的 optimal value function 是同一个。
+$V^*$ 与 $Q^*$ 之间存在如下关系&lt;/p>
+&lt;/blockquote>
+$$
+V^*(s) = \max_{a\sim\pi^*} Q^*(s, a)
+$$&lt;p>&lt;strong>证明&lt;/strong>&lt;/p>
+&lt;p>我们先证明左边小于右边，再证明右边小于左边。&lt;/p>
+$$
+V^*(s) =\mathbb{E}_{a_0\sim \pi^*(\cdot\mid s_0)}[Q^*(s,a)]\leq \mathbb{E}_{a_0\sim \pi^*(\cdot\mid s_0)}[\max_{a\sim\pi^*}Q^*(s,a)] = \max_{a\sim\pi^*} Q^*(s, a)
+$$&lt;p>其次，令 $a^*\in\arg\max_{a}Q^*(s,a)$, 令策略 $\pi'$ 为确定性策略 $\pi'(a^*\mid s)=1$, 则&lt;/p>
+$$
+\max_aQ^*(s,a^*) = Q^{\pi'}(s,a^*)=V^{\pi'}(s)\leq V^*(s)
+$$&lt;p>这样，我们就证明了上面的等式。$\blacksquare$&lt;/p>
+&lt;p>&lt;strong>Theorem&lt;/strong>&lt;/p>
+&lt;blockquote>
+&lt;p>假设 $\gamma\in(0,1)$, $|\mathcal{S}|&lt;\infty$ $|\mathcal{A}|&lt;\infty$ 以及 $|r|\leq R&lt;\infty, \mathrm{a.s.}$. 那么 optimal value function $V^\pi:\mathcal{S}^+\to\mathbb{R}$ 存在，且满足 &lt;strong>Bellman optimality equation&lt;/strong>:&lt;/p>
+&lt;/blockquote>
+$$
+\boxed{
+V^*(s) = \max_{a\in\mathcal{A}}\mathbb{E}_{\ (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[r+\gamma V^*(s')\mid s, a\right]
+}
+$$&lt;blockquote>
+&lt;p>反之，如果存在函数 $V:\mathcal{S}^+\to\mathbb{R}$ 满足 Bellman optimality equation, 则 $V=V^*$, 最终&lt;/p>
+&lt;/blockquote>
+$$
+\pi^*(s) = \arg\max_{a\in\mathcal{A}}\mathbb{E}_{\ (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[r+\gamma V^*(s')\mid s, a\right]=\arg\max_{a\in\mathcal{A}} Q^*(s,a)
+$$&lt;blockquote>
+&lt;p>是一个 optimal deterministic policy.&lt;/p>
+&lt;/blockquote>
+&lt;p>&lt;strong>证明&lt;/strong>&lt;/p>
+&lt;p>我们首先证明存在性，我们定义&lt;/p>
+$$
+(\mathcal{T}^* V)(s) := \max_{a\in\mathcal{A}}\mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[r+\gamma V(s')\mid s, a\right]
+$$&lt;p>我们证明 $\mathcal{T}^*V$ 是一个 contraction mapping.&lt;/p>
+$$
+\begin{aligned}
+\left|(\mathcal{T}^* V_1)(s)-(\mathcal{T}^* V_2)(s)\right| &amp;= \left|\max_{a\in\mathcal{A}}\mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[r+\gamma V_1(s')\mid s, a\right]- \max_{a\in\mathcal{A}}\mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[r+\gamma V_2(s')\mid s, a\right]\right|\\
+&amp;\leq \max_{a\in\mathcal{A}}\left|\mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[r+\gamma V_1(s')\mid s, a\right]- \mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[r+\gamma V_2(s')\mid s, a\right]\right|\\
+&amp;= \max_{a\in\mathcal{A}}\left|\mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[\gamma V_1(s')-V_2(s')\mid s, a\right]- \mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[r+\gamma V_2(s')\mid s, a\right]\right|\\
+&amp;\leq \gamma \max_{a\in\mathcal{A}}\left|\mathbb{E}_{a\sim\pi(\cdot\mid s'), (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[V_1^{\pi}(s')-V_2^{\pi}(s')\mid s,a\right]\right|\\
+&amp;\leq \gamma \max_{a\in\mathcal{A}}\mathbb{E}_{a\sim\pi(\cdot\mid s'), (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[\left|V_1^{\pi}(s')-V_2^{\pi}(s')\right|\mid s,a\right]\\
+&amp;\leq \gamma \max_{a\in\mathcal{A}}\max_{s''\in\mathcal{S}}\left|V_1(s'')-V_2(s'')\right|\\
+&amp;= \gamma \left\|V_1-V_2\right\|_\infty
+\end{aligned}
+$$&lt;p>这里第一个不等式我们使用了结论&lt;/p>
+$$
+\left|\max_s v(s)-\max_s u(s)\right|\leq \max_s|u(s)-v(s)|
+$$&lt;p>上式对于任意 $s\in\mathcal{S}$ 都成立，因此&lt;/p>
+$$
+\left\|\mathcal{T}^* V_1-\mathcal{T}^* V_2\right\|_\infty \leq \gamma \left\|V_1-V_2\right\|_\infty
+$$&lt;p>由于 $\gamma &lt; 1$, 从而 $\mathcal{T}^*$ 是一个 contraction mapping.&lt;/p>
+&lt;p>根据不动点定理，$\mathcal{T}^*$ 存在一个不动点，我们将其记为 $V^*$ .&lt;/p>
+&lt;p>接下来，我们定义 $\pi^*$ 为&lt;/p>
+$$
+\pi^*(s) = \arg\max_{a\in\mathcal{A}}\mathbb{E}_{\ (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[r+\gamma V^*(s')\mid s, a\right]
+$$&lt;p>此时，我们有&lt;/p>
+$$
+\begin{aligned}
+V^*(s) &amp;= \max_{a\in\mathcal{A}}\mathbb{E}_{\ (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[r+\gamma V^*(s')\mid s, a\right]\\
+&amp;= \mathbb{E}_{a\sim\pi^*(s),\ (r,s')\sim p(\cdot,\cdot\mid s,a_0)}\left[r+\gamma V^*(s')\mid s\right]\\
+&amp;= \mathbb{E}^{\pi^*}\left[r_0+\gamma V^*(s_1)\mid s_0=s\right]\\
+&amp;= \mathbb{E}^{\pi^*}\left[r_0+\gamma \mathbb{E}^{\pi^*}\left[r_1+\gamma V^*(s_2)\mid s_0=s_1\right]\\\mid s_0=s\right]\\
+&amp;= \mathbb{E}^{\pi^*}\left[r_0+\gamma \mathbb{E}^{\pi^*}\left[r_1+\gamma V^*(s_2)\mid s_0=s_1, r_0\right]\\\mid s_0=s\right]\\
+&amp;= \mathbb{E}^{\pi^*}\left[\mathbb{E}^{\pi^*}\left[r_0+\gamma (r_1+\gamma V^*(s_2))\mid s_0=s_1, r_0\right]\\\mid s_0=s\right]\\
+&amp;= \mathbb{E}^{\pi^*}\left[r_0+\gamma r_1+\gamma^2 V^*(s_2)\mid s_0=s\right]\\
+&amp;= \mathbb{E}^{\pi^*}\left[r_0+\gamma r_1+\gamma^2r_2+\cdots\mid s_0=s\right]\\
+&amp;= V^{\pi^*}(s)
+\end{aligned}
+$$&lt;p>即 $V^*=V^{\pi^*}$.&lt;/p>
+&lt;p>现在我们证明 $\pi^*$ 是最优策略，令 $\pi$ 为任意一个策略，我们有&lt;/p>
+$$
+V^\pi \leq V^*= \mathcal{T}^*(V^\pi)\leq ( \mathcal{T}^*)^2(V^\pi) \leq\cdots\leq (\mathcal{T}^*)^k(V^\pi) \to V^*=V^{\pi^*}
+$$&lt;p>这里第一个等式是 Bellman equation, 第一个不等式是由于下面的 Lemma,最后的极限使用了不动点定理。因此我们有 $V^\pi\leq V^*$, 从而 $\pi^*$ 是最优策略，且 $V^*$ 是对应的 optimal value function. $\blacksquare$&lt;/p>
+&lt;p>&lt;strong>Lemma&lt;/strong>&lt;/p>
+&lt;blockquote>
+&lt;p>令 $\pi$ 为一个策略， $\mathcal{T}^\pi$ 和 $\mathcal{T}^*$ 分别是 Bellman operator 和 Bellman optimality operator. 对任意 $V:\mathcal{S}^+\to\mathbb{R}$, 我们有&lt;/p>
+&lt;/blockquote>
+$$
+\mathcal{T}^\pi(V) \leq \mathcal{T}^*(V)
+$$&lt;blockquote>
+&lt;p>进一步，对任意 $U:\mathcal{S}^+\to\mathbb{R}$, $V:\mathcal{S}^+\to\mathbb{R}$, 如果 $U\leq V$, 则&lt;/p>
+&lt;/blockquote>
+$$
+\mathcal{T}^*(U) \leq \mathcal{T}^*(V)
+$$&lt;p>&lt;strong>证明&lt;/strong>&lt;/p>
+$$
+\begin{aligned}
+\mathcal{T}^\pi(V)(s) &amp;= \mathbb{E}_{a\sim \pi(\cdot\mid s),\ (r,s')\sim p(\cdot,\cdot\mid s,a_0))}\left[r+\gamma V(s')\mid s\right]\\
+&amp;\leq \mathbb{E}_{a\sim \pi(\cdot\mid s)}\left[\max_{a'} \mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a')}\left[r+\gamma V(s')\mid s\right]\right]\\
+&amp;= \max_{a'} \mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a')}\left[r+\gamma V(s')\mid s\right]\\
+&amp;= \mathcal{T}^*(V)
+\end{aligned}
+$$&lt;p>其次，令 $a^*\in\arg\max_{a}\mathbb{E}[r+\gamma U(s')]$, 那么&lt;/p>
+$$
+\begin{aligned}
+\mathcal{T}^*(U)(s) &amp;= \mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a'))}\left[r+\gamma U(s')\mid s\right]\\
+&amp;\leq \mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a'))}\left[r+\gamma V(s')\mid s\right]\\
+&amp;\leq \max_a\mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a'))}\left[r+\gamma V(s')\mid s\right]\\
+&amp;= \mathcal{T}^*(V)
+\end{aligned}
+$$&lt;p>证毕。 $\blacksquare$&lt;/p>
+&lt;p>对于 Q-function, 我们也有类似结论&lt;/p>
+&lt;p>&lt;strong>Theorem&lt;/strong>&lt;/p>
+&lt;blockquote>
+&lt;p>假设 $\gamma\in(0,1)$, $|\mathcal{S}|&lt;\infty$ $|\mathcal{A}|&lt;\infty$ 以及 $|r|\leq R&lt;\infty, \mathrm{a.s.}$. 那么 optimal Q-function $Q^*:\mathcal{S}^+\times\mathcal{A}\to\mathbb{R}$ 存在，且满足 &lt;strong>Bellman optimality equation&lt;/strong>:&lt;/p>
+&lt;/blockquote>
+$$
+\boxed{
+Q^*(s, a) = \mathbb{E}_{(r,s')\sim p(\cdot,\cdot\mid s,a)}\left[r+\gamma \max_{a'\in\mathcal{A}}Q(s', a')\mid s, a\right]
+}
+$$&lt;blockquote>
+&lt;p>反之，如果存在函数 $Q:\mathcal{S}^+\times\mathcal{A}\to\mathbb{R}$ 满足 Bellman optimality equation, 则 $Q=Q^*$.&lt;/p>
+&lt;/blockquote>
+&lt;p>&lt;strong>证明&lt;/strong>&lt;/p>
+&lt;p>证明与 value function 类似，我们这里略过。&lt;/p></description></item><item><title>(RL series 1) Reinforcement Learning basic definitions</title><link>https://github.com/jiangyigithub/ai.github.io/p/rl-series-1-reinforcement-learning-basic-definitions/</link><pubDate>Wed, 18 Mar 2026 17:35:25 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/rl-series-1-reinforcement-learning-basic-definitions/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>RL 的基本思想是通过与环境进行交互，获取奖励来进行学习&lt;/p>
+&lt;p>RL 的定义如下&lt;/p>
+&lt;blockquote>
+&lt;p>强化学习是一个通过构建可以与环境进行交互的 agent 来解决控制和决策任务的学习框架，交互的方式为 agent 执行 action, 然后环境给予奖励&lt;/p>
+&lt;/blockquote>
+&lt;p>RL 的执行过程如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/rl-series-1-reinforcement-learning-basic-definitions/RL-process.png"
+width="1400"
+height="787"
+loading="lazy"
+alt="The RL process (source from sutton)"
+class="gallery-image"
+data-flex-grow="177"
+data-flex-basis="426px"
+>&lt;/p>
+&lt;h2 id="rl-basics">&lt;a href="#rl-basics" class="header-anchor">&lt;/a>RL Basics
+&lt;/h2>&lt;p>RL 的数学建模依赖于 Markov decision process, 下面我们先介绍相关概念&lt;/p>
+&lt;h3 id="definition">&lt;a href="#definition" class="header-anchor">&lt;/a>Definition
+&lt;/h3>&lt;blockquote>
+&lt;p>一个 Markov decision process (MDP) 包含如下模块：&lt;/p>
+&lt;/blockquote>
+&lt;blockquote>
+&lt;ol>
+&lt;li>时间 $t=0,1,\dots,T$.&lt;/li>
+&lt;li>状态 $s_t\in\mathcal{S}\cup\{\langle term\rangle\}$, 其中 $\mathcal{S}$ 是状态空间 (state space)&lt;/li>
+&lt;li>动作 $a_t\in\mathcal{A}$ , 其中 $\mathcal{A}$ 是动作空间 (action space)&lt;/li>
+&lt;li>奖励 $r_t\in\mathbb{R}$, 环境对 agent 当前 action $a_t$ 给予的反馈&lt;/li>
+&lt;li>终止时间 $T$, 额外定义 $s_T=\langle term\rangle$ 为终止状态&lt;/li>
+&lt;li>初始状态分布 $s_o\sim p_0$.&lt;/li>
+&lt;li>转换概率 (transition probability): $r_t,s_{t+1}\sim p(\cdot,\cdot\mid s_t,a_t)$.&lt;/li>
+&lt;li>轨迹 $\tau=(s_0,a_0,r_0,s_1,a_1,r_1,\dots,s_{T-1},a_{T-1}, r_{T-1}, s_T)$.&lt;/li>
+&lt;li>&lt;strong>Markov property&lt;/strong>. $t+1$ 时刻的状态仅与 $t$ 时刻的状态与动作相关，即 $p(s_{t+1}\mid s_t,a_t,\dots,a_0,a_0)=p(s_{t+1}\mid s_t,a_t)$ 以及 $p(r_{t}\mid s_t,a_t,\dots,s_0,a_t)=p(r_t\mid s_t,a_t)$.&lt;/li>
+&lt;/ol>
+&lt;/blockquote>
+&lt;p>我们会对一些表达式进行简化：&lt;/p>
+&lt;ol>
+&lt;li>当 $r_t$ 完全由 $(s_t,a_t)$ 决定时，我们记为 $r_t=r(s_t,a_t)$&lt;/li>
+&lt;li>我们假设状态转移函数是平稳的 (stationary), 即 $p_t(r,s'\mid s,a)=p(r,s'\mid s,a)$。&lt;/li>
+&lt;li>$a_t$ 通常由一个策略 $\pi$ 决定， 当 $\pi$ 完全由 $s_t$ 决定时，我们记为 $a_t=\pi(s_t)$, 反之，$a_t$ 从 $\pi$ 中采样得到，即 $a_t\sim\pi(\cdot\mid s_t)$.&lt;/li>
+&lt;li>一般我们会使用一个神经网络来表示 $\pi$, 即 $\pi=\pi_\theta$, 这里 $\theta$ 就是神经网络的参数。&lt;/li>
+&lt;/ol>
+&lt;p>&lt;strong>state and observation&lt;/strong>&lt;/p>
+&lt;p>通常来说，state 包含了当前进行决策所需要的所有信息（环境信息，历史信息，agent 自身信息），这种情况下 MDP 的 Markov 性质成立。实际上 agent 获取的可能只是一部分信息，即 agent 获取的为 observation, 这种情况下 MDP 特化为 Partially Observable Markov Decision Process (POMDP), 此时我们的 Markov 性质就不再对 observation 成立，我们的问题也变的更加困难。&lt;/p>
+&lt;blockquote>
+&lt;p>Takeaway
+State 表示整个环境的完整表示，而 observation 则是环境的部分表示&lt;/p>
+&lt;/blockquote>
+&lt;p>对于 LLM 来说，我们可以获取历史状态的所有信息，因此我们可以将 RL for LLM 视作一个 MDP 问题。&lt;/p>
+&lt;p>&lt;strong>action space&lt;/strong>&lt;/p>
+&lt;p>action space $\mathcal{A}$ 可以是连续的，比如上下左右四个方向，也可以是连续的，比如方向盘的角度&lt;/p>
+&lt;p>&lt;strong>episodic and continuing&lt;/strong>&lt;/p>
+&lt;p>根据任务的终止时间 $T$，我们可以将任务分为 episodic task 和 continuing task, 当 $T=\infty$ 时， 我们的任务称为 continual task，比如游戏, 否则称之为 episodic task, 比如股票预测.&lt;/p>
+&lt;p>除了 POMDP 之外，MDP 也有一些其他的推广形式：&lt;/p>
+&lt;ol>
+&lt;li>non-stationary dynamics, 即不同时间步的状态转移函数不同&lt;/li>
+&lt;li>pre-determined terminal time $T$. 终止时间指定，因为 $p_{T-1}(\langle term\rangle\mid s_{T-1}, a_{T-1})=1$ 且 $p_{t+1}(\langle term\rangle\mid s_{t}, a_{t})=0$, $\forall t\in[T-2]$, 所以此时 MDP 为 non-stationary,&lt;/li>
+&lt;li>policy $\pi_t$ may be time-dependent, 一般来说仅在 non-stationary dynamics 中有必要&lt;/li>
+&lt;li>actions may depend on states, 即 $a_t\in\mathcal{A}(s_t)$.&lt;/li>
+&lt;/ol>
+&lt;p>由于 $T$ 也是一个随机变量，因此 $\mathbb{E}[\sum_{t=0}^T\cdot]\neq\sum_{t=0}^T\mathbb{E}[\cdot]$.&lt;/p>
+&lt;p>为了简化，我们一般会使用一个等价的，不会停止的 MDP:&lt;/p>
+&lt;ol>
+&lt;li>the MDP never stops, 即 $T=\infty$&lt;/li>
+&lt;li>$s_t\in\mathcal{S}\cup\{\langle term\rangle\}$, 这里 $\langle term\rangle$ 是一个 normal state.&lt;/li>
+&lt;li>absorbing state: 当 $s_t=\langle term\rangle$ 时， $r_t=0, s_{t+1}=\langle term\rangle$, 即状态不会离开 $\langle term\rangle$.&lt;/li>
+&lt;li>$\pi(\cdot\mid\langle term\rangle)$ 不产生任何影响&lt;/li>
+&lt;/ol>
+&lt;h3 id="rl-objective">&lt;a href="#rl-objective" class="header-anchor">&lt;/a>RL Objective
+&lt;/h3>&lt;p>RL 的最终目标为最大化累计奖励，称为 expected return, 这个目标基于&lt;strong>reward hypothesis&lt;/strong>, 即&lt;em>所有的目标都可以被描述为最大化 expected return&lt;/em>. 目标函数表达式如下&lt;/p>
+$$
+\max_{\pi}\quad \mathbb{E}_{s_0\sim p_0}^\pi\left[\sum_{t=0}^{T-1}r_t\right]
+$$&lt;p>由于未来存在不确定性，我们会对这种不确定性施加惩罚，即时间越远，其对于当前的 reward 就越低，这其实就是经济学中的现值 (present value, PV), 因此我们实际上优化的目标函数是 expected discounted return:&lt;/p>
+$$
+\max_{\pi}\quad \mathbb{E}_{s_0\sim p_0}^\pi\left[\sum_{t=0}^{T-1}\gamma^tr_t\right]
+$$&lt;p>这里 $\gamma\in(0, 1]$ 是一个超参数，我们定义&lt;/p>
+$$
+G_t = r_t +\gamma r_{t+1}+\cdots+\gamma^{T-1-t}r_{T-1}=\sum_{t'=t}^{T-1}\gamma^{t'-t}r_{t'}
+$$&lt;p>$G_t$ 被称为 &lt;strong>discounted return&lt;/strong>.&lt;/p></description></item><item><title>Notes on KL divergence</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-kl-divergence/</link><pubDate>Sat, 24 Jan 2026 16:32:14 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-kl-divergence/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>在本节中，我们先介绍 KL divergence 的基本定义，然后我们介绍 KL divergence 的一般形式，即 f-divergence.&lt;/p>
+&lt;h3 id="kl-divergence">&lt;a href="#kl-divergence" class="header-anchor">&lt;/a>KL-divergence
+&lt;/h3>&lt;p>KL divergence 用于衡量近似概率分布 $Q(x)$ 到真实概率分布 $P(x)$ 的误差，我们可以将其理解为：如果我们用 $Q(x)$ 来替换 $P(x)$, 会有多大的信息损失？&lt;/p>
+&lt;p>连续概率分布的 KL divergence 的定义如下&lt;/p>
+$$
+D_{KL}(P\parallel Q) =\mathbb{E}_{x\sim P}\left[\log \frac{P(x)}{Q(x)}\right]=\int P(x)\log\left(\frac{P(x)}{Q(x)}\right)dx
+$$&lt;p>离散概率分布的 KL divergence 定义如下&lt;/p>
+$$
+D_{KL}(P\parallel Q) = \sum_{x} P(x)\log\left(\frac{P(x)}{Q(x)}\right)
+$$&lt;p>KL divergence 有两几个关键性质：&lt;/p>
+&lt;ol>
+&lt;li>非负性：$D_{KL}(P\parallel Q)\geq0$, 且 $D_{KL}(P\parallel Q)=0$ 当且仅当 $P(x)=Q(x)$ 对任意 $x$ 成立&lt;/li>
+&lt;li>非对称性： 一般情况下，$D_{KL}(P\parallel Q)\neq D_{KL}(Q\parallel P)$.&lt;/li>
+&lt;li>有限性：如果存在 $x$ 使得 $P(x)>0$ 但是 $Q(x)=0$, 则 $D_{\mathrm{KL}}(P\parallel Q)=\infty$.&lt;/li>
+&lt;/ol>
+&lt;p>一般我们称 $D_{KL}(P\parallel Q)$ 为 &lt;strong>forward KL&lt;/strong> (相对于 $Q$), 对应的还有 &lt;strong>reverse KL&lt;/strong> $D_{KL}(Q\parallel P)$ (相对于 $Q$).&lt;/p>
+&lt;h3 id="f-divergence">&lt;a href="#f-divergence" class="header-anchor">&lt;/a>F-divergence
+&lt;/h3>&lt;p>KL divergence 是 f-divergence 的一种特殊情况。 f-divergence 是一类衡量不同概率分布 $P$ 和 $Q$ 的函数 $D_f(P\parallel Q)$.&lt;/p>
+&lt;p>假设函数 $f:(0,\infty)\to\mathbb{R}$ 是一个凸函数，且 $f(1)=0$. $P$ 和 $Q$ 是两个概率分布，则 f-divergence 定义如下&lt;/p>
+$$
+D_f(P\parallel Q) = \mathbb{E}_{x\sim Q}\left[ f\left(\frac{P(x)}{Q(x)}\right)\right]=\int Q(x)f\left(\frac{P(x)}{Q(x)}\right)dx
+$$&lt;p>我们称 $f$ 为 $D_f$ 的 &lt;strong>generator&lt;/strong>.&lt;/p>
+&lt;p>以下是几种常见的 f-divergence:&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Name&lt;/th>
+&lt;th>generator&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>forward KL divergence&lt;/td>
+&lt;td>$f(x)=x\log x$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>reverse KL divergence&lt;/td>
+&lt;td>$f(x)=-\log x$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Total variation&lt;/td>
+&lt;td>$f(x)=1/2\vert x-1\vert$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\chi^2$-divergence&lt;/td>
+&lt;td>$f(x)=(x-1)^2$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>JS-divergence&lt;/td>
+&lt;td>$f(x)=x\log\frac{2x}{x+1}+\log\frac{2}{x+1}$&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>我们这里推导一下 KL divergence 对应的 generator.&lt;/p>
+&lt;p>对于 forward KL, 注意到&lt;/p>
+$$
+D_f(P \parallel Q) = \int Q(x) \left( \frac{P(x)}{Q(x)} \log \frac{P(x)}{Q(x)} \right) dx = \int P(x) \log \frac{P(x)}{Q(x)} dx = D_{KL}(P \parallel Q)
+$$&lt;p>因此 forward KL 对应的 generator 为 $f=x\log x$.&lt;/p>
+&lt;p>对于 reverse KL, 注意到&lt;/p>
+$$
+D_f(P \parallel Q) = \int Q(x) \left( -\log \frac{P(x)}{Q(x)} \right) dx = \int Q(x) \log \frac{Q(x)}{P(x)} dx = D_{KL}(Q \parallel P)
+$$&lt;p>因此 forward KL 对应的 generator 为 $f=-\log x$.&lt;/p>
+&lt;h4 id="properties-of-f-divergence">&lt;a href="#properties-of-f-divergence" class="header-anchor">&lt;/a>Properties of F-divergence
+&lt;/h4>&lt;p>f-divergence 性质如下&lt;/p>
+&lt;ol>
+&lt;li>linearity: $D_{a_1f_1+a_2f_2}=a_1D_{f_1}+a_2D_{f_2}$.&lt;/li>
+&lt;li>$D_f=D_g$ 当且仅当存在 $c\in\mathbb{R}$ 使得 $f(x)=g(x)+c(x-1)$.&lt;/li>
+&lt;li>non-negativity. $D_f(P\parallel Q)\geq0$ 且 $D_f(P\parallel Q)$ 当且仅当 $P=Q$.&lt;/li>
+&lt;/ol>
+&lt;p>性质 2 证明如下：&lt;/p>
+&lt;p>如果 $f(x)=g(x)+c(x-1)$, 则通过定义，我们可以验证得到 $D_f=D_g$.&lt;/p>
+&lt;p>反之，如果 $D_f=D_g$, 令 $h=f-g$, 对任意两个在集合 $\{0, 1\}$ 上的概率分布 $P,Q$, 由于 $D_f(P\parallel Q) - D_g(P\parallel Q)=0$, 我们有&lt;/p>
+$$
+h\left(\frac{P(1)}{Q(1)}\right) = -\frac{Q(0)}{Q(1)}h\left(\frac{P(0)}{Q(0)}\right)
+$$&lt;p>我们不妨假设 $P(0)=aQ(0)$, $P(1)=bQ(1)$, 结合 $P(0)+P(1)=1$ 和 $Q(0)+Q(1)=1$ 我们有&lt;/p>
+$$
+Q(0) = \frac{1-a}{b-a}, Q(1) = \frac{b-1}{b-a}
+$$&lt;p>从而&lt;/p>
+$$
+\frac{h(b)}{b-1}=\frac{h(a)}{a-1}
+$$&lt;p>由于我们可以任意选定 $P$ 和 $Q$, 因此 $h$ 是一个线性函数，形式为 $h(x)=c(x-1)$. $\blacksquare$&lt;/p>
+&lt;h2 id="approximation">&lt;a href="#approximation" class="header-anchor">&lt;/a>Approximation
+&lt;/h2>&lt;p>本节中，我们将介绍针对 KL divergence 的三种近似形式。&lt;/p>
+&lt;p>在实际计算 KL divergence 时，由于：&lt;/p>
+&lt;ol>
+&lt;li>完整计算 KL divergence 需要的算力或内存过高&lt;/li>
+&lt;li>没有闭式解&lt;/li>
+&lt;li>我们可以仅保存 log-probability, 而不是整个概率分布&lt;/li>
+&lt;/ol>
+&lt;p>因此，我们假设我们只能计算输入 $x$ 对应的概率 $P(x)$ 和 $Q(x)$. 一般来说，我们会通过 Monte Carlo estimate 来进行近似。即我们先对 $P$ 进行采样得到 $x_1,\dots,x_N\sim P$, 然后我们构建估计量。&lt;/p>
+&lt;p>一个高的估计量应该是无偏 (unbiased) 并且方差低 (low variance) 的。John Schulman 给出了三种 estimator. 我们分别针对 forward KL 和 reverse KL 进行介绍。这里我们定义&lt;/p>
+$$
+r = \frac{P(x)}{Q(x)}
+$$&lt;h3 id="forward-kl-estimation">&lt;a href="#forward-kl-estimation" class="header-anchor">&lt;/a>Forward KL Estimation
+&lt;/h3>&lt;p>对于 forward KL $D_{KL}(P\parallel Q)$, 其对应的 generator 为 $f(x)=x\log x$, 注意到 $\mathbb{E}_{x\sim Q}[r]=1$, 且 $f$ 是一个凸函数，因此我们有 $f(r)-f'(1)(r-1)\geq0$, 从而我们可以得到一个新的估计为 $\boxed{k=r\log r - (r-1)}$.&lt;/p>
+&lt;h3 id="reverse-kl-estimation">&lt;a href="#reverse-kl-estimation" class="header-anchor">&lt;/a>Reverse KL Estimation
+&lt;/h3>&lt;p>对于 reverse KL $D_{KL}(Q\parallel P)$, 其对应的 generator 为 $f(x)=-\log x$, 由概率性质，$\boxed{k_1=-\log r}$ 是 $D_{KL}(Q\parallel P)$ 的一个无偏估计。但是 $k_1$ 的问题在于 当 $r$ 非常小时，$k_1$ 会变得非常大。也就是说，$k_1$ 的 variance 比较高。&lt;/p>
+&lt;p>John Schulman 基于 f-divergence 泰勒展开给出了一个新的估计 $k_2$, 其定义为&lt;/p>
+$$
+\boxed{k_2 = \frac12(\log r)^2}
+$$&lt;p>其期望为&lt;/p>
+$$
+\mathbb{E}_Q[k_2] = \mathbb{E}_Q\left[\frac12(\log r)^2\right]
+$$&lt;p>这是一个 f-divergence, 对应的 generator 为 $f_{k_2}(x)=1/2(\log x)^2$, 而 $D_{KL}(Q\parallel P)$ 对应的 generator 为 $f_{k_1}(x)=-\log x$.&lt;/p>
+&lt;p>当 $P$ 和 $Q$ 比较靠近时，我们记 $\theta=r-1$， 对 $D_{f}(P\parallel Q)$ 在 $x=1$ 处进行展开得到&lt;/p>
+$$
+\begin{aligned}
+D_f(P\parallel Q) &amp;= \mathbb{E}_{x\sim Q}\left[ f(r)\right]\\
+&amp;= \mathbb{E}_{x\sim Q}\left[ f(1) + f'(1)\theta + \frac{f''(1)}{2}f(1+\lambda)\theta^2+O(\theta^3)\right]\\
+&amp;= \frac{f''(1)}{2}F\theta^2+O(\theta^3)
+\end{aligned}
+$$&lt;p>这里我们应用了 $f(1)=0$, $\mathbb{E}[\theta]=0$, $F=\mathbb{E}[f(1+\lambda\theta)$ 是 Fisher information matrix.&lt;/p>
+&lt;p>我们分别带入 $f_{k_1}(x)$ 和 $f_{k_2}(x)$ 得到 $f_{k_1}''(1)=f_{k_2}''(1)=1$, 即 $k_1$ 和 $k_2$ 在 $P$ 和 $Q$ 比较靠近时二阶近似是相同的。因此，**$k_2$ 表面上是一个二阶近似，在分布接近时有效，但本质上是在优化 &lt;em>另一个 f-divergence&lt;/em>*&lt;/p>
+&lt;p>John Schulman 还构造了第三种估计。回顾前面 f-divergence 的性质 2，即当 $f(x)=g(x)+c(x-1)$ 时，我们有 $D_f=D_g$, 因此我们可以选取合适的 $c$ 来降低估计的 variance. 注意到 $k_1$ 的主要问题在于存在负数的可能性，因此我们就构建一个对应的估计量来解决这个问题。注意到 $\log x \leq x -1$, 因此我们可以令 $c=1$, 此时就得到了新的估计&lt;/p>
+$$
+\boxed{k_3 =(r-1)- \log r }
+$$&lt;p>$k_3$ 继承了 $k_1$ 的无偏性，并且 $k_3$ 通过 f-divergence 等价类消除了负值，兼顾无偏与低方差，解决了 $k_1$ variance 过大的问题&lt;/p>
+&lt;h3 id="experiments-on-approximation">&lt;a href="#experiments-on-approximation" class="header-anchor">&lt;/a>Experiments on Approximation
+&lt;/h3>&lt;p>对于分布 $P=\mathcal{N}(0,1)$ 以及 $Q=\mathcal{N}(0.1, 1)$, 真实的 KV divergence 为 0.005, 三个 estimator 的误差如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Method&lt;/th>
+&lt;th>Bias&lt;/th>
+&lt;th>Std Dev&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$k_1$&lt;/td>
+&lt;td>0.0001&lt;/td>
+&lt;td>20.0005&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$k_2$&lt;/td>
+&lt;td>0.0025&lt;/td>
+&lt;td>1.4175&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$k_3$&lt;/td>
+&lt;td>0.0000&lt;/td>
+&lt;td>1.4163&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>当 $P=\mathcal{N}(1,1)$, $Q=\mathcal{N}(0.1, 1)$ 时， 真实的 KV divergence 为 0.405, 三个 estimator 的误差如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Method&lt;/th>
+&lt;th>Bias&lt;/th>
+&lt;th>Std Dev&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$k_1$&lt;/td>
+&lt;td>-0.0000&lt;/td>
+&lt;td>2.2223&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$k_2$&lt;/td>
+&lt;td>0.2025&lt;/td>
+&lt;td>1.6762&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$k_3$&lt;/td>
+&lt;td>0.0000&lt;/td>
+&lt;td>1.6342&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>可以看到 $k_1$ 的 variance 非常大，$k_2$ 是一个有偏估计，$k_3$ 既满足了无偏又满足了 low variance.&lt;/p>
+&lt;h3 id="summary">&lt;a href="#summary" class="header-anchor">&lt;/a>Summary
+&lt;/h3>&lt;p>我们接下来总结 reverse KL $D_{KL}(Q\parallel P)$ 的近似 $k_1$, $k_2$ 和 $k_3$ 的性质如下 ($r=P(x)/Q(x)$)&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>estimation&lt;/th>
+&lt;th>definition&lt;/th>
+&lt;th>motivation&lt;/th>
+&lt;th>bias&lt;/th>
+&lt;th>variance&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$k_1$&lt;/td>
+&lt;td>$-\log r$&lt;/td>
+&lt;td>naive estimation&lt;/td>
+&lt;td>unbiased&lt;/td>
+&lt;td>high&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$k_2$&lt;/td>
+&lt;td>$\frac12(\log r)^2$&lt;/td>
+&lt;td>f-divergence, taylor expansion&lt;/td>
+&lt;td>biased&lt;/td>
+&lt;td>low&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$k_3$&lt;/td>
+&lt;td>$(r-1)- \log r$&lt;/td>
+&lt;td>f-divergence, non-negativity&lt;/td>
+&lt;td>unbiased&lt;/td>
+&lt;td>low&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="applications-to-ml">&lt;a href="#applications-to-ml" class="header-anchor">&lt;/a>Applications to ML
+&lt;/h2>&lt;blockquote>
+&lt;p>Remark
+本节内容主要参考了 &lt;a class="link" href="https://dibyaghosh.com/blog/probability/kldivergence/" target="_blank" rel="noopener"
+>KL Divergence for Machine Learning&lt;/a>&lt;/p>
+&lt;/blockquote>
+&lt;p>我们假设真实目标分布和近似的目标分布分别记为 $p_{data}(x)$ 和 $p_\theta(x)$. 由于 KL divergence 的非对称性，因此我们需要考虑两种目标函数：&lt;/p>
+&lt;ol>
+&lt;li>forward KL: $\arg\min_\theta D_{KL}(p_{data}\parallel p_\theta)$&lt;/li>
+&lt;li>reverse KL: $\arg\min_\theta D_{KL}(p_\theta \parallel p_{data})$&lt;/li>
+&lt;/ol>
+&lt;p>我们将会看到，这两种不同的目标函数导致的结果也不尽相同&lt;/p>
+&lt;h3 id="forward-kl">&lt;a href="#forward-kl" class="header-anchor">&lt;/a>Forward KL
+&lt;/h3>&lt;p>对目标函数进行简化得到&lt;/p>
+$$
+\arg\min_\theta D_{KL}(p_{data}\parallel p_\theta) = \arg\max_\theta \mathbb{E}_{x\sim p_{data}}\left[\log p_\theta(x)\right]
+$$&lt;p>实际在计算时，我们会使用 Monte Carlo 的方式对真实分布进行采样然后进行估计。&lt;/p>
+&lt;p>Forward KL 其代表的含义为，我们从分布 $p_{data}$ 中进行采样，然后求 $p_\theta$ 的最大似然估计。最终的结果满足：&lt;strong>当 $p_{data}(x)$ 概率很高时，$p_\theta(x)$ 的概率也需要很高&lt;/strong>. 这是一种 &lt;strong>mean-seeking&lt;/strong> behavior, 因为 $p_\theta$ 必须覆盖 $p_{data}$ 的所有 modes.&lt;/p>
+&lt;p>一般来说，supervised learning 对应的就是 forward KL. 我们可以证明 forward KL divergence 和 MLE 是等价的。也就是说，最大似然估计得到的分布就是 KL divergence 最小的近似分布。我们将 $p_{data}(x)$ 和 $p_\theta(x)$ 对应的 KL divergence 进行展开得到&lt;/p>
+$$
+\begin{aligned}
+\theta_{KL}^* &amp;= \arg\min_{\theta}D_{KL}(p_{data}(x)\parallel p_\theta(x))\\
+&amp;= \arg\min_{\theta} \int p_{data}(x)\frac{p_{data}(x)}{p_\theta(x)} dx\\
+&amp;= \arg\min_{\theta}\int p_{data}(x)\log p_{data}(x) dx - \int p_{data}(x)\log p_\theta(x)dx \\
+&amp;= \arg\min_{\theta} - \int p_{data}(x)\log p_\theta(x)dx \\
+&amp;= \arg\max_{\theta} \int p_{data}(x)\log p_\theta(x)dx
+\end{aligned}
+$$&lt;p>实际上，真实的数据分布 $p_{data}(x)$ 是未知的，我们只有从 $p_{data}(x)$ 采样得到的一批数据 $X=\{x_1,\dots,x_n\}\sim p_{data}(x)$. 基于大数定律，我们有&lt;/p>
+$$
+\frac{1}{n}\sum_{i=1}^n\log p(\theta_i\mid \theta)=\mathbb{E}_{x\sim p_{data}}[\log p_\theta(x)] = \int p_{data}(x)\log p_\theta(x)dx, n\to \infty
+$$&lt;p>这样，最大似然估计就与最小化 KL divergence 构建起了联系：&lt;/p>
+$$
+\begin{aligned}
+\theta_{MLE}^*&amp;=\arg\max_{\theta} \sum_{i=1}^n \log p(x_i\mid \theta)\\
+&amp;= \arg\max_{\theta} \int p_{data}(x)\log p_\theta(x)dx\\
+&amp;= \theta_{KL}^*, n\to\infty.
+\end{aligned}
+$$&lt;p>也就是说，当采样样本足够多的时候，最大似然估计和最小 KL divergence 是等价的。监督学习中，我们先从真实分布 $p_{data}(x,y)$ 中收集一个数据集 $\mathcal{D}=\{(x_i,y_i)\}$, 然后我们会基于模型 $f_\theta:\mathcal{X}\to\mathcal{Y}$ 和损失函数 $\mathcal{L}:\mathcal{Y}\times\mathcal{Y}\to\mathbb{R}$ 来优化模型参数 $\theta$:&lt;/p>
+$$
+\arg\min_\theta \mathbb{E}_{(x_i,y_i)\sim\mathcal{D}}[\mathcal{L}(f_\theta(x_i), y_i)]
+$$&lt;p>对于使用 cross-entropy loss 的分类问题以及 MSE loss 的回归问题，其目标函数实际上都是最小化 KL divergence.&lt;/p>
+&lt;h3 id="reverse-kl">&lt;a href="#reverse-kl" class="header-anchor">&lt;/a>Reverse KL
+&lt;/h3>&lt;p>对目标函数进行简化，得到&lt;/p>
+$$
+\arg\min_\theta D_{KL}(Q_\theta\parallel p_{data}) = \arg\max_\theta \mathbb{E}_{x\sim Q_\theta}\left[\log p_{data}(x)\right] - \mathbb{E}_{x\sim Q_\theta}\left[\log Q_\theta(x)\right]
+$$&lt;p>实际在计算时，我们需要知道真实概率分布在采样点上的概率值 $p_{data}(x)$.&lt;/p>
+&lt;p>Reverse KL 代表的含义为，我们从分布 $p_\theta(x)$ 中进行采样，然后最大化采样点在 $p_{data}(x)$ 中的概率分布。entropy item 鼓励 $p_\theta$ 尽可能均匀分布（覆盖广），从而最终结果满足：&lt;strong>当 $p_\theta(x)$ 概率很高时，$p_{data}(x)$ 的概率也需要很高&lt;/strong>。注意到与 forward KL 不同，Reverse KL 中包含 entropy 项，其避免了 $p_\theta$ 收缩到 $p_{data}$ 的某一个 非常窄的 mode 上，最终结果是 $p_\theta$ 会找到 $p_{data}$ 的一个 &lt;strong>high probability&lt;/strong> 以及 &lt;strong>wide support&lt;/strong> 的 mode, 然后进行覆盖。&lt;/p>
+&lt;p>一般来说，reinforcement learning 对应的就是 reverse KL, 这是因为我们希望 policy model 不要离 reference model 太远，并不一定要 cover 所有的 mode.&lt;/p>
+&lt;h3 id="experiments-on-forward-and-reverse-kl">&lt;a href="#experiments-on-forward-and-reverse-kl" class="header-anchor">&lt;/a>Experiments on forward and Reverse KL
+&lt;/h3>&lt;p>我们通过概率分布来可视化 forward RL 与 reverse RL 的区别，验证 forward KL 与 reverse KL 不同的模式。&lt;/p>
+&lt;p>我们假设 $p_{data}=w_1\mathcal{N}(\mu_1, \sigma_1^2)+w_2\mathcal{N}(\mu_2, \sigma_2^2)$, 然后我们用一个 normal distribution $p_\theta=\mathcal{N}(\mu, \sigma^2)$ 来近似 $p_{data}$, 这里 $\theta=(\mu, \sigma^2)$. 对于 forward KL, 我们可以从理论上得出最优解，对应的 $\mu=w_1\mu_1+w_2\mu_2$, 而 reverse KL 则只能通过优化的方式进行求解，并且解与初始化条件相关，下面是相关的实验结果&lt;/p>
+&lt;p>首先我们令 $w_1=w_2=0.5$, $\mu_1=\mu_2=4.0$, $\sigma_1=\sigma_2=1$, reverse KL 的初始化条件为 $\theta_0=(2,1)$, 对应的结果为&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kl-divergence/KL-divergence-reverse-kl-vis1.png"
+width="1010"
+height="549"
+loading="lazy"
+alt="visualization of forward KL v.s. reverse KL (1)"
+class="gallery-image"
+data-flex-grow="183"
+data-flex-basis="441px"
+>&lt;/p>
+&lt;p>接下来我们改变 reverse KL 的初始化条件为 $\theta_0=(-2,1)$, 对应的结果为&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kl-divergence/KL-divergence-reverse-kl-vis2.png"
+width="1010"
+height="549"
+loading="lazy"
+alt="visualization of forward KL v.s. reverse KL (2)"
+class="gallery-image"
+data-flex-grow="183"
+data-flex-basis="441px"
+>&lt;/p>
+&lt;p>可以看到，与前面分析一致，使用 forward KL 时，最终得到的 $p_\theta$ 会倾向于拟合分布的中心 (mean seeking), 即 $\mu(p_\theta)=\mu(p_{data})$, 而使用 reverse KL 时，最终得到的 $P$ 会倾向于拟合分布的 mode (mode seeking).&lt;/p>
+&lt;h2 id="applications-to-rl">&lt;a href="#applications-to-rl" class="header-anchor">&lt;/a>Applications to RL
+&lt;/h2>&lt;blockquote>
+&lt;p>Remark
+本节内容主要参考了 &lt;a class="link" href="https://xihuai18.github.io/reinforcement-learning/2025/12/01/kl-estimators-en.html" target="_blank" rel="noopener"
+>Understanding KL Divergence Estimators in RL: From Value Approximation to Gradient Estimation&lt;/a>&lt;/p>
+&lt;/blockquote>
+&lt;p>在本节中，我们将基于 RL 来推导 KL 的相关性质。为了统一，这里我们使用 RL 中常见的 notation 来进行计算&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>notation&lt;/th>
+&lt;th>description&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$\pi_\theta$&lt;/td>
+&lt;td>policy model with parameter $\theta$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\pi_{ref}$&lt;/td>
+&lt;td>reference model&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\pi_{old}$&lt;/td>
+&lt;td>behavior model to sample from&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$s_\theta(x)=\nabla_\theta \log \pi_\theta(x)$&lt;/td>
+&lt;td>score function&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\rho(x)=\pi_\theta(x)/\pi_{old}(x)$&lt;/td>
+&lt;td>importance weight&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\mathrm{sg}(\cdot)$&lt;/td>
+&lt;td>stop gradient operation&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>首先 score function 有一个期望为 0 的性质：&lt;/p>
+$$
+\mathbb{E}_{x\sim\pi_\theta}[s_\theta(x)]=\int_x \pi_\theta(x)\nabla_\theta \log \pi_\theta(x)dx = \int_x\nabla_\theta \pi_\theta(x)dx= \nabla_\theta\int_x \pi_\theta(x)dx =\nabla_\theta1 = 0
+$$&lt;p>接下来，我们分别推导 forward KL 和 reverse KL 的梯度。对于 forward KL, 我们有&lt;/p>
+$$
+\nabla_\theta D_{KL}(\pi_{ref}\parallel \pi_\theta) = -\int \pi_{ref}\nabla_\theta \log \pi_\theta dx=-\mathbb{E}_{\pi_{ref}}[s_\theta] = \boxed{-\mathbb{E}_{\pi_\theta}\left[\frac{\pi_{ref}}{\pi_\theta}s_\theta\right]}
+$$&lt;p>对于 reverse KL,我们有&lt;/p>
+$$
+\begin{aligned}
+\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})&amp; = \int\left[\nabla_\theta \pi_\theta\cdot\log\frac{\pi_\theta}{\pi_{ref}} + \pi_\theta \nabla_\theta\log \frac{\pi_\theta}{\pi_{ref}}\right]dx\\
+&amp;= \int \pi_\theta s_\theta\log \frac{\pi_\theta}{\pi_{ref}}dx + \int \pi_\theta s_\theta dx\\
+&amp;= \mathbb{E}_{\pi_\theta}\left[s_\theta\log \frac{\pi_\theta}{\pi_{ref}}\right]+\mathbb{E}_{\pi_\theta}[s_\theta]\\
+&amp;= \boxed{\mathbb{E}_{\pi_\theta}\left[s_\theta\log \frac{\pi_\theta}{\pi_{ref}}\right]}
+\end{aligned}
+$$&lt;p>这里我们使用了 $\nabla_\theta\pi_\theta=\pi_\theta s_\theta$ , $\nabla_\theta\log\pi_\theta=s_\theta$ 以及 前面推导的 $\mathbb{E}_{\pi_\theta}[s_\theta]=0$ 的结论.&lt;/p>
+&lt;p>RL 的目标函数如下&lt;/p>
+$$
+\mathcal{J}(\theta) = \mathbb{E}_{\tau\sim \pi_\theta}\left[\sum_{t=0}^T\gamma^tr(s_t,a_t)\right] - \beta D_{KL}(\pi_\theta\parallel \pi_{ref})
+$$&lt;h3 id="ki-as-loss">&lt;a href="#ki-as-loss" class="header-anchor">&lt;/a>Ki as Loss
+&lt;/h3>&lt;p>由于 KL divergcne 不能直接计算（或者计算难度较大），因此，基于前面对 KL divergence estimation 的分析，我们可以使用如下代理损失函数来优化我们的模型：&lt;/p>
+$$
+\mathcal{J}_1(\theta) = \mathbb{E}_{\tau\sim \pi_\theta}\left[\sum_{t=0}^T\gamma^tr(s_t,a_t)\right] - \beta k_i(\pi_\theta, \pi_{ref})
+$$&lt;p>这里 $i\in\{1,2,3\}$ 代表了我们使用的估计。从直觉上来说，这样做是没问题的，但是我们将从数学分析上说明，$k_1,k_3$ 作为损失函数都存在问题。其核心问题在于&lt;/p>
+$$
+\mathbb{E}[\widehat{D_{KL}}]=D_{KL} \nRightarrow \mathbb{E}[\nabla_\theta \widehat{D_{KL}}] =\nabla_\theta D_{KL}
+$$&lt;p>也就是说，&lt;strong>KL divergence estimation 的无偏性不能推导出 KL divergence estimation gradient 的无偏性，这是因为我们在求期望时，对应的概率分布可能也与参数相关&lt;/strong>。实际上，我们有&lt;/p>
+$$
+\begin{aligned}
+\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref}) &amp;= \nabla_\theta \mathbb{E}_{x\sim\pi_\theta}[\widehat{D_{KL}}(\pi_\theta\parallel \pi_{ref})]\\
+&amp;= \mathbb{E}_{x\sim\pi_\theta}[\nabla_\theta \widehat{D_{KL}}(\pi_\theta\parallel \pi_{ref})] + \mathbb{E}_{x\sim\pi_\theta}[\widehat{D_{KL}}(\pi_\theta\parallel \pi_{ref})\nabla_\theta \pi_\theta(x)]\\
+&amp;\neq \mathbb{E}_{x\sim\pi_\theta}[\nabla_\theta \widehat{D_{KL}}(\pi_\theta\parallel \pi_{ref})]
+\end{aligned}
+$$&lt;p>因此 $\nabla_\theta \widehat{D_{KL}}$ 是 $\nabla_\theta D_{KL}$ 的一个有偏估计。&lt;/p>
+&lt;p>我们分别来分析一下 $k_1,k_2,k_3$ 梯度，&lt;/p>
+$$
+\begin{aligned}
+\nabla_\theta k_1 &amp;= \nabla_\theta\left[-\log \frac{\pi_{ref}}{\pi_\theta}\right] = s_\theta\\
+\nabla_\theta k_2 &amp;= \nabla_\theta\left[\frac12\left(\log \frac{\pi_{ref}}{\pi_\theta}\right)^2\right] = -\log \frac{\pi_{ref}}{\pi_\theta}s_\theta\\
+\nabla_\theta k_3 &amp;= \nabla_\theta\left[\frac{\pi_{ref}}{\pi_\theta}-1- \log \frac{\pi_{ref}}{\pi_\theta}\right] = \left(1 - \frac{\pi_{ref}}{\pi_\theta}\right)s_\theta
+\end{aligned}
+$$&lt;p>此时对应的梯度的期望为&lt;/p>
+$$
+\begin{aligned}
+\mathbb{E}_{\pi_{\theta}}[\nabla_\theta k_1] &amp;= \mathbb{E}_{\pi_{\theta}}[s_\theta]=0\\
+\mathbb{E}_{\pi_{\theta}}[\nabla_\theta k_2] &amp;= \mathbb{E}_{\pi_{\theta}}\left[-\log \frac{\pi_{ref}}{\pi_\theta}s_\theta\right]=\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})\\
+\mathbb{E}_{\pi_{\theta}}[\nabla_\theta k_3] &amp;= \mathbb{E}_{\pi_{\theta}}\left[\left(1 - \frac{\pi_{ref}}{\pi_\theta}\right)s_\theta\right]=\nabla_\theta D_{KL}(\pi_{ref}\parallel \pi_\theta)\\
+\end{aligned}
+$$&lt;p>也就是说，$k_1$ 估计的梯度的期望为 0，对整体训练没有任何帮助，$k_3$ 估计的梯度的期望等价于优化 forward KL, **只有 $k_2$ 估计的梯度的期望等价于优化 reverse KL.&lt;/p>
+&lt;hr>
+&lt;p>在实际代码实现的时候，KL divergence 有两种不同的实现形式：&lt;/p>
+&lt;p>第一种是根据定义将 KL divergence 作为损失函数的一部分，此时我们的 KL divergence 参与反向传播，对应的实现方式如下&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&lt;span class="line">&lt;span class="cl">loss = -advantage * log_prob + beta * kl
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>第二种是只调整 reward, 而不参与反向传播（通过 $\mathrm{sg}(\cdot)$ 实现），对应的实现方式如下所示&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&lt;span class="line">&lt;span class="cl">shaped_reward = reward - beta * kl.detach()
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>这两者对于模型的训练影响很大，下面我们分别来进行介绍&lt;/p>
+&lt;h3 id="kl-as-loss">&lt;a href="#kl-as-loss" class="header-anchor">&lt;/a>KL as Loss
+&lt;/h3>&lt;p>为了统一 on-policy 和 off-policy 两种形式，我们使用一个统一的表达形式，即&lt;/p>
+$$
+L=\rho k_i
+$$&lt;p>此时对应的 RL 目标函数为&lt;/p>
+$$
+\mathcal{J}_2(\theta) = \mathbb{E}_{\tau\sim \pi_\theta}\left[\sum_{t=0}^T\gamma^tr(s_t,a_t)\right] - \beta\rho k_i(\pi_\theta, \pi_{ref})
+$$&lt;p>这里&lt;/p>
+$$
+\rho = \frac{\pi_\theta}{\mathrm{sg}(\pi_{old})}
+$$&lt;p>是 importance weight,&lt;/p>
+&lt;ol>
+&lt;li>当算法为 on-policy 时，$\pi_\theta=\pi_{old}$, $\rho\equiv1$.&lt;/li>
+&lt;li>当算法为 off-policy 时，$\rho=\pi_\theta/\pi_{old}$, $\nabla_\theta \rho=\rho s_\theta$.&lt;/li>
+&lt;/ol>
+&lt;p>通过这种方式，我们使得参数分布本身不会对梯度计算产生影响，从而使得对期望进行求导和对导数求期望相等，即&lt;/p>
+$$
+\nabla_\theta\mathbb{E}_{\pi_{old}}[k] = \int \pi_{old}(x)\nabla_\theta kdx= \mathbb{E}_{\pi_{old}}[\nabla_\theta k]
+$$&lt;p>接下来我们来计算对应估计的梯度的期望，即 $\mathbb{E}[\nabla_\theta(\rho k_i)]$, 首先我们计算对应的梯度&lt;/p>
+$$
+\begin{aligned}
+\nabla_\theta (\rho k_1) &amp;= \rho s_\theta k_1+r\rho_\theta=\rho s_\theta(k_1+1)\\
+\nabla_\theta (\rho k_2) &amp;= \rho s_\theta k_2+\rho\left(-\log \frac{\pi_{ref}}{\pi_\theta}s_\theta\right)=\rho s_\theta(k_1+k_2)\\
+\nabla_\theta (\rho k_3) &amp;= \rho s_\theta k_3+\rho\left(1 - \frac{\pi_{ref}}{\pi_\theta}\right)s_\theta=\rho s_\theta\left(k_3+1-\frac{\pi_{ref}}{\pi_\theta}\right)=\rho s_\theta k_1
+\end{aligned}
+$$&lt;p>注意到 $\mathbb{E}_{\pi_{old}} [\rho k_i]=\mathbb{E}_{\pi_{\theta}}[k_i]$ 以及 $\mathbb{E}_{\pi_{\theta}}[s_\theta]=0$, 我们对上述梯度求期望得到&lt;/p>
+$$
+\begin{aligned}
+\mathbb{E}_{\pi_{old}}[\nabla_\theta (\rho k_1)] &amp;= \mathbb{E}_{\pi_{old}}[\rho s_\theta(k_1+1)]=\mathbb{E}_{\pi_{\theta}}[s_\theta k_1]=\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})\\
+\mathbb{E}_{\pi_{old}}[\nabla_\theta (\rho k_2)] &amp;= \mathbb{E}_{\pi_{old}}[\rho s_\theta(k_1+k_2)]=\nabla_\theta \mathbb{E}_{\pi_\theta}[k_2]\\
+\mathbb{E}_{\pi_{old}}[\nabla_\theta (\rho k_3)] &amp;= \mathbb{E}_{\pi_{old}}[\rho s_\theta k_1]=\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})
+\end{aligned}
+$$&lt;p>这里在计算 $\mathbb{E}_{\pi_{old}}[\nabla_\theta (\rho k_2)]$ 时，我们使用了 Leibniz 乘法法则：&lt;/p>
+$$
+\mathbb{E}_{\pi_{old}}[\rho s_\theta(k_1+k_2)]= \mathbb{E}_{\pi_{\theta}}[s_\theta k_2]+\mathbb{E}_{\pi_{\theta}}[\nabla_\theta k_2]=\nabla_\theta\mathbb{E}_{\pi_{\theta}}[k_2]
+$$&lt;p>可以看到，$\rho k_1$ 和 $\rho k_3$ 都满足梯度与期望的可交换性，而 $\rho k_2$ 不满足，为了解决这个问题，我们可以使用 stop gradient, 即 $\mathrm{sg}(\rho)l_2$, 此时，我们有&lt;/p>
+$$
+\nabla_\theta(\mathrm{sg}(\rho) k_2) = \mathrm{sg}(\rho)\nabla_\theta k_2 = \rho s_\theta k_1
+$$&lt;p>对其求期望有&lt;/p>
+$$
+\mathbb{E}_{\pi_{old}}[\nabla_\theta(\mathrm{sg}(\rho) k_2)] = \mathbb{E}_{\pi_{old}}[\rho s_\theta k_1] = \mathbb{E}_{\pi_{\theta}}[s_\theta k_1]=\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})
+$$&lt;p>我们将如上结果总结为下表&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Loss&lt;/th>
+&lt;th>gradient&lt;/th>
+&lt;th>expected gradient&lt;/th>
+&lt;th>objective&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$\rho k_1$&lt;/td>
+&lt;td>$\rho s_\theta (k_1+1)$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\rho k_2$&lt;/td>
+&lt;td>$\rho s_\theta (k_1+k_2)$&lt;/td>
+&lt;td>$\nabla_\theta\mathbb{E}_{\pi_{\theta}}[k_2]$&lt;/td>
+&lt;td>f-divergence&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\mathrm{sg}(\rho) k_2$&lt;/td>
+&lt;td>$\rho s_\theta k_1$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$\rho k_3$&lt;/td>
+&lt;td>$\rho s_\theta k_1$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>接下来，我们就可以分析在 on-policy 和 off-policy 场景下分析不同 estimator 的性质了。&lt;/p>
+&lt;p>如果说，我们显式加入 $\rho$, 则根据上表我们可以使用上表的 $\rho k_1$, $\mathrm{sg}(\rho) k_2$ 以及 $\rho k_3$ 都可以作为损失函数的代替。&lt;/p>
+&lt;blockquote>
+&lt;p>注
+实际上 on-policy 场景下使用 $k_2$ 也有用的原因在于 $\nabla_\theta k_2=s_\theta k_1$, 也就是 $k_2$ 和 $\rho k_3$ 的梯度相同，其本质上是一个等效梯度。但是其收敛得到的 policy 与 target optimal policy 不同&lt;/p>
+&lt;/blockquote>
+&lt;p>接下来，我们来分析一下 $\rho k_1, \mathrm{sg}(\rho)k_2, \rho k_3$ 这三种估计的梯度的 variance, 为了避免混淆，【2】使用了 &amp;ldquo;projection variance in any direction&amp;rdquo; 的概念，即任意取一个向量 $u$, 然后计算 $\rho k_1$ 和后两者之间对应的 variance 的差（由于 $\mathrm{sg}(\rho)k_2$ 的梯度与 $\rho k_3$ 相同，因此这里我们仅计算 $\rho k_3$），得到:&lt;/p>
+$$
+\begin{aligned}
+\mathrm{var}[\nabla_\theta (\rho k_1)^Tu] - \mathrm{var}[\nabla_\theta (\rho k_3)^Tu] &amp;= (\mathbb{E}_{\pi_{old}}[(\nabla_\theta (\rho k_1)^Tu)^2] -\mathbb{E}_{\pi_{old}}^2[\nabla_\theta (\rho k_1)^Tu] ) - (\mathbb{E}_{\pi_{old}}[(\nabla_\theta (\rho k_3)^Tu)^2] -\mathbb{E}_{\pi_{old}}^2[\nabla_\theta (\rho k_3)^Tu] ) \\
+&amp;= \mathbb{E}_{\pi_{old}}[(\nabla_\theta (\rho k_1)^Tu)^2] - \mathbb{E}_{\pi_{old}}[(\nabla_\theta (\rho k_3)^Tu)^2]\\
+&amp;= \mathbb{E}_{\pi_{old}}[\rho(x)^2(s(\theta)(x)^Tu)^2(2k_1(x)+1)]
+\end{aligned}
+$$&lt;p>当 $\pi_\theta$ 和 $\pi_{ref}$ 比较接近时，我们有&lt;/p>
+$$
+\frac{\pi_{ref}(x)}{\pi_\theta(x)} = 1+\epsilon(x), \text{ where } |\epsilon(x)| &lt;&lt; 1
+$$&lt;p>此时&lt;/p>
+$$
+2k_1(x) + 1 = 1-2\log(1+\epsilon(x))\approx 1-2\epsilon(x) \geq 0
+$$&lt;p>从而我们有&lt;/p>
+$$
+\boxed{\mathrm{var}[\nabla_\theta (\rho k_1)]\geq \mathrm{var}[\nabla_\theta (\rho k_3)]=\mathrm{var}[\nabla_\theta (\mathrm{sg}(\rho)k_2)]}
+$$&lt;p>即当 $\pi_\theta$ 和 $\pi_{ref}$ 比较接近时，$\rho k_3$ 的 variance 比 $\rho k_1$ 更小，这是由于 $\rho s_\theta (k_1+1)$ 额外包含了一个 期望为零的项，这导致了其 variance 比较高。在 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v3.2/" target="_blank" rel="noopener"
+>DeepSeek-V3.2&lt;/a> 中，作者就使用了 $\rho k_3$ 来降低梯度的 variance, 提高训练的稳定性。&lt;/p>
+&lt;p>【3】将相关的估计总结为了下表的形式&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Type&lt;/th>
+&lt;th>Loss&lt;/th>
+&lt;th>Gradient&lt;/th>
+&lt;th>Expected gradient&lt;/th>
+&lt;th>Objective&lt;/th>
+&lt;th>Biased&lt;/th>
+&lt;th>Variance&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\rho k_1$&lt;/td>
+&lt;td>$\rho s_\theta (k_1+1)$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;td>unbiased&lt;/td>
+&lt;td>high&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\rho k_2$&lt;/td>
+&lt;td>$\rho s_\theta (k_1+k_2)$&lt;/td>
+&lt;td>$\nabla_\theta\mathbb{E}_{\pi_{\theta}}[k_2]$&lt;/td>
+&lt;td>f-divergence&lt;/td>
+&lt;td>biased&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\mathrm{sg}(\rho) k_2$&lt;/td>
+&lt;td>$\rho s_\theta k_1$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;td>unbiased&lt;/td>
+&lt;td>low&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\rho k_3$&lt;/td>
+&lt;td>$\rho s_\theta k_1$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;td>unbiased&lt;/td>
+&lt;td>low&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>【3】还强调了一点就是我们的损失函数必须显式包含 $\rho$, 在 on-policy 场景下，虽然 $\rho\equiv1$, 但是在反向传播时我们通过 $\nabla_\theta \rho=s_\theta$ 保留了采样信息从而避免了梯度估计期望的错配问题。&lt;/p>
+&lt;p>对于 $\rho k_1$ variance 比较高的特点，我们还可以采用 variance reduction 的方法来降低不同估计的 variance. 【TODO】&lt;/p>
+&lt;p>&lt;strong>analytic gradient&lt;/strong>
+当 action space 有限时，我们还可以使用解析梯度【TODO】&lt;/p>
+&lt;h3 id="as-a-reward-reshaping-item">&lt;a href="#as-a-reward-reshaping-item" class="header-anchor">&lt;/a>As a Reward Reshaping Item
+&lt;/h3>&lt;p>接下来我们来探究一下第二种形式，即 KL divergence 只影响最终的 reward, 而不参与反向传播。对应的代理目标函数形式为&lt;/p>
+$$
+\mathcal{J}_3(\theta) = \mathbb{E}_{\tau\sim \pi_\theta}\left[R\right] - \beta\ \mathrm{sg}(k_i(\pi_\theta, \pi_{ref}))
+$$&lt;p>这里 $R=\sum_{t=0}^T\gamma^tr(s_t,a_t)$ 为 accumulative reward&lt;/p>
+&lt;p>首先，基于前面分析，我们可以得到原始目标函数的梯度为&lt;/p>
+$$
+\begin{aligned}
+\nabla_\theta \mathcal{J}(\theta) &amp;= \nabla_\theta\mathbb{E}_{\pi_\theta}\left[R\right] - \beta \nabla_\theta D_{KL}(\pi_\theta, \pi_{ref})\\
+&amp;= \mathbb{E}_{\pi_\theta}\left[s_\theta R\right]-\beta \mathbb{E}_{\pi_\theta}\left[s_\theta\log \frac{\pi_\theta}{\pi_{ref}}\right]\\
+&amp;= \mathbb{E}_{\pi_\theta}\left[s_\theta(R-\beta k_1) \right]
+\end{aligned}
+$$&lt;p>代理目标函数的梯度为&lt;/p>
+$$
+\nabla_\theta \mathcal{J}_3(\theta) = \mathbb{E}_{\pi_\theta}\left[s_\theta(R-\beta k_i) \right]
+$$&lt;p>显然，当我们使用 $k_1$ 时，我们有 $\nabla_\theta \mathcal{J}(\theta)=\nabla_\theta \mathcal{J}_3(\theta)$.&lt;/p>
+&lt;p>当我们使用 $k_2$ 时，带入 $k_2$ 表达式易知 $\nabla_\theta \mathcal{J}_3(\theta)\neq \nabla_\theta \mathcal{J}(\theta)$,&lt;/p>
+&lt;p>当我们使用 $k_3$ 时，&lt;/p>
+$$
+\begin{aligned}
+\mathbb{E}_{\pi_\theta}\left[s_\theta k_i \right] &amp;= \mathbb{E}_{\pi_\theta}\left[s_\theta \left(\frac{\pi_{ref}}{\pi_\theta}-1- \log \frac{\pi_{ref}}{\pi_\theta} \right)\right]\\
+&amp;= \mathbb{E}_{\pi_\theta}\left[s_\theta \frac{\pi_{ref}}{\pi_\theta}\right] - \mathbb{E}_{\pi_\theta}\left[s_\theta \right] - \mathbb{E}_{\pi_\theta}\left[s_\theta \log \frac{\pi_{ref}}{\pi_\theta} \right]\\
+&amp;=s_\theta k_1 -\nabla_\theta D_{KL}(\pi_{ref}\parallel \pi_\theta)
+\end{aligned}
+$$&lt;p>此时，$\nabla_\theta \mathcal{J}_3(\theta)\neq \nabla_\theta \mathcal{J}(\theta)$. 因此，&lt;strong>在 on-policy 场景下，只有 $k_1$ 对应的梯度是无偏的&lt;/strong>&lt;/p>
+&lt;p>在 off-policy 场景下，由于 Off-policy 只影响 $R$ 的计算，因此原始目标函数和代理目标函数的梯度仍然保持不变，on-policy 场景的结论也适用。&lt;/p>
+&lt;p>总之，&lt;strong>当我们将 KL divergence 作为 reward reshaping item 时，只有 $k_1$ 产生的梯度是无偏的。&lt;/strong>&lt;/p>
+&lt;h3 id="comparison-of-two-paradigms">&lt;a href="#comparison-of-two-paradigms" class="header-anchor">&lt;/a>Comparison of Two Paradigms
+&lt;/h3>&lt;p>接下来我们来比较一下 KL divergence 作为 loss 和 reward shaping item 的异同之处。首先，两者对于梯度的贡献分别为&lt;/p>
+$$
+\begin{align}
+&amp;\rho s_\theta k_1\tag{loss}\\
+&amp; \mathbb{E}_{\pi_{old}}[\rho s_\theta k_1]\tag{reward shaping}
+\end{align}
+$$&lt;p>即两者在期望上时一致的。但是两者也存在不一致的地方，即 KL divergence 作为 loss 时不会影响 $R$, 而作为 reward shaping item 时会影响。因此这就导致两者的优化方向不一致。&lt;/p>
+&lt;h3 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h3>&lt;p>首先，我们来验证前面的结论，我们构造一个包含 $100$ 个 arms 的 multi-arm bandits, 然后令&lt;/p>
+$$
+\pi_{ref}=\epsilon_1, \pi= \epsilon_1+\epsilon_2
+$$&lt;p>其中 $\epsilon_1,\epsilon_2\sim\mathcal{N}(0,1)$, 我们实验 100 次然后取平均值，然后分别计算 estimator 与真实 KL divergence 之间的 MSE 和 estimator gradient 与真实 kl divergence gradient 的 RMSE, 结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kl-divergence/KL-divergence-estimator-gradient-bias.png"
+width="1389"
+height="489"
+loading="lazy"
+alt="bias of KL divergence estimators and their gradients"
+class="gallery-image"
+data-flex-grow="284"
+data-flex-basis="681px"
+>&lt;/p>
+&lt;p>可以看到，这验证了我们之前分析的结论，即 $k_1$ 和 $k_3$ 是无偏估计，而在计算梯度时，只有 $k_2$ 梯度的期望与真实 KL divergence 的梯度相同。&lt;/p>
+&lt;h3 id="overview">&lt;a href="#overview" class="header-anchor">&lt;/a>Overview
+&lt;/h3>&lt;p>我们在本节总结前面的分析，如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Type&lt;/th>
+&lt;th>Loss&lt;/th>
+&lt;th>Gradient&lt;/th>
+&lt;th>Expected gradient&lt;/th>
+&lt;th>Objective&lt;/th>
+&lt;th>Biased&lt;/th>
+&lt;th>Variance&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>on-policy&lt;/td>
+&lt;td>$k_1$&lt;/td>
+&lt;td>$s_\theta$&lt;/td>
+&lt;td>$0$&lt;/td>
+&lt;td>constants&lt;/td>
+&lt;td>biased&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on-policy&lt;/td>
+&lt;td>$k_2$&lt;/td>
+&lt;td>$-\log r s_\theta$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;td>&lt;strong>unbiased&lt;/strong>&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on-policy&lt;/td>
+&lt;td>$k_3$&lt;/td>
+&lt;td>$(1-r)s_\theta$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_{ref}\parallel \pi_\theta)$&lt;/td>
+&lt;td>forward KL&lt;/td>
+&lt;td>biased&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\rho k_1$&lt;/td>
+&lt;td>$\rho s_\theta (k_1+1)$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;td>unbiased&lt;/td>
+&lt;td>high&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\rho k_2$&lt;/td>
+&lt;td>$\rho s_\theta (k_1+k_2)$&lt;/td>
+&lt;td>$\nabla_\theta\mathbb{E}_{\pi_{\theta}}[k_2]$&lt;/td>
+&lt;td>f-divergence&lt;/td>
+&lt;td>biased&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\mathrm{sg}(\rho) k_2$&lt;/td>
+&lt;td>$\rho s_\theta k_1$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;td>&lt;strong>unbiased&lt;/strong>&lt;/td>
+&lt;td>low&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\rho k_3$&lt;/td>
+&lt;td>$\rho s_\theta k_1$&lt;/td>
+&lt;td>$\nabla_\theta D_{KL}(\pi_\theta\parallel \pi_{ref})$&lt;/td>
+&lt;td>reverse KL&lt;/td>
+&lt;td>&lt;strong>unbiased&lt;/strong>&lt;/td>
+&lt;td>low&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\rho\mathrm{sg}(k_1)$&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>&lt;strong>unbiased&lt;/strong>&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\rho \mathrm{sg}(k_2)$&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>biased&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>on/off-policy&lt;/td>
+&lt;td>$\rho \mathrm{sg}(k_3)$&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>biased&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>在本文中，我们详细介绍了 KL-divergence 的基本性质，相关估计方法以及在机器学习特别是 RL 领域中的应用。最终结论为：&lt;/p>
+&lt;ol>
+&lt;li>如果希望稳定可控，则将 KL divergence 作为 loss item; 如果希望更灵活，与奖励信号结合的话，则将其作为 reward shaping item.&lt;/li>
+&lt;li>使用 KL divergence 作为 loss item 时，on-policy 场景下使用 $k_2$ 近似 KL divergence 效果最好；off-policy 场景下，使用 $\mathrm{sg}(\rho)k_2, \rho k_3$ 效果最好&lt;/li>
+&lt;li>使用 KL divergence 作为 reward shaping item 时，$k_1$ 的效果最好&lt;/li>
+&lt;/ol>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://joschu.net/blog/kl-approx.html" target="_blank" rel="noopener"
+>Approximating KL Divergence&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://dibyaghosh.com/blog/probability/kldivergence/" target="_blank" rel="noopener"
+>KL Divergence for Machine Learning&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://xihuai18.github.io/reinforcement-learning/2025/12/01/kl-estimators-en.html" target="_blank" rel="noopener"
+>Understanding KL Divergence Estimators in RL: From Value Approximation to Gradient Estimation&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2506.09477" target="_blank" rel="noopener"
+>On a few pitfalls in KL divergence gradient estimation for RL&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

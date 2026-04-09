@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Perception on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/perception/</link><description>Recent content in Perception on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/perception/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on V-Triune</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-v-triune/</link><pubDate>Thu, 17 Jul 2025 09:37:36 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-v-triune/</guid><description>&lt;p>V-Triune 探究了如何使用一套统一的 RL 训练框架，来同时提高模型的 perception 和 reasoning 能力。&lt;/p>
+&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>已有的 RL 训练方法主要提升模型在特定 domain 上的能力，比如 MM-Eureka, Vision-R1 等专注于提升 MLLM 的 reasoning 能力，而 R1-V, DeepPerception 等专注于提升模型的 perception 能力。&lt;/p>
+&lt;p>因此，本文的 motivation 就是，如何用一套统一的 RL 训练框架，来同时提高模型的 perception 和 reasoning 能力。&lt;/p>
+&lt;p>V-Triune 包含 3 个关键模块：&lt;/p>
+&lt;ul>
+&lt;li>Sample-Level data formatting: 即在 sample 的层面定义 reward 等信息&lt;/li>
+&lt;li>Verifier-Level Computation: 即分离 verifier 和 generator, 提高整体效率&lt;/li>
+&lt;li>Source-Level Metric Monitoring: 基于 data source 来监控模型的表现&lt;/li>
+&lt;/ul>
+&lt;p>作者还提出了 Dynamic IoU reward, 来提高训练的稳定性。&lt;/p>
+&lt;p>基于 V-Triune 和 &lt;a class="link" href="https://maosong.website/p/notes-on-qwen2.5-vl/" target="_blank" rel="noopener"
+>Qwen2.5-VL&lt;/a>, 作者提出了 Orsta,一个在 reasoning 和 perception 任务上均有提升的多模态大模型。&lt;/p>
+&lt;p>论文的主要贡献为：&lt;/p>
+&lt;ol>
+&lt;li>提出了 V-Triune, 一个统一的 RL 训练框架，来同时提高模型的 reasoning 和 perception 能力&lt;/li>
+&lt;li>在 infra 上进行了改进，提高整体的训练效率和稳定性&lt;/li>
+&lt;li>基于 V-Triune, 构建了 Orsta, 相比于 Baseline, 模型的 perception 和 reasoning 能力均有了提升。&lt;/li>
+&lt;/ol>
+&lt;h2 id="preliminary">&lt;a href="#preliminary" class="header-anchor">&lt;/a>Preliminary
+&lt;/h2>&lt;p>作者首先回顾了一下 GRPO 和 &lt;a class="link" href="https://maosong.website/p/notes-on-dapo/" target="_blank" rel="noopener"
+>DAPO&lt;/a> , 我们这里就不再赘述。&lt;/p>
+&lt;p>然后，作者介绍了一下 reward function, reward function 由两部分组成， 第一部分是 format reward, 第二部分是 accuracy reward,.&lt;/p>
+&lt;p>对于 format reward, 作者采取了和 OpenR1 相同的做法，也就是要求输出仅包含 1 个给定的 token, 这里特定的 token 为 $s_1=\texttt{&lt;think>}$, $s_2=\texttt{&lt;/think>}$, $s_3=\texttt{&lt;answer>}$, $s_4=\texttt{&lt;/answer>}$, reward 的定义如下：&lt;/p>
+$$
+R_{\mathrm{format}}(o_q) = 0.25\sum_{i=1}^4 \mathbb{1}(\mathrm{count}(o_q,s_i)=1)
+$$&lt;p>这里 $\mathbb{1}(\cdot)$ 是示性函数。&lt;/p>
+&lt;p>对于 accuracy reward, 作者根据不同的任务分别进行处理。&lt;/p>
+&lt;p>对于 reasoning 任务，reward function 的定义如下&lt;/p>
+$$
+R_{\mathrm{acc}}(\hat{a},a) = \begin{cases}
+1, &amp;\text{ if }\texttt{verify(parse($\hat{a}$), parse($a$))}\text{ is True}\\
+0, &amp;\text{ else}
+\end{cases}
+$$&lt;p>这里 $\hat{a}$, $a$ 分别是 prediction 和 ground truth.&lt;/p>
+&lt;p>对于 perception 任务，reward function 与我们要处理的子任务相关。如果是 OCR 和 counting 任务，则我们采取和 reasoning 一样的 reward function. 如果我们要处理的是 grounding 和 detection 任务，则我们可以使用 IoU 以及 mAP 两种 reward 形式。&lt;/p>
+&lt;p>IoU reward 的定义如下：&lt;/p>
+$$
+R_{\mathrm{acc}}(\hat{a},a) = \begin{cases}
+\mathrm{IoU}(\hat{a}, a), &amp;\text{ if }\mathrm{IoU}(\hat{a},a)\geq \epsilon\\
+0, &amp;\text{ else}
+\end{cases}
+$$&lt;p>这里 $\epsilon>0$ 为超参数， IoU 定义如下&lt;/p>
+$$
+\mathrm{IoU}(\hat{a},a) = \frac{\mathrm{Area}(\hat{a}\cap a)}{\mathrm{Area}(\hat{a}\cup a)}
+$$&lt;p>mAP 的定义如下&lt;/p>
+$$
+\mathrm{AP}_c = \int_0^1 \max_{\tilde{r}\geq r}P_c(\tilde{r}) dr,\quad mAP=\frac1C\sum_{c=1}^C \mathrm{AP}_c
+$$&lt;p>最终的 reward 是 format reward 和 accuracy reward 的加权求和：&lt;/p>
+$$
+R = \alpha_{\mathrm{acc}}R_{\mathrm{acc}} + \alpha_{\mathrm{format}}R_{\mathrm{format}}
+$$&lt;h2 id="v-triune">&lt;a href="#v-triune" class="header-anchor">&lt;/a>V-Triune
+&lt;/h2>&lt;p>V-Triune 框架如下图所示，其包含三个模块&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-v-triune/V-Triune_framework.png"
+width="1351"
+height="562"
+loading="lazy"
+alt="V-Triune System"
+class="gallery-image"
+data-flex-grow="240"
+data-flex-basis="576px"
+>&lt;/p>
+&lt;h3 id="sample-level-data-formatting">&lt;a href="#sample-level-data-formatting" class="header-anchor">&lt;/a>Sample-Level Data Formatting
+&lt;/h3>&lt;p>核心思想就是不同的任务的 reward function 可能是不一样的，如果在 task 层面设计 reward function 的话，RL 训练就没有了 flexibility, 因此，在本文中，作者在 sample 层面设计 reward function. 具体做法就是，每个样本除了 QA 相关信息，还有 reward model 的相关参数，这样就可以更加灵活地调整不同 sample 的损失了。&lt;/p>
+&lt;h3 id="verifier-level-reward-computation">&lt;a href="#verifier-level-reward-computation" class="header-anchor">&lt;/a>Verifier-Level Reward Computation
+&lt;/h3>&lt;p>核心思想就是构建多个不同的 Verifier, 来分别处理不同的 sample, 因为我们 reward model 也是在 sample 层面构建的，因此我们可以基于 sample 的 metadata 来动态分配对应的 verifier, 这样就提升了 veriier 的可扩展性。本文作者使用了 MathVerifier 和 DetectionVerifier 两种。&lt;/p>
+&lt;h3 id="source-level-metric-monitoring">&lt;a href="#source-level-metric-monitoring" class="header-anchor">&lt;/a>Source-Level Metric Monitoring
+&lt;/h3>&lt;p>核心思想就是根据 sample 的 metadata 信息来监控不同的 metric, 这样可以防止训练不稳定。&lt;/p>
+&lt;h3 id="dynamic-iou-reward">&lt;a href="#dynamic-iou-reward" class="header-anchor">&lt;/a>Dynamic IoU Reward
+&lt;/h3>&lt;p>核心思想就是根据训练进程，动态调整 IoU 的阈值。&lt;/p>
+&lt;p>作者发现，如果将 IoU 阈值设置的比较低的话，模型很容易拿到比较高的 reward; 如果将 IoU 阈值设置的比较高的话，模型又很难拿到奖励。&lt;/p>
+&lt;p>因此，作者的解决方案就是，使用课程学习，随着训练的进行，逐步提高 IoU 的阈值。&lt;/p>
+&lt;h2 id="data">&lt;a href="#data" class="header-anchor">&lt;/a>Data
+&lt;/h2>&lt;p>数据集列举如下：&lt;/p>
+&lt;ul>
+&lt;li>Math: mm_math, geometry3K, mmk12&lt;/li>
+&lt;li>Puzzle: PuzzleVQA, AlgoPuzzleQA, VisualPuzzles&lt;/li>
+&lt;li>Science: ScienceQA, SciVQA, ViRL39K (Broader STEM topics, (GradeSchool) Science)&lt;/li>
+&lt;li>Chart: ChartQAPro, ChartX, Table-VQA, ViRL39K (Tables/Diagrams/Charts)&lt;/li>
+&lt;li>Detection: V3Det, Object365&lt;/li>
+&lt;li>Grounding: D3&lt;/li>
+&lt;li>Counting: CLEVR&lt;/li>
+&lt;li>OCR: LLaVA-OV (OCR questions), EST-VQA&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Rule-based filtering&lt;/strong>
+对于 visual reasoning 数据，作者的过滤如下：&lt;/p>
+&lt;ul>
+&lt;li>多项选择题以及判断题，防止 reward hacking&lt;/li>
+&lt;li>答案包含特殊符号如 &amp;ldquo;=&amp;rdquo;, &amp;ldquo;[&amp;rdquo; 等的数据&lt;/li>
+&lt;li>答案字符数超过 20 个，防止答案太复杂&lt;/li>
+&lt;/ul>
+&lt;p>对于 visual perception 数据，作者过滤流程如下：&lt;/p>
+&lt;ul>
+&lt;li>Detection: 超过 10 个 bounding box 的，或者 box 占 50% 以上面积的数据，保持 single BB 和 multi BB 的比例为 1:2&lt;/li>
+&lt;li>Grounding: box 占 50% 以上面积的数据, label 过于复杂的数据&lt;/li>
+&lt;li>Counting: 保持类别平衡，仅使用英文数据&lt;/li>
+&lt;li>OCR: 保留英文数据，对 labels 进行 verify&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Difficulty-based filtering&lt;/strong>
+主要是移除比较简单的问题。&lt;/p>
+&lt;p>经过这两个阶段的过滤之后，得到了 &lt;strong>20.6K&lt;/strong> perception samples 以及 &lt;strong>27.1K&lt;/strong> reasoning samples. 数据保存在 Parquet 格式&lt;/p>
+&lt;h2 id="training-recipe">&lt;a href="#training-recipe" class="header-anchor">&lt;/a>Training Recipe
+&lt;/h2>&lt;h3 id="disable-vit-training">&lt;a href="#disable-vit-training" class="header-anchor">&lt;/a>Disable ViT Training
+&lt;/h3>&lt;p>作者首先发现，全量微调会导致训练崩溃。作者分析原因发现，主要是 ViT 在反向传播过程中，存在 gradient amplify 的问题，第一层与最后一层的梯度的 norm 相差 5-10 倍。作者认为有两点原因：&lt;/p>
+&lt;ol>
+&lt;li>RL 会强制要求模型的不同模态之间进行对齐&lt;/li>
+&lt;li>对比学习训练得到的 VIT 可能使得其不适合 RL 的训练。&lt;/li>
+&lt;/ol>
+&lt;p>基于这两点考虑，作者再进行训练的时候，冻结了 ViT 模块，结果如下图&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-v-triune/V-Triune-frozen-ViT.png"
+width="1383"
+height="705"
+loading="lazy"
+alt="Analysis of ViT training instability"
+class="gallery-image"
+data-flex-grow="196"
+data-flex-basis="470px"
+>&lt;/p>
+&lt;h3 id="spurious-image-special-tokens">&lt;a href="#spurious-image-special-tokens" class="header-anchor">&lt;/a>Spurious Image Special Tokens
+&lt;/h3>&lt;p>作者发现，模型的输出可能会包含一些 &lt;code>&amp;lt;image_pad&amp;gt;&lt;/code> 等 token, 因此，作者对输出进行了过滤，然后再进行计算。&lt;/p>
+&lt;h3 id="cot-prompt-pool">&lt;a href="#cot-prompt-pool" class="header-anchor">&lt;/a>CoT Prompt Pool
+&lt;/h3>&lt;p>作者还发现，多样化的 CoT prompt 会损害模型的表现。因此，作者构建了 20 个 prompt 模版，每次随机挑选其中一个加入到 instruction 中。&lt;/p>
+&lt;h3 id="training-configuration">&lt;a href="#training-configuration" class="header-anchor">&lt;/a>Training Configuration
+&lt;/h3>&lt;p>模型基于 Qwen2.5-7B-instruct 和 Qwen2.5VL-32B 来进行开发&lt;/p>
+&lt;p>作者探究了 on-policy 和 off-policy 两种配置。roll-out batch size 设置为 1024, 使用 GRPO 进行训练，GRPO 的 group size 设置为 8&lt;/p>
+&lt;p>作者还设置 $\epsilon_{high}=0.28$ 以及 $\epsilon_{low}=0.2$ 来提高 token 的采样率。作者去除了 KL divergence loss, 并且在 token 层面上进行平均&lt;/p>
+&lt;h2 id="evaluation">&lt;a href="#evaluation" class="header-anchor">&lt;/a>Evaluation
+&lt;/h2>&lt;h3 id="performance">&lt;a href="#performance" class="header-anchor">&lt;/a>Performance
+&lt;/h3>&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-v-triune/V-Triune-performance.png"
+width="1159"
+height="1051"
+loading="lazy"
+alt="Performance of Orsta on MEGA-Bench core"
+class="gallery-image"
+data-flex-grow="110"
+data-flex-basis="264px"
+>&lt;/p>
+&lt;h3 id="analysis">&lt;a href="#analysis" class="header-anchor">&lt;/a>Analysis
+&lt;/h3>&lt;p>&lt;strong>on-policy v.s. off-policy&lt;/strong>
+作者首先对比了以下 on-policy RL 和 off-policy RL 两种训练方式的表现， 结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-v-triune/V-triune-on-policy.png"
+width="1137"
+height="526"
+loading="lazy"
+alt="Ablation on on-policy v.s. off-policy"
+class="gallery-image"
+data-flex-grow="216"
+data-flex-basis="518px"
+>&lt;/p>
+&lt;p>结果有两点发现：&lt;/p>
+&lt;ol>
+&lt;li>on-policy 的表现基本上都是比 off-policy 要好的。&lt;/li>
+&lt;li>小模型通过 RL 带来的表现提升更明显，大模型的表现则更慢&lt;/li>
+&lt;/ol>
+&lt;p>&lt;strong>generalization&lt;/strong>
+作者还评估了以下模型的泛化性，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-v-triune/V-Triune-generalization.png"
+width="422"
+height="673"
+loading="lazy"
+alt="Generalization of V-Triune"
+class="gallery-image"
+data-flex-grow="62"
+data-flex-basis="150px"
+>&lt;/p>
+&lt;p>结果发现，RL 的训练更像是对齐，而不是泛化。也就是说，模型在 in-domain 的任务上表现较好，在 OOD 的任务上表现就一般。这与已有的结论是不一样的&lt;/p>
+&lt;blockquote>
+&lt;p>[!tip] Recall
+&lt;a class="link" href="https://maosong.website/p/notes-on-magistral/" target="_blank" rel="noopener"
+>Magistral&lt;/a> 发现模型在 math domain 上进行训练，在 code domain 上的表现也会提升&lt;/p>
+&lt;/blockquote>
+&lt;p>&lt;strong>Training Dynamics&lt;/strong>
+作者还分析了不同任务不同指标随训练进行的变化情况，如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-v-triune/V-Triune-training-dynamics.png"
+width="1150"
+height="900"
+loading="lazy"
+alt="V-Triune training dynamics"
+class="gallery-image"
+data-flex-grow="127"
+data-flex-basis="306px"
+>&lt;/p>
+&lt;p>结果显示，reasoning 和 OCR 任务岁训练进行其输出长度和正确率都有所提升。但是 detection 相关任务则变化不是很明显。&lt;/p>
+&lt;h3 id="ablation-study">&lt;a href="#ablation-study" class="header-anchor">&lt;/a>Ablation Study
+&lt;/h3>&lt;p>作者进行了三个消融实验：&lt;/p>
+&lt;ol>
+&lt;li>训练策略：冻结 ViT, 冻结 LLM, 两者都不冻结&lt;/li>
+&lt;li>任务分解策略：仅使用 reasoning 数据进行训练，仅使用 perception 数据进行训练，同时使用两种数据进行训练。&lt;/li>
+&lt;li>learning rate: 不同的学习率&lt;/li>
+&lt;/ol>
+&lt;p>实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-v-triune/V-Triune-ablation-study.png"
+width="1146"
+height="585"
+loading="lazy"
+alt="Ablation study"
+class="gallery-image"
+data-flex-grow="195"
+data-flex-basis="470px"
+>&lt;/p>
+&lt;p>结果发现，&lt;/p>
+&lt;ol>
+&lt;li>仅训练 ViT 对表现没有任何帮助，只有训练 LLM 才会带来性能的提升。&lt;/li>
+&lt;li>同时使用两种数据进行训练的效果是最好的，其次是仅使用 reasoning 数据进行训练，最后是仅使用 perception 数据进行训练&lt;/li>
+&lt;li>较大的学习率会损害模型的表现。&lt;/li>
+&lt;/ol>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>本文中，作者提出了 V-Triune, 一个使用 RL 来同时提高 MLLM 的 reasoning 和 perception 能力的 RL 训练框架。&lt;/p>
+&lt;p>作者发现 RL 对于 VLM 来说更像是一种 Alignment 策略，而不是一种 Generalization 策略，也就是模型并没有引入新的能力，而是提升模型本身的 utility 以及 robustness.&lt;/p>
+&lt;p>作者认为本文有以下 Limitation:&lt;/p>
+&lt;ol>
+&lt;li>在 perception 任务上没有看到明显的 test-time scaling 现象。作者认为，探究使用 o3 类似的方法或许能提高模型的表现&lt;/li>
+&lt;li>探究 RL-zero 在 VLM 中的应用，也就是直接在 base model 上进行 RL 的训练。&lt;/li>
+&lt;/ol>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2505.18129" target="_blank" rel="noopener"
+>arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

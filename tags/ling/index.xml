@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Ling on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/ling/</link><description>Recent content in Ling on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/ling/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on Ling-mini-beta</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-ling-mini-beta/</link><pubDate>Sat, 13 Dec 2025 15:58:51 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-ling-mini-beta/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>目前已经有了针对 dense LLM 的 scaling law, 如 &lt;a class="link" href="https://maosong.website/p/kaplan-scaling-law/" target="_blank" rel="noopener"
+>Kaplan scaling law&lt;/a> 和 &lt;a class="link" href="https://maosong.website/p/chinchilla-scaling-law/" target="_blank" rel="noopener"
+>Chinchilla scaling law&lt;/a>.&lt;/p>
+&lt;p>但是，对于 MoE 模型，目前还缺乏一个比较系统的 scaling law.&lt;/p>
+&lt;p>为了解决这个问题，作者提出了 efficiency leverage (EL), 用于衡量 MoE 模型的效率，其定义为&lt;/p>
+$$
+EL(\mathcal{X}_{\mathrm{MoE}}\mid \mathrm{Dense})=\frac{C_{\mathrm{Dense}}}{C_{{\mathrm{MoE}}}}
+$$&lt;p>其中 $C_{\mathrm{Dense}}, C_{{\mathrm{MoE}}}$ 分别代表了训练模型所需要的算力。EL 衡量了 moe 模型达到对应 dense 模型表现所需要的算力，EL 值越大，说明 MoE 模型效率越高。EL 的可视化如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-ling-mini-beta/EL-definition.png"
+width="555"
+height="459"
+loading="lazy"
+alt="Definition of EL"
+class="gallery-image"
+data-flex-grow="120"
+data-flex-basis="290px"
+>&lt;/p>
+&lt;p>作者通过训练多个模型，探究了 MoE 架构与 EL 之间的关系。作者发现，MoE 模型的表现主要与专家激活比例以及算力相关。基于 scaling law, 作者训练了 Ling-mini-beta, 一个 17.5B-A0.85B 的 MoE 模型，其表现超过了 6.1B dense 模型的表现。&lt;/p>
+&lt;h2 id="preliminary">&lt;a href="#preliminary" class="header-anchor">&lt;/a>Preliminary
+&lt;/h2>&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Notation&lt;/th>
+&lt;th>description&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>$N$&lt;/td>
+&lt;td>total parameters&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$N_a$&lt;/td>
+&lt;td>active parameters&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$E$&lt;/td>
+&lt;td>routed experts&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$E_a$&lt;/td>
+&lt;td>activated experts&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>$E_s$&lt;/td>
+&lt;td>shared experts&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>作者定义 activation ratio 如下:&lt;/p>
+$$
+A = \frac{E_a+E_s}{E+E_s}
+$$&lt;p>定义 sharing ratio 如下&lt;/p>
+$$
+S=\frac{E_s}{E_a+E_s}
+$$&lt;p>定义 expert granularity 如下&lt;/p>
+$$
+G = \frac{d_{\mathrm{model}}}{d_{\mathrm{Expert}}}
+$$&lt;p>与 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-llm/" target="_blank" rel="noopener"
+>DeepSeek-LLM&lt;/a> 一样，作者使用 $C=MD$ 来表示算力，non-embedding FLOPs $M$ 和训练 token 数 $D$ 之间的关系。&lt;/p>
+&lt;h3 id="hyper-parameters">&lt;a href="#hyper-parameters" class="header-anchor">&lt;/a>Hyper Parameters
+&lt;/h3>&lt;p>作者首先探究了针对 MoE 模型的超参数配置，最终你和出来的结果如下图&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-ling-mini-beta/EL-hyperparameter-scaling-law.png"
+width="1377"
+height="586"
+loading="lazy"
+alt="Scaling laws for optimal hyperparameters"
+class="gallery-image"
+data-flex-grow="234"
+data-flex-basis="563px"
+>&lt;/p>
+&lt;p>实验结果说明，相比于 dense model, MoE model 需要更大的 batch size.&lt;/p>
+&lt;p>作者基于这个 scaling law 进行了验证，结果说明这个 scaling law 比较准确。&lt;/p>
+&lt;h3 id="parameters-and-dataset-size">&lt;a href="#parameters-and-dataset-size" class="header-anchor">&lt;/a>Parameters and Dataset Size
+&lt;/h3>&lt;p>接下来作者探究了对于模型参数量以及训练 token 个数之间的 scaling law, 求解的问题如下&lt;/p>
+$$
+(M^{opt}, D^{opt}) = \arg\min_{M,D}\mathcal{L}(M,D;C,A,G,S)\quad s.t.\ C=MD
+$$&lt;p>实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-ling-mini-beta/EL-model-data-scaling.png"
+width="1374"
+height="537"
+loading="lazy"
+alt="Scaling laws for optimal model scale and data size"
+class="gallery-image"
+data-flex-grow="255"
+data-flex-basis="614px"
+>&lt;/p>
+&lt;p>结果说明，不同架构对应的系数接近 $0.5$, 说明我们应该将算力均衡分配到数据和 model size 上。领一方面，MoE 模型可以通过使用更多的数据来达到更优的表现。&lt;/p>
+&lt;h2 id="efficiency-leverage">&lt;a href="#efficiency-leverage" class="header-anchor">&lt;/a>Efficiency Leverage
+&lt;/h2>&lt;p>作者将 Efficiency Leverage (EL) 定义为给定算力 $C_{target}$ 和一个 MoE 模型 $\mathcal{X}_{MoE}$, 对应 dense 模型达到 $\mathcal{X}_{MoE}$ 相同的表现所需要的算力 $C_{dense}$, 即&lt;/p>
+$$
+\begin{aligned}
+&amp;EL(\mathcal{X}_{\mathrm{MoE}}\mid \mathrm{Dense};C_{target})=\frac{C_{\mathrm{Dense}}}{C_{{\mathrm{MoE}}}}\\
+s.t.\ &amp; |\mathcal{L}(C_{MoE}, \mathcal{X}_{\mathrm{MoE}})-\mathcal{L}(C_{dense}, \mathcal{X}_{\mathrm{dense}})|\leq \epsilon (\epsilon\to 0)
+\end{aligned}
+$$&lt;p>EL 值越高说明 MoE 模型越有效。为了公平起见，dense 模型和 MoE 模型的架构参数基本相同，作者只改变 $d_{model}, d_{ffn}, d_{expert}$ 以及 $n_{layer}$.&lt;/p>
+&lt;p>接下来，作者就探究了给定算力的情况下，最优的 MoE 配置，即&lt;/p>
+$$
+(A^{opt}, G^{opt}, S^{opt}) = \arg\min_{(A,G,S)\in\mathcal{X}_{\mathrm{MoE}}}EL(\mathcal{X}_{\mathrm{MoE}}\mid \mathrm{Dense};C)
+$$&lt;h2 id="scaling-law">&lt;a href="#scaling-law" class="header-anchor">&lt;/a>Scaling Law
+&lt;/h2>&lt;p>首先，坐着探究了最优的 activation ratio $A$, 即&lt;/p>
+$$
+A^{opt} = \arg\min_{A}\mathcal{L}(A;C,M,G,S)
+$$&lt;p>拟合的结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-ling-mini-beta/EL-impact-of-A.png"
+width="1380"
+height="487"
+loading="lazy"
+alt="Impact of the activation ratio"
+class="gallery-image"
+data-flex-grow="283"
+data-flex-basis="680px"
+>&lt;/p>
+&lt;p>实验结果表明：&lt;/p>
+&lt;ol>
+&lt;li>模型表现随激活比例降低 er 提高&lt;/li>
+&lt;li>更系数的模型对于算力的提升其效率也提升更快&lt;/li>
+&lt;/ol>
+&lt;p>然后，作者探究了最优的 granularity ratio, 即&lt;/p>
+$$
+G^{opt} = \arg\min_{G}\mathcal{L}(G;C,M,A,S)
+$$&lt;p>拟合的结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-ling-mini-beta/EL-impact-of-G.png"
+width="1376"
+height="497"
+loading="lazy"
+alt="Impact of granularity"
+class="gallery-image"
+data-flex-grow="276"
+data-flex-basis="664px"
+>&lt;/p>
+&lt;p>可以看到，无限制提升 granularity 并不会提高模型的表现。并且，不同的算力对应的最优 granularity 处于一个固定的范围&lt;/p>
+&lt;p>接下来，作者探究了最优的 shared expert ratio, 即&lt;/p>
+$$
+S^{opt} = \arg\min_{S}\mathcal{L}(S;C,M,A,G)
+$$&lt;p>拟合的结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-ling-mini-beta/EL-impact-of-S.png"
+width="1376"
+height="487"
+loading="lazy"
+class="gallery-image"
+data-flex-grow="282"
+data-flex-basis="678px"
+>&lt;/p>
+&lt;p>结果说明 shared expert 的比例也不是越多越好，其存在最优值。并且给定算力的情况下，非零最小值的 shared expert 表现最好。因此作者认为，一个 shared expert 的效果最好。&lt;/p>
+&lt;p>作者还探究了其他可能的因素，结论如下：&lt;/p>
+&lt;ol>
+&lt;li>与 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v3/" target="_blank" rel="noopener"
+>DeepSeek-V3&lt;/a> 一样，将 early layer 替换为 dense layer 可以避免 routing imbalance, 并且不会损害模型的表现&lt;/li>
+&lt;li>attention 应该占 $30\%\sim40\%$ 左右的算力才能保证模型的表现和效率。进一步提升 attention 的算力占比虽然会提升表现但是会降低推理效率。&lt;/li>
+&lt;/ol>
+&lt;p>通过前面的发现，作者将 shared expert 设置为 1 个，然后探究 EL 与 activation ratio $A$, granularity $G$, FLOPs $C$ 之间的关系。&lt;/p>
+&lt;p>首先，作者分别假设 $EL$ 与 $A$, $G$, $C$ 之间存在如下关系：&lt;/p>
+$$
+\begin{aligned}
+\log EL_{C,G}(\hat{A}) &amp;= a_A\log\hat{A}, \text{ where }\frac{1}{\hat{A}}=\frac{1}{A+(1/A_{start}-1/A_{\max})^{-1}}+\frac{1}{A_{\max}}\\
+\log EL_{C,A}(\hat{G}) &amp;= a_G+b_G(\log G(\log G+c_G))\\
+\log EL_{A,G}(C) &amp;= a_C\log C+c_C
+\end{aligned}
+$$&lt;p>拟合的结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-ling-mini-beta/EL-scaling-A-G-C.png"
+width="1380"
+height="427"
+loading="lazy"
+alt="Scaling behavior of EL"
+class="gallery-image"
+data-flex-grow="323"
+data-flex-basis="775px"
+>&lt;/p>
+&lt;p>结果显示：&lt;/p>
+&lt;ol>
+&lt;li>提升算力以及降低 activation ratio 都可以提高 EL&lt;/li>
+&lt;li>granularity 对 EL 的影响在不同算力的情况下都是一致的&lt;/li>
+&lt;li>对于 MoE 模型，提升算力可以提高 EL&lt;/li>
+&lt;/ol>
+&lt;p>作者的结论为，activation ratio 是影响 MoE EL 的核心因素。并且随着算力的提升，MoE EL 会越来越明显。&lt;/p>
+&lt;p>作者因此构建了一个统一的公式来统一三个因素&lt;/p>
+$$
+EL(A,G,C) = \hat{A}^{\alpha+\gamma(\log G)^2+\beta \log G}
+$$&lt;p>其中 $\alpha=a+d\log C$ 代表了 EL 和 activation ratio 之间的关系。拟合出来的参数如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>$\alpha$&lt;/th>
+&lt;th>$d$&lt;/th>
+&lt;th>$\gamma$&lt;/th>
+&lt;th>$\beta$&lt;/th>
+&lt;th>$A_{start}$&lt;/th>
+&lt;th>$A_{\max}$&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>1.23&lt;/td>
+&lt;td>-7.61e-2&lt;/td>
+&lt;td>1.67e-2&lt;/td>
+&lt;td>-1.17e-1&lt;/td>
+&lt;td>1.63e-2&lt;/td>
+&lt;td>5.28e+16&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>基于这个结果，作者发现在 1e22 FLOPs 的算力下，一个 activation ratio 为 $3.1\%$, granularity 为 $12$ 的 MoE 模型，其 EL 为 $7$.&lt;/p>
+&lt;h2 id="ling-mini-beta">&lt;a href="#ling-mini-beta" class="header-anchor">&lt;/a>Ling-mini-beta
+&lt;/h2>&lt;p>基于上一节的发现，作者构建了 Ling-mini-beta, 一个 17.5B 总参数，激活参数为 0.85B 的 MoE 模型。训练使用了 1T token, 模型参数如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>$n_{\text{layers}}$&lt;/th>
+&lt;th>$d_{\text{model}}$&lt;/th>
+&lt;th>$d_{\text{ffn}}$&lt;/th>
+&lt;th>$d_{\text{expert}}$&lt;/th>
+&lt;th>$n_{\text{heads}}$&lt;/th>
+&lt;th>$n_{\text{kv\_head}}$&lt;/th>
+&lt;th>$E$&lt;/th>
+&lt;th>$E_a$&lt;/th>
+&lt;th>$E_s$&lt;/th>
+&lt;th>$N$&lt;/th>
+&lt;th>$N_a$&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Dense 6.1B&lt;/td>
+&lt;td>28&lt;/td>
+&lt;td>4096&lt;/td>
+&lt;td>14336&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>32&lt;/td>
+&lt;td>8&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>6.11B&lt;/td>
+&lt;td>6.11B&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Ling-mini-beta (A0.8B)&lt;/td>
+&lt;td>20&lt;/td>
+&lt;td>2048&lt;/td>
+&lt;td>5120&lt;/td>
+&lt;td>384&lt;/td>
+&lt;td>16&lt;/td>
+&lt;td>4&lt;/td>
+&lt;td>384&lt;/td>
+&lt;td>12&lt;/td>
+&lt;td>1&lt;/td>
+&lt;td>17.5B&lt;/td>
+&lt;td>0.85B&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>训练的损失变化情况如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-ling-mini-beta/EL-training-dynamics.png"
+width="867"
+height="596"
+loading="lazy"
+alt="Dynamic of training loss"
+class="gallery-image"
+data-flex-grow="145"
+data-flex-basis="349px"
+>&lt;/p>
+&lt;p>从图中我们可以看出，dense model 一开始的损失下降比较快，但是其最终表现不如 moe 模型。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>在本文中，作者提出了 Efficiency Leverage, 一个衡量 MoE 模型相对于 dense 模型计算效率的 metric, 作者构建了针对 MoE 模型的 scaling law. scaling 揭示了两个主要影响 MoE 模型效率的因素：算力与激活参数比例。基于 scaling law, 作者构建了 Ling-mini-beta, 一个 17B-A0.8B 的 MoE 模型，其效率超过了对应 dense 模型的 7 倍。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2507.17702" target="_blank" rel="noopener"
+>arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

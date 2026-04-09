@@ -1,0 +1,527 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>GRPO on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/grpo/</link><description>Recent content in GRPO on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/grpo/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on VAPO</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-vapo/</link><pubDate>Thu, 17 Apr 2025 09:41:51 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-vapo/</guid><description>&lt;h1 id="abstract">&lt;a href="#abstract" class="header-anchor">&lt;/a>Abstract
+&lt;/h1>&lt;p>字节Seed团队提出了 Value-based Augmented Proximal Policy Optimization (VAPO), 用于提高 reasoning model 的表现。 VAPO 通过集成 DAPO 和 VC-PPO 的优点，进一步提高了 value-based 方法的表现。&lt;/p>
+&lt;h1 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h1>&lt;p>现有的RL 训练方法可以分为 value-free 和 value-based 两大类。
+其中 value-free 方法不需要使用 value model, 比如 GRPO 和 GRPO 的变体 DAPO, 这类方法通过多次采样，然后使用 leave-one-out estimate 来代替 value model. 这类方法的优点是不需要训练value model, 但是缺点是在复杂的任务中表现不是很稳定。&lt;/p>
+&lt;p>另一方面，value-based 方法需要训练一个 value model, 比如 &lt;a class="link" href="https://maosong.website/p/notes-on-vc-ppo/" target="_blank" rel="noopener"
+>VC-PPO&lt;/a>, 这类方法的优点是：&lt;/p>
+&lt;ol>
+&lt;li>提供更细粒度的奖励信号&lt;/li>
+&lt;li>提供lower-varaince value estimation, 从而提高训练的稳定性&lt;/li>
+&lt;li>拥有更好的泛化能力&lt;/li>
+&lt;/ol>
+&lt;p>但是，value-based 方法在训练过程中存在一些问题：&lt;/p>
+&lt;ol>
+&lt;li>训练一个low-bias 的 value model 比较困难， 尤其是在long trajectory 上，因为 bias 会随着 trajectory 的长度增加而增加&lt;/li>
+&lt;li>在heterogeneous sequence lengths during training 中表现不佳，对于短文本和长文本，我们需要考虑 bias-variance 的trade-off&lt;/li>
+&lt;li>在sparse reward signal 中表现不佳&lt;/li>
+&lt;/ol>
+&lt;p>为了解决这些问题，字节Seed团队提出了 VAPO, 一个基于value-based 的 RL 训练方法，VAPO 通过结合 DAPO 和 &lt;a class="link" href="https://maosong.website/p/notes-on-vc-ppo/" target="_blank" rel="noopener"
+>VC-PPO&lt;/a> 的优点，进一步提高了 value-based 方法的表现。&lt;/p>
+&lt;h1 id="preliminary">&lt;a href="#preliminary" class="header-anchor">&lt;/a>Preliminary
+&lt;/h1>&lt;p>Preliminary包括 token-level MDP, RLHF, PPO 三个部分，这部分请参考 &lt;a class="link" href="https://maosong.website/p/notes-on-vc-ppo/" target="_blank" rel="noopener"
+>VC-PPO&lt;/a>. 这里不做重复。&lt;/p>
+&lt;h1 id="vapo">&lt;a href="#vapo" class="header-anchor">&lt;/a>VAPO
+&lt;/h1>&lt;p>作者针对value-based 方法在训练过程中存在的三个问题，在VAPO中分别进行了解决。&lt;/p>
+&lt;h2 id="mitigating-value-model-bias-over-long-sequences">&lt;a href="#mitigating-value-model-bias-over-long-sequences" class="header-anchor">&lt;/a>Mitigating Value Model Bias over Long Sequences
+&lt;/h2>&lt;p>在 &lt;a class="link" href="https://maosong.website/p/notes-on-vc-ppo/" target="_blank" rel="noopener"
+>VC-PPO&lt;/a> 中，作者提到了 value model 和 reward model 的不一致性，这种不一致性会导致 bias, 尤其是在long sequences上。 在VAPO中，作者就直接使用了 VC-PPO的做法，包括value pretraining 和 decoupled GAE 来解决这个问题。&lt;/p>
+&lt;h2 id="managing-heterogeneous-sequence-lengths-during-training">&lt;a href="#managing-heterogeneous-sequence-lengths-during-training" class="header-anchor">&lt;/a>Managing Heterogeneous Sequence Lengths during Training
+&lt;/h2>&lt;p>针对heterogeneous sequence的问题，作者提出了 &lt;strong>Length-Adaptive GAE&lt;/strong>. 在&lt;a class="link" href="https://maosong.website/p/notes-on-vc-ppo/" target="_blank" rel="noopener"
+>VC-PPO&lt;/a>中， $\lambda_{\mathrm{policy}}$ 被设置为 $0.95$. 但是当 sequence 非常长时， TD-error会迅速下降，导致GAE被一部分TD-error所主导，从而不利于模型的训练。&lt;/p>
+&lt;p>为了解决这个问题，作者将 $\lambda_{\mathrm{policy}}$ 与 sequence 的长度 $\ell$ 联系起来，具体来说， 两者的关系如下：&lt;/p>
+$$
+\sum_{t=0}^{\infty}\lambda_{\mathrm{policy}}^t = \frac{1}{1-\lambda_{\mathrm{policy}}} := \alpha\ell
+$$&lt;p>其中 $\alpha$ 是一个超参数，用来控制 bias-variance 的trade-off. 给定 $\ell$, $\lambda_{\mathrm{policy}}$ 可以被计算为：&lt;/p>
+$$
+\lambda_{\mathrm{policy}} = 1 - \frac{1}{\alpha\ell}
+$$&lt;p>同时，为了平衡短文本和长文本的贡献，基于 &lt;a class="link" href="https://maosong.website/p/notes-on-dapo/" target="_blank" rel="noopener"
+>DAPO&lt;/a>, 作者构建了 token-level policy gradient loss， 其具体形式如下：&lt;/p>
+$$
+\mathcal{L}_{\mathrm{PPO}}(\theta) = \frac{1}{\sum_{t=1}^G|o_i|}\sum_{i=1}^G\sum_{t=1}^{|o_i|}\min\left(r_{i,t}(\theta)\hat{A}_{i,t},\mathrm{clip}\left(r_{i,t}(\theta), 1-\epsilon, 1+\epsilon\right)\hat{A}_{i,t}\right)
+$$&lt;h2 id="dealing-with-sparsity-of-reward-signal-in-verifier-based-tasks">&lt;a href="#dealing-with-sparsity-of-reward-signal-in-verifier-based-tasks" class="header-anchor">&lt;/a>Dealing with Sparsity of Reward Signal in Verifier-based Tasks
+&lt;/h2>&lt;p>与DAPO一致，为了解决reward signal的稀疏性问题，作者提出了Clip-Higher, 来让更小概率的输出也能获得较大的更新概率。其更新公式如下：&lt;/p>
+$$
+\mathcal{L}_{\mathrm{PPO}}(\theta) = \frac{1}{\sum_{t=1}^G|o_i|}\sum_{i=1}^G\sum_{t=1}^{|o_i|}\min\left(r_{i,t}(\theta)\hat{A}_{i,t},\mathrm{clip}\left(r_{i,t}(\theta), 1-\epsilon_{low}, 1+\epsilon_{high}\right)\hat{A}_{i,t}\right)
+$$&lt;p>Clip-Higher的介绍见&lt;a class="link" href="https://maosong.website/p/notes-on-dapo/" target="_blank" rel="noopener"
+>DAPO&lt;/a>&lt;/p>
+&lt;p>然后，作者还将next-token prediction loss 和 PPO loss 结合起来，来降低奖励的稀疏程度。&lt;/p>
+$$
+\mathcal{L}_{\mathrm{NTP}}(\theta) = -\frac{1}{N}\sum_{o_i\in\mathcal{T}}\sum_{t=1}^{|o_i|}\log \pi_{\theta}(a_{i,t}|s_{i,t})
+$$&lt;p>其中 $\mathcal{T}$ 是正确答案的集合。 最终的loss为：&lt;/p>
+$$
+\mathcal{L}_{\mathrm{VAPO}}(\theta) = \mathcal{L}_{\mathrm{PPO}}(\theta) +\mu \mathcal{L}_{\mathrm{NTP}}(\theta)
+$$&lt;p>其中 $\mu$ 是一个超参数，用来平衡PPO loss和NTP loss。&lt;/p>
+&lt;h1 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h1>&lt;p>模型使用Qwen-32B来进行训练, 大部分细节与&lt;a class="link" href="https://maosong.website/p/notes-on-vc-ppo/" target="_blank" rel="noopener"
+>VC-PPO&lt;/a>和DAPO一致，这里不再赘述。最后与DAPO以及R1的对比结果如下：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vapo/performance.png"
+width="1396"
+height="600"
+loading="lazy"
+alt="performance"
+class="gallery-image"
+data-flex-grow="232"
+data-flex-basis="558px"
+>&lt;/p>
+&lt;h2 id="ablation-study">&lt;a href="#ablation-study" class="header-anchor">&lt;/a>Ablation study
+&lt;/h2>&lt;p>针对本文使用的模块，作者进行了消融实验，结果如下：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vapo/ablation_results.png"
+width="768"
+height="547"
+loading="lazy"
+alt="ablation study"
+class="gallery-image"
+data-flex-grow="140"
+data-flex-basis="336px"
+>&lt;/p>
+&lt;p>从实验结果可以看到：&lt;/p>
+&lt;ol>
+&lt;li>value pretraining 和 decoupled GAE 可以显著提高模型的表现&lt;/li>
+&lt;li>clip-higer 可以提升模型的探索能力&lt;/li>
+&lt;li>length-adaptive GAE 可以平衡模型在短文本和长文本上的表现&lt;/li>
+&lt;/ol>
+&lt;h2 id="training-dynamics">&lt;a href="#training-dynamics" class="header-anchor">&lt;/a>Training Dynamics
+&lt;/h2>&lt;p>与DAPO类似，作者也分析了VAPO的训练动态，结果如下：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vapo/mean_response_length.png"
+width="623"
+height="463"
+loading="lazy"
+alt="Mean Response Length"
+class="gallery-image"
+data-flex-grow="134"
+data-flex-basis="322px"
+>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vapo/reward_score.png"
+width="620"
+height="466"
+loading="lazy"
+alt="reward score"
+class="gallery-image"
+data-flex-grow="133"
+data-flex-basis="319px"
+>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vapo/generation_entropy.png"
+width="634"
+height="472"
+loading="lazy"
+alt="generation entropy"
+class="gallery-image"
+data-flex-grow="134"
+data-flex-basis="322px"
+>&lt;/p>
+&lt;p>从上面三张图可以看到：&lt;/p>
+&lt;ol>
+&lt;li>VAPO相比于DAPO来说，其训练更加稳定&lt;/li>
+&lt;li>从response length来看，VAPO的response length更长，说明VAPO的length scaling更强&lt;/li>
+&lt;li>从reward score来看，VAPO的reward score更高，说明VAPO的reward signal提供的指导信息更多&lt;/li>
+&lt;li>从generation entropy来看，在训练末期，VAPO的generation entropy更低，说明VAPO的生成多样性要更低一些，但这也说明了VAPO的生成更加稳定。 作者认为这个时候稳定性更重要。&lt;/li>
+&lt;/ol>
+&lt;h1 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h1>&lt;p>作者在DAPO和VC-PPO的基础上，提出了VAPO，一个基于value-based 的 RL 训练方法，VAPO 通过结合 DAPO 和 &lt;a class="link" href="https://maosong.website/p/notes-on-vc-ppo/" target="_blank" rel="noopener"
+>VC-PPO&lt;/a> 的优点，进一步提高了 value-based 方法的表现。 后续，作者又提出了Seed-thiking-1.5的技术报告。可以说，这一系列论文的连贯性是非常高的。&lt;/p>
+&lt;h1 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h1>&lt;ol>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2504.05118" target="_blank" rel="noopener"
+>Arxiv VAPO: Efficient and Reliable Reinforcement Learning for Advanced Reasoning Tasks&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://maosong.website/p/notes-on-dapo/" target="_blank" rel="noopener"
+>Notes onDAPO&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://maosong.website/p/notes-on-vc-ppo/" target="_blank" rel="noopener"
+>Notes on VC-PPO&lt;/a>&lt;/li>
+&lt;/ol></description></item><item><title>Notes on VC-PPO</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-vc-ppo/</link><pubDate>Mon, 14 Apr 2025 17:36:15 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-vc-ppo/</guid><description>&lt;h1 id="abstract">&lt;a href="#abstract" class="header-anchor">&lt;/a>Abstract
+&lt;/h1>&lt;p>字节Seed团队提出了 Value-Calibrated PPO (VC-PPO), 用于解决PPO的value initialization bias 以及 reward signal decay 问题. 具体来讲：&lt;/p>
+&lt;ol>
+&lt;li>VC-PPO增加了 value pretraining 来解决 value initialization bias 的问题&lt;/li>
+&lt;li>VC-PPO分离了 actor 和 critic 的GAE的计算，避免了 reward signal decay 的问题&lt;/li>
+&lt;/ol>
+&lt;h1 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h1>&lt;p>已有的reasoning model的训练方法，主要包括两个个stage:&lt;/p>
+&lt;ol>
+&lt;li>SFT: 这个阶段主要使用了一些标注好的long CoT数据，初步激活模型的reasoning能力(参考KImi-VL)&lt;/li>
+&lt;li>RL: 这个阶段使用收集到的数据使用RL算法进行训练，任务包括math, code, logic reasoning等&lt;/li>
+&lt;/ol>
+&lt;p>已有PPO算法在处理Long CoT任务时，存在的问题在 &lt;a class="link" href="https://maosong.website/p/notes-on-dapo/" target="_blank" rel="noopener"
+>DAPO&lt;/a> 中已经介绍过了，GRPO的解决方式为
+使用leave-one-out estimate来替换value model. 但是GRPO相比于PPO能够提供token级别的奖励来说，只能提供response level的奖励，因此限制了模型的性能。&lt;/p>
+&lt;h1 id="preliminary">&lt;a href="#preliminary" class="header-anchor">&lt;/a>Preliminary
+&lt;/h1>&lt;p>Preliminary包括MDP, RLHF, PPO三个部分，RLHF和PPO我们在 &lt;a class="link" href="https://maosong.website/p/notes-on-dapo/" target="_blank" rel="noopener"
+>DAPO&lt;/a> 中已经介绍过了，这里不再赘述。&lt;/p>
+&lt;h2 id="token-level-mdp">&lt;a href="#token-level-mdp" class="header-anchor">&lt;/a>Token-level MDP
+&lt;/h2>&lt;p>给定prompt $x$ 和 response $y$, 我们可以将 $x$ 和 $y$ 分解为 token 序列，比如 $y = y_1, y_2, \cdots, y_n$, 其中 $y_i\in\mathcal{A}$, $\mathcal{A}$ 是我们的词表。&lt;/p>
+&lt;p>我们将 token-level MDP定义为：&lt;/p>
+$$
+\mathcal{M} = \langle \mathcal{S}, \mathcal{A}, P, r, d_0, \omega \rangle
+$$&lt;p>其中：&lt;/p>
+&lt;ul>
+&lt;li>$\mathcal{S}$ 是状态空间，表示当前的token序列， $t$时刻的状态可以表示为 $s_t = (x, y_1, y_2, \cdots, y_t)$&lt;/li>
+&lt;li>$\mathcal{A}$ 是动作空间，表示下一个token， $t$时刻的动作可以表示为 $a_t = y_{t+1}\in\mathcal{A}$&lt;/li>
+&lt;li>$P$ 是状态转移概率，表示在 $t$时刻，从状态 $s_t$ 转移到状态 $s_{t+1}$ 的概率&lt;/li>
+&lt;li>$r$ 是奖励函数，表示在 $t$时刻，从状态 $s_t$ 采取动作 $a_t$ 转移到状态 $s_{t+1}$ 的奖励&lt;/li>
+&lt;li>$d_0$ 是初始状态分布，表示初始状态 $s_0$ 的概率分布&lt;/li>
+&lt;li>$\omega$ 是终止状态分布，表示终止状态 $s_n$ 的概率分布，通常表示 &lt;code>&amp;lt;eos&amp;gt;&lt;/code> token&lt;/li>
+&lt;/ul>
+&lt;h1 id="方法">&lt;a href="#%e6%96%b9%e6%b3%95" class="header-anchor">&lt;/a>方法
+&lt;/h1>&lt;p>首先作者分析了一下为什么 PPO 在处理 long CoT 任务时效果不佳。&lt;/p>
+&lt;p>PPO的传统设置为：&lt;/p>
+&lt;ul>
+&lt;li>将GAE的参数 $\lambda$ 设置为 0.95&lt;/li>
+&lt;li>使用一个 reward model 来初始化 value model&lt;/li>
+&lt;/ul>
+&lt;p>一方面，作者认为，$\lambda=0.95$ 是为了减少模型在 Mujoco 以及 Atari 等环境中的variance，但是对于Long CoT任务，这个设置会导致模型缺乏足够的探索能力。&lt;/p>
+&lt;p>另一方面，作者认为 reward model 和 value model 虽然都是提供关于 response 的信息，但是他们之间还是存在一些差距的。作者给出了使用PPO来进行 long CoT 任务相关的实验结果&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vc-ppo/failue_PPO.png"
+width="1375"
+height="582"
+loading="lazy"
+alt="failue_PPO"
+class="gallery-image"
+data-flex-grow="236"
+data-flex-basis="567px"
+>&lt;/p>
+&lt;p>可以看到，随着训练的进行，模型的context length以及在AIME benchmark上的表现都出现了下降。&lt;/p>
+&lt;p>在本文中，作者主要是在 verifiable tasks 上进行实验，答案的正确性与 response length 长度关系不大，因此, response length 可以反应模型的训练情况。 作者绘制了训练过程中， value 和 advantage 与 token position 的关系图&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vc-ppo/value_against_pos.png"
+width="1390"
+height="592"
+loading="lazy"
+alt="value_advantage_position"
+class="gallery-image"
+data-flex-grow="234"
+data-flex-basis="563px"
+>&lt;/p>
+&lt;p>从上图可以看到，value 和 advantage 更倾向与给最初的 token 更高的 bias, 作者认为出现这个情况的原因是 value model 和 reward model 的目标并不匹配。 reward model 的目标是给 $\omega$ 也就是 &lt;code>&amp;lt;eos&amp;gt;&lt;/code> token reward, 对于一开始的 token, reward model会给出比较低的奖励；而 value model 的目标是给整个 response 一个奖励，因此，value model 会倾向于给最初的 token 更高的奖励。我们对 GAE 进行改写得到：&lt;/p>
+$$
+\hat{A}_t = \sum_{i=t}^{T-t-1} \lambda^{i} \left( r_{t+i} + V(s_{t+i+1}) - V(s_{t+i}) \right)
+$$&lt;p>从上式可以看到，一开始 $r_{t+i}$ 的值会比较小，而 $V(s_{t+i})$ 的变化比较大，因此，一开始的 token 的 advantage 会比较大，这个 bias 会持续影响整个 trajectory。&lt;/p>
+&lt;p>为了解决这个问题，作者提出了 value-pretraining, 也就是对value model 进行离线与训练，直到其收敛到一个具体的 policy 上。具体训练步骤为：&lt;/p>
+&lt;ol>
+&lt;li>基于一个policy， 如 $\pi_{\mathrm{sft}}$ 进行采样，然后更新value model ($\lambda=1.0$)&lt;/li>
+&lt;li>基于收集到的数据训练 value model, 直到 value loss 或者 explain variance 收敛&lt;/li>
+&lt;/ol>
+&lt;p>接下来，在训练 value model 时，我们还需要考虑 variance reduction 的问题。作者首先改写了 GAE 的公式：&lt;/p>
+$$
+\hat{A}_t = \begin{cases}
+\sum_{i=0}^{T-t-1} \lambda^{i} \left( r_{t+i} + V(s_{t+i+1}) - V(s_{t+i}) \right)+V(s_t) &amp; \text{if } \lambda &lt; 1.0 \\
+\sum_{i=0}^{T-t-1} r_{t+i} &amp; \text{if } \lambda=1.0
+\end{cases}
+$$&lt;p>可以看到，当 $\lambda &lt; 1.0$ 并且 $T-t-1$ 比较大时，&lt;code>&amp;lt;eos&amp;gt;&lt;/code> token 的reward就非常接近于0了，作者通过实验验证了这一点。&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vc-ppo/reward_signal_decay.png"
+width="1117"
+height="623"
+loading="lazy"
+alt="reward_signal_decay"
+class="gallery-image"
+data-flex-grow="179"
+data-flex-basis="430px"
+>&lt;/p>
+&lt;p>可以看到，当我们降低 $\lambda$ 时，reward signal 的稀疏性会显著增加，从而提高了模型的训练难度。&lt;/p>
+&lt;p>但是，我们又不能不使用 variance reduction, 因为这会导致训练的不稳定性。 作者从 TD error 的角度分析了 variance:&lt;/p>
+$$
+\begin{aligned}
+\mathrm{Var}[A_{t}^{\lambda}] &amp;= \mathrm{Var}\left[\sum_{i=0}^{T-t-1} \lambda^{i}\delta_{t+i}\right] \\
+&amp;= \sum_{i=1}^{T-t-1} \lambda^{2i} \mathrm{Var}[\delta_{t+i}] + 2\sum_{i=1}^{T-t-1}\sum_{j=0}^{i-1} \lambda^{i+j} \mathrm{Cov}[\delta_{t+i}, \delta_{t+j}]
+\end{aligned}
+$$&lt;p>因为 $\lambda\in[0,1]$, 因此未来的 TD error 会衰减的更快，因此就降低了 advantage 的 variance.&lt;/p>
+&lt;p>那么如何在降低variance的同时，又不至于使得 reward signal 过于稀疏呢？作者的解决方案是分离GAE的计算，也就是将 GAE 的计算分为两部分：&lt;/p>
+$$
+G_{t:t+h} = \begin{cases}
+\sum_{i=0}^{h-1} r_{t+i} + \bar{V}(s_{t+h}) &amp; \text{if } t+h&lt;T \\
+\sum_{i=0}^{T-h} r_{t+i} &amp; \text{if } t+h=T
+\end{cases}
+$$&lt;p>基于这个公式，我们可以写出policy gradient的公式：&lt;/p>
+$$
+\begin{aligned}
+\nabla_{\theta} J(\theta) &amp;= \mathbb{E}_{t}[\nabla_{\theta} \log \pi_{\theta}(a_t|s_t)A_t] \\
+&amp;= \mathbb{E}_{t}\left[\nabla_{\theta} \log \pi_{\theta}(a_t|s_t) \sum_{i=0}^{T-t-1} \lambda^{i}\left( r_{t+i} + \bar{V}(s_{t+i+1}) - \bar{V}(s_{t+i}) \right)\right] \\
+&amp;= \mathbb{E}_{t}\left[\nabla_{\theta} \log \pi_{\theta}(a_t|s_t) \left((1-\lambda) \sum_{i=1}^{T-t-1} \lambda^{i-1}G_{t:t+i}+\lambda^{T-t-1}G_{t:T}- \bar{V}(s_{t})\right)\right] \\
+&amp;= \mathbb{E}_{t}\left[\nabla_{\theta} \log \pi_{\theta}(a_t|s_t) \left((1-\lambda) \sum_{i=1}^{T-t-1} \lambda^{i-1}G_{t:t+i}+\lambda^{T-t-1}G_{t:T}\right)\right]
+\end{aligned}
+$$&lt;p>通过这种方式，我们就可以避免 value function 对 policy gradient 的影响，因而我们可以对 value model 和 policy model 使用不同的 $\lambda$ 进行训练。&lt;/p>
+&lt;p>最终，我们就可以得到 VC-PPO 的算法：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vc-ppo/vc-ppo.png"
+width="1376"
+height="713"
+loading="lazy"
+alt="vc_ppo"
+class="gallery-image"
+data-flex-grow="192"
+data-flex-basis="463px"
+>&lt;/p>
+&lt;h1 id="实验">&lt;a href="#%e5%ae%9e%e9%aa%8c" class="header-anchor">&lt;/a>实验
+&lt;/h1>&lt;h2 id="setup">&lt;a href="#setup" class="header-anchor">&lt;/a>setup
+&lt;/h2>&lt;ol>
+&lt;li>作者在AIME, GPQA 以及Codeforces三个数据集上进行评测&lt;/li>
+&lt;li>作者首先进行了code-start，作者构建了一批样本然后要求模型在 &lt;code>&amp;lt;thinking&amp;gt;&lt;/code> 和 &lt;code>&amp;lt;/thinking&amp;gt;&lt;/code> 之间生成推理过程，然后使用Verifier来针对答案部分提供奖励，正确则奖励为1，错误则奖励为-1&lt;/li>
+&lt;li>RL的Baseline使用的是PPO&lt;/li>
+&lt;li>value pretraining 时，作者将 GAE的 $\lambda$ 设置为 1.0， 其他参数与PPO一致&lt;/li>
+&lt;li>对于decoupled GAE，作者使用 $\lambda_{\text{critic}}=1.0$, $\lambda_{\text{actor}}=0.95$&lt;/li>
+&lt;/ol>
+&lt;h2 id="实验结果">&lt;a href="#%e5%ae%9e%e9%aa%8c%e7%bb%93%e6%9e%9c" class="header-anchor">&lt;/a>实验结果
+&lt;/h2>&lt;p>实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vc-ppo/results.png"
+width="905"
+height="260"
+loading="lazy"
+alt="results"
+class="gallery-image"
+data-flex-grow="348"
+data-flex-basis="835px"
+>&lt;/p>
+&lt;p>作者还分析了以下模型在AIME数据集上随着训练步数增加准确率的变化情况&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vc-ppo/AIME_acc_dynamics.png"
+width="1119"
+height="619"
+loading="lazy"
+alt="results_aime"
+class="gallery-image"
+data-flex-grow="180"
+data-flex-basis="433px"
+>&lt;/p>
+&lt;h2 id="ablation-study">&lt;a href="#ablation-study" class="header-anchor">&lt;/a>Ablation Study
+&lt;/h2>&lt;p>作者首先探究了 value pretraining 以及 decoupled GAE 对于模型性能的影响&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vc-ppo/ablation_vc_ppo_componenets.png"
+width="1013"
+height="319"
+loading="lazy"
+alt="ablation_study"
+class="gallery-image"
+data-flex-grow="317"
+data-flex-basis="762px"
+>&lt;/p>
+&lt;p>从上图可以看到，直接使用PPO并不能提升模型的表现，而使用value pretraining 以及 decoupled GAE 能够显著提升模型的表现。&lt;/p>
+&lt;p>作者接下来探究了不同的value pretraining steps对模型的影响，结果如下图&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vc-ppo/ablation_value_pretraining.png"
+width="954"
+height="297"
+loading="lazy"
+alt="ablation_study_2"
+class="gallery-image"
+data-flex-grow="321"
+data-flex-basis="770px"
+>&lt;/p>
+&lt;p>从上表可以看到，value pretraining 的训练步数并不是越多越好，随着训练步数的增加，模型可能会出现过拟合的现象。&lt;/p>
+&lt;p>最后作者还分析了以下 $\lambda_{\text{actor}}$ 对于模型性能的影响，结果如下图&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vc-ppo/ablation_lambda_actor.png"
+width="712"
+height="321"
+loading="lazy"
+alt="ablation_study_3"
+class="gallery-image"
+data-flex-grow="221"
+data-flex-basis="532px"
+>&lt;/p>
+&lt;p>可以看到， $\lambda_{\text{actor}} =1.0$ 的效果是最差的，但是 $\lambda_{\text{actor}}$ 也不是越小越好，实验发现当 $\lambda_{\text{actor}} \in [0.95, 1.0)$ 时结果比较好&lt;/p>
+&lt;h2 id="findings">&lt;a href="#findings" class="header-anchor">&lt;/a>Findings
+&lt;/h2>&lt;p>作者还提供了一些发现。&lt;/p>
+&lt;ol>
+&lt;li>作者认为，在LLM中进行RL的训练与传统的RL训练不同，我们不再是从一个随机policy开始，而是从一个SFT之后的policy开始，因此，这就会引入 prior，我们需要将 value model 与 policy model 进行对齐，才能使得训练更加稳定。&lt;/li>
+&lt;li>作者认为，value pretraining 可以王value model 中注入先验知识，作者通过实验发现，value pretraining 的过程可以分为两个阶段，第一个阶段是random alignment，这个和传统的RL训练类似，第二个阶段是knowledge injection，这个阶段，value model 开始学习如何给重要的token 更高的权重。
+&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-vc-ppo/value-pretraining.png"
+width="634"
+height="532"
+loading="lazy"
+alt="value-pretraining"
+class="gallery-image"
+data-flex-grow="119"
+data-flex-basis="286px"
+>&lt;/li>
+&lt;li>作者发现， value model 倾向于更大的 $\lambda$, 因此结果会导致更小的 bias 和 更大的 variance. 而 policy model 倾向于更小的 $\lambda$. 这种差异启发我们需要使用一些基于policy gradient 的目标来训练 value model.&lt;/li>
+&lt;/ol>
+&lt;h1 id="结论">&lt;a href="#%e7%bb%93%e8%ae%ba" class="header-anchor">&lt;/a>结论
+&lt;/h1>&lt;p>本文提出了VC-PPO，一个通过使用value-pretraining 以及 decoupled GAE 来解决PPO 的 value initialization bias 以及 reward signal decay 问题的算法。&lt;/p>
+&lt;h1 id="参考文献">&lt;a href="#%e5%8f%82%e8%80%83%e6%96%87%e7%8c%ae" class="header-anchor">&lt;/a>参考文献
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2503.01491" target="_blank" rel="noopener"
+>VC-PPO&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://maosong.website/p/notes-on-dapo/" target="_blank" rel="noopener"
+>DAPO&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on DAPO</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-dapo/</link><pubDate>Wed, 09 Apr 2025 21:40:33 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-dapo/</guid><description>&lt;h1 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h1>&lt;p>字节Seed团队和清华合作提出了DAPO，一种全开源的，基于PPO的强化学习方法，一用于提升LLM的reasoning能力。&lt;/p>
+&lt;h1 id="preliminary">&lt;a href="#preliminary" class="header-anchor">&lt;/a>Preliminary
+&lt;/h1>&lt;p>Preliminary包括PPO，GRPO还有KL divergence&lt;/p>
+&lt;h2 id="ppo">&lt;a href="#ppo" class="header-anchor">&lt;/a>PPO
+&lt;/h2>&lt;p>PPO的训练目标为：&lt;/p>
+$$
+\mathcal{J}_{\mathrm{PPO}}(\theta) = \mathbb{E}_{(q,a)\sim\mathcal{D},o_{\leq t}\sim \pi_{\theta_{old}}(\cdot\mid q)}\left[ \min\left(r_t(\theta)\hat{A}_t,\mathrm{clip}\left(r_t(\theta), 1-\epsilon, 1+\epsilon\right)\hat{A}_t\right) \right]
+$$&lt;p>其中&lt;/p>
+$$
+r_t(\theta) = \frac{\pi_{\theta}(o_t\mid q, o_{&lt; t})}{\pi_{\theta_{old}}(o_t\mid q, o_{&lt; t})}
+$$&lt;p>$(q,a)$ 是从数据集 $\mathcal{D}$ 采样的QA pair，$\epsilon>0$ 是一个超参数，$\hat{A}_t$ 是 $t$时刻的优势估计 (advantage estimator). 给定 value function $V$ 以及 reward function $R$, $\hat{A}_t$ 通过计算GAE得到：&lt;/p>
+$$
+\hat{A}_t^{\mathrm{GAE}(\gamma, \lambda)}=\sum_{k=0}^{\infty}(\gamma\lambda)^k\delta_{t+k}
+$$&lt;p>其中&lt;/p>
+$$
+\delta_k = R_k + \gamma V(s_{k+1})-V(s_k),\quad 0\leq \gamma,\lambda\leq 1
+$$&lt;h2 id="grpo">&lt;a href="#grpo" class="header-anchor">&lt;/a>GRPO
+&lt;/h2>&lt;p>相比于PPO，GRPO不依赖于value function, 因此不需要使用reward model. GRPO通过一组输出来估计value $V(s)$, 然后进行更新。具体来说，给定 QA pair $(q,a)$, 我们从$\pi_{\theta_{old}}$中采样$G$个输出 $\{o_i\}_{i=1}^G$, 接下来我们基于reward $\{R_i\}_{i=1}^G$ 使用如下表达式来估计group-level reward:&lt;/p>
+$$
+\hat{A}_{i,t} = \frac{r_i - \mathrm{mean}(\{R_i\}_{i=1}^G)}{\mathrm{std}(\{R_i\}_{i=1}^G)}
+$$&lt;p>最后，GRPO的训练目标与PPO类似，只不过将 $\hat{A}_t$ 替换为 $\hat{A}_{i,t}$, 然后在分组上进行了归一化：&lt;/p>
+$$
+\mathcal{J}_{\mathrm{GRPO}}(\theta) = \mathbb{E}_{(q,a)\sim\mathcal{D},\{o_i\}_{i=1}^G\sim \pi_{\theta_{old}}(\cdot\mid q)}\left[ \frac{1}{G}\sum_{i=1}^G\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\min\left(r_{i,t}(\theta)\hat{A}_{i,t},\mathrm{clip}\left(r_{i,t}(\theta), 1-\epsilon, 1+\epsilon\right)\hat{A}_{i,t}\right) \right]
+$$&lt;p>其中，&lt;/p>
+$$
+r_{i,t}(\theta) = \frac{\pi_{\theta}(o_{i,t}\mid q, o_{i,&lt; t})}{\pi_{\theta_{old}}(o_{i,t}\mid q, o_{i,&lt; t})}
+$$&lt;h2 id="kl-divergence">&lt;a href="#kl-divergence" class="header-anchor">&lt;/a>KL divergence
+&lt;/h2>&lt;p>在传统的RLHF框架中，我们再PPO的基础上，增加了一个KL divergence正则项，用于约束新旧策略的差异。具体来说，给定旧策略 $\pi_{\theta_{old}}$ 和新策略 $\pi_{\theta}$，我们实际上优化的损失函数为&lt;/p>
+$$
+\mathcal{J}_{\mathrm{RLHF}}(\theta) = \mathcal{J}_{\mathrm{PPO}}(\theta) - \beta\mathrm{KL}\left(\pi_{\theta_{old}}(\cdot\mid q)\|\pi_{\theta}(\cdot\mid q)\right)
+$$&lt;p>其中，$\beta$ 是一个超参数，用于平衡PPO损失和KL divergence损失。上面的PPO损失函数也可以改为GRPO损失函数。&lt;/p>
+&lt;p>作者在本文中认为，reasoning model和RLHF的训练目标是不一样的，RLHF加上KL divergence正则项，会使得模型在推理时过于保守，偏向于explotition而reasoning model则需要exploration。因此，作者在本文中去掉了这一项。&lt;/p>
+&lt;h2 id="rule-based-reward-modeling">&lt;a href="#rule-based-reward-modeling" class="header-anchor">&lt;/a>Rule-based reward modeling
+&lt;/h2>&lt;p>作者基于final accuracy来作为outcome reward, 避免模型训练出现reward hacking问题。reward function 如下：&lt;/p>
+$$
+R(\hat{y},y) = \begin{cases}
+1, &amp; \text{if is\_equivalent}(\hat{y},y) \\
+-1, &amp; \text{otherwise}
+\end{cases}
+$$&lt;h1 id="dapo">&lt;a href="#dapo" class="header-anchor">&lt;/a>DAPO
+&lt;/h1>&lt;p>DAPO基于GRPO改进，其优化的目标函数为：&lt;/p>
+$$
+\mathcal{J}_{\mathrm{DAPO}}(\theta) = \mathbb{E}_{(q,a)\sim\mathcal{D},\{o_i\}_{i=1}^G\sim \pi_{\theta_{old}}(\cdot\mid q)}\left[ \frac{1}{\sum_{t=1}^G|o_i|}\sum_{i=1}^G\sum_{t=1}^{|o_i|}\min\left(r_{i,t}(\theta)\hat{A}_{i,t},\mathrm{clip}\left(r_{i,t}(\theta), 1-\epsilon_{low}, 1+\epsilon_{high}\right)\hat{A}_{i,t}\right) \right]
+s.t. \quad 0&lt; \vert \{o_i\mid \text{is\_equivalent}(o_i,a)\} \vert &lt; G
+$$&lt;p>其中，$\alpha$ 是一个超参数，用于约束输出数量, $r_{i,t}(\theta)$ 和 $\hat{A}_{i,t}$ 的定义与GRPO相同。&lt;/p>
+&lt;p>接下来就是DAPO算法的几个关键点：&lt;/p>
+&lt;h2 id="clip-higher">&lt;a href="#clip-higher" class="header-anchor">&lt;/a>Clip-Higher
+&lt;/h2>&lt;p>作者认为，PPO和GRPO存在entropy collapse问题，也就是policy的entropy会迅速的下降，导致最终每个group的输出基本都差不多，模型很难探索到新的知识。因此，作者提出了Clip-Higher策略，也就是说，让模型能够充分探索。&lt;/p>
+&lt;p>作者举了一个例子，当 $\epsilon=0.2$ 时，如果一个group的输出为 $[0.01, 0.9]$, 那么在clip之后，最大的更新幅度为 $[0.01, 0.9]\times 0.2=[0.002, 0.18]$. 这对于概率比较小的输出来说，很难帮助模型提升。因此，作者修改了其阈值。进一步地，作者分离了clip的阈值，分别使用 $\epsilon_{low}$ 和 $\epsilon_{high}$ 来约束更新幅度。作者通过实验验证了这个例子，结果如下图所示：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-dapo/entropy.png"
+width="1395"
+height="581"
+loading="lazy"
+alt="entropy collapse"
+class="gallery-image"
+data-flex-grow="240"
+data-flex-basis="576px"
+>&lt;/p>
+&lt;p>最后，加入Clip-Higher策略的DAPO的训练目标为，与GRPO的训练目标相比，我们使用 $\epsilon_{low}$ 和 $\epsilon_{high}$ 来约束更新幅度。&lt;/p>
+$$
+\mathcal{J}_{\mathrm{DAPO}}(\theta) = \mathbb{E}_{(q,a)\sim\mathcal{D},\{o_i\}_{i=1}^G\sim \pi_{\theta_{old}}(\cdot\mid q)}\left[ \frac{1}{\sum_{t=1}^G|o_i|}\sum_{i=1}^G\sum_{t=1}^{|o_i|}\min\left(r_{i,t}(\theta)\hat{A}_{i,t},\mathrm{clip}\left(r_{i,t}(\theta), 1-\epsilon_{low}, 1+\epsilon_{high}\right)\hat{A}_{i,t}\right) \right]
+s.t. \quad 0&lt; \vert \{o_i\mid \text{is\_equivalent}(o_i,a)\} \vert &lt; G
+$$&lt;p>在实际训练中，作者使用了一个比较大的 $\epsilon_{high}$ 来保证概率较小的token也能有较大的概率被采样到。
+Clip-Higher的实验结果如下图所示：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-dapo/clip-higher.png"
+width="1396"
+height="598"
+loading="lazy"
+alt="Clip-Higher"
+class="gallery-image"
+data-flex-grow="233"
+data-flex-basis="560px"
+>&lt;/p>
+&lt;h2 id="dynamic-sampling">&lt;a href="#dynamic-sampling" class="header-anchor">&lt;/a>Dynamic Sampling
+&lt;/h2>&lt;p>作者认为，在GRPO中，如果一个group的输出全都是对的，那么其advantage会趋近于0，结果导致 policy 不会得到更新，这样就降低了采样效率。&lt;/p>
+&lt;p>为了解决这个问题，坐着提出了over-sample以及filtering策略，来过滤accracy等于1或者0的prompts,也就是DAPO中的约束项：&lt;/p>
+$$
+s.t. \quad 0&lt; \vert \{o_i\mid \text{is\_equivalent}(o_i,a)\} \vert &lt; G
+$$&lt;p>通过增加这个约束项，我们可以保证每个group的输出不会趋同，从保证模型能够得到更新，以提高采样效率。实验结果如下图所示：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-dapo/dynamic-sampling.png"
+width="1169"
+height="554"
+loading="lazy"
+alt="Dynamic Sampling"
+class="gallery-image"
+data-flex-grow="211"
+data-flex-basis="506px"
+>&lt;/p>
+&lt;h2 id="token-level-policy-gradient-loss">&lt;a href="#token-level-policy-gradient-loss" class="header-anchor">&lt;/a>Token-level policy gradient loss
+&lt;/h2>&lt;p>GRPO采用了一个sample-level的loss计算方式，也就是GRPO首先在每个sample中计算每个token的损失并进行平均，然后在不同的sample中在此进行平均。在这种方式下，每个sample对最终的loss贡献是相同的。这样就导致两个问题：&lt;/p>
+&lt;ol>
+&lt;li>对于高质量的long answer，通过在token层面进行平均，因为answe比较长，因此整体loss会比较低，也就会降低这个sample的贡献，导致模型很难学习到长答案。&lt;/li>
+&lt;li>一些非常长的sample，其往往包含gibberish或者repetitive tokens，这些sample对模型训练是有害的&lt;/li>
+&lt;/ol>
+&lt;p>因此，为了解决这个问题，作者提出了Token-level policy gradient loss，也就是我们改变了求和方式&lt;/p>
+$$
+\frac{1}{G}\sum_{i=1}^G\frac{1}{|o_i|}\sum_{t=1}^{|o_i|}\left(\cdot\right)\to \frac{1}{\sum_{t=1}^G|o_i|}\sum_{i=1}^G\sum_{t=1}^{|o_i|}\left(\cdot\right)
+$$&lt;p>通过这种方式，我们让长回答的loss贡献更大，从而提高模型学习长回答的能力。另一方面，现在每个token对整体loss的贡献是相同的，一些关键token的loss也会被放大，从而提高模型的表现。&lt;/p>
+&lt;p>实验结果如下图所示：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-dapo/token-loss.png"
+width="1391"
+height="564"
+loading="lazy"
+alt="Token-level policy gradient loss"
+class="gallery-image"
+data-flex-grow="246"
+data-flex-basis="591px"
+>&lt;/p>
+&lt;h2 id="overlong-reward-shaping">&lt;a href="#overlong-reward-shaping" class="header-anchor">&lt;/a>Overlong reward shaping
+&lt;/h2>&lt;p>与Kimi-k1.5类似，DAPO也增加了length penalty，用于惩罚过长的回答。作者首先使用了一个overlong filtering技巧，来mask掉truncated samples的loss，作者发现通过这个技巧，可以提升模型的训练稳定性以及表现，实验结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-dapo/overlong-filtering.png"
+width="1394"
+height="605"
+loading="lazy"
+alt="Overlong filtering"
+class="gallery-image"
+data-flex-grow="230"
+data-flex-basis="552px"
+>&lt;/p>
+&lt;p>作者还提出了soft overlong punishment， 用于reshape truncated samples的reward，表达式如下：&lt;/p>
+$$
+R_{length}(y) = \begin{cases}
+0, &amp; \text{if } |y|\leq L_{\max}-L_{cache} \\
+\frac{(L_{\max}-L_{cache})-|y|}{L_{cache}}, &amp; \text{if } L_{\max}-L_{cache}&lt;|y|\leq L_{\max} \\
+-1, &amp; \text{if } |y|>L_{\max}
+\end{cases}
+$$&lt;h2 id="算法">&lt;a href="#%e7%ae%97%e6%b3%95" class="header-anchor">&lt;/a>算法
+&lt;/h2>&lt;p>DAPO的算法流程如下：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-dapo/dapo-algorithm.png"
+width="1391"
+height="536"
+loading="lazy"
+alt="DAPO"
+class="gallery-image"
+data-flex-grow="259"
+data-flex-basis="622px"
+>&lt;/p>
+&lt;h1 id="实验">&lt;a href="#%e5%ae%9e%e9%aa%8c" class="header-anchor">&lt;/a>实验
+&lt;/h1>&lt;h2 id="数据集">&lt;a href="#%e6%95%b0%e6%8d%ae%e9%9b%86" class="header-anchor">&lt;/a>数据集
+&lt;/h2>&lt;p>作者构建了DAPO-Math-17K数据集用于DAPO的训练，该数据集从AoPS得到，包含了17K prompts，每个prompt都对应一个整数作为答案。&lt;/p>
+&lt;h2 id="训练细节">&lt;a href="#%e8%ae%ad%e7%bb%83%e7%bb%86%e8%8a%82" class="header-anchor">&lt;/a>训练细节
+&lt;/h2>&lt;p>作者以GRPO作为baseline， $G=16$, $L_{\max}=16384$, $L_{cache}=4096$, $\epsilon_{low}=0.2$, $\epsilon_{high}=0.28$&lt;/p>
+&lt;p>评估时，使用AIME作为benchmark，以 avg@32作为指标，temperature设置为1.0, topp设置为0.7。&lt;/p>
+&lt;h2 id="实验结果">&lt;a href="#%e5%ae%9e%e9%aa%8c%e7%bb%93%e6%9e%9c" class="header-anchor">&lt;/a>实验结果
+&lt;/h2>&lt;p>DAPO与GRPO的对比如下图所示：
+&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-dapo/dapo-performance.png"
+width="1381"
+height="605"
+loading="lazy"
+alt="dapo performance"
+class="gallery-image"
+data-flex-grow="228"
+data-flex-basis="547px"
+>&lt;/p>
+&lt;h2 id="ablation-study">&lt;a href="#ablation-study" class="header-anchor">&lt;/a>Ablation study
+&lt;/h2>&lt;p>作者探究了每一个部分对最终表现的影响，结果如下：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-dapo/ablation-study.png"
+width="787"
+height="415"
+loading="lazy"
+alt="ablation study"
+class="gallery-image"
+data-flex-grow="189"
+data-flex-basis="455px"
+>&lt;/p>
+&lt;h2 id="traing-dynamics">&lt;a href="#traing-dynamics" class="header-anchor">&lt;/a>traing dynamics
+&lt;/h2>&lt;p>作者还探究了mean response length, reward score, generation entropy以及mean probability随训练轮数的变化，其中：&lt;/p>
+&lt;ul>
+&lt;li>mean response length: 在一定程度上反应了模型训练的稳定性和表现&lt;/li>
+&lt;li>reward score: 反应模型的表现，作者认为，给定一个reliable reward signal， LLM可以很好的fit到训练数据集上，但是作者发现最终的reward与val score相关性比较大，很可能是因为模型过拟合了&lt;/li>
+&lt;li>generation entropy &amp;amp; mean probability: 代表了模型的探索能力，通过实验结果可以看到，DAPO初期的探索能力比较强，但是随着训练的进行，探索能力下降，利用能力增强。&lt;/li>
+&lt;/ul>
+&lt;p>结果如下：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-dapo/training-dynamics.png"
+width="1402"
+height="1027"
+loading="lazy"
+alt="training dynamics"
+class="gallery-image"
+data-flex-grow="136"
+data-flex-basis="327px"
+>&lt;/p>
+&lt;h1 id="结论">&lt;a href="#%e7%bb%93%e8%ae%ba" class="header-anchor">&lt;/a>结论
+&lt;/h1>&lt;p>作者基于GRPO提出了DAPO，一种全开源的，基于PPO的强化学习方法，用于提升LLM的reasoning能力。作者首先分析了GRPO损失函数存在的不足，然后进行了针对性改进，包括Clip-Higher, Dynamic Sampling, Token-level policy gradient loss以及Overlong reward shaping。作者通过实验验证了DAPO的有效性，并探究了DAPO的训练动态。&lt;/p>
+&lt;h1 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h1>&lt;ol>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2503.14476" target="_blank" rel="noopener"
+>DAPO: An Open-Source LLM Reinforcement Learning System at Scale&lt;/a>&lt;/li>
+&lt;/ol></description></item></channel></rss>

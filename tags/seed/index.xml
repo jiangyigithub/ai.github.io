@@ -1,0 +1,633 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Seed on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/seed/</link><description>Recent content in Seed on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/seed/index.xml" rel="self" type="application/rss+xml"/><item><title>NextFlow 基于single-branch的统一理解与生成多模态大模型</title><link>https://github.com/jiangyigithub/ai.github.io/p/nextflow-%E5%9F%BA%E4%BA%8Esingle-branch%E7%9A%84%E7%BB%9F%E4%B8%80%E7%90%86%E8%A7%A3%E4%B8%8E%E7%94%9F%E6%88%90%E5%A4%9A%E6%A8%A1%E6%80%81%E5%A4%A7%E6%A8%A1%E5%9E%8B/</link><pubDate>Sat, 17 Jan 2026 17:31:53 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/nextflow-%E5%9F%BA%E4%BA%8Esingle-branch%E7%9A%84%E7%BB%9F%E4%B8%80%E7%90%86%E8%A7%A3%E4%B8%8E%E7%94%9F%E6%88%90%E5%A4%9A%E6%A8%A1%E6%80%81%E5%A4%A7%E6%A8%A1%E5%9E%8B/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>现在的统一理解与生成多模态大模型面临的主要问题是难以解决语义特征和图像特征之间不匹配性。diffusion model 可以较好学习图像特征，但是缺乏了对于高阶语义特征的理解和推理能力，反之 LLM 可以比较好利用高阶语义特征，而代价则是难以处理图片细节。&lt;/p>
+&lt;p>为了解决这个问题，目前的主流做法是分流，分流策略有两种：&lt;/p>
+&lt;ol>
+&lt;li>类似 BAGEL 在 transformer 架构上进行分流，分别处理图像模态以及文本模态特征，这也是自 BAGEL 以来比较常用的一种做法&lt;/li>
+&lt;li>输入输出端进行分流，代表性工作有 Transfusion, 这种策略使用 encoder 将图片映射到文本空间，然后对输出进行解码，通过使用图片生成的目标函数，我们可以保证图片生成的质量&lt;/li>
+&lt;/ol>
+&lt;p>尽管基于 transformer 架构分流策略的效果比较好，但是对应地，其增加了整体训练的代价，而且并没有完成深度模态统一的目标；而基于输入输出分流的方法则因为目标函数不同很容易导致训练不稳定或者损害模型本身的表现。&lt;/p>
+&lt;p>在本文中，作者采取的策略为不使用分流策略，避免对模型架构产生比较大的修改。但是，这样就引入了一个新的问题，自回归生成模型的低效率性，目前主流的生成方式为 raster scan next-token prediction, 当图片非常大时，我们要生成的 token 非常多，从而整体的推理效率非常低。作者在这里举例提到 Emu3 生成一张 $1024\times 1024$ 的图片需要 10 分钟。并且，自回归生成模型对应的 tokenizer 往往基于 reconstruction 的目标进行训练，而这种训练目标产生的 token 更关注图片细节，这与 LLM 更关注语义特征并不一致，因此其效果也更差。&lt;/p>
+&lt;p>为了解决已有自回归生成模型的问题，作者提出了使用 VAR 提出的 next-scale prediction 策略，通过 next-scale prediction, 我们可以极大程度提高图片生成的效率，作者这里强调了 NextFlow 生成一张 $1024\times 1024$ 的图片仅需要 5 秒，这个效率是 Emu3 的 120 倍。&lt;/p>
+&lt;p>接下来就是作者针对提出的架构和方法进行的改进，主要包括：&lt;/p>
+&lt;ol>
+&lt;li>使用了 6T 数据进行训练&lt;/li>
+&lt;li>使用了基于 prefix-tuning 策略的 GRPO 方法来提高模型的 reasoning 能力&lt;/li>
+&lt;li>构建了一个基于 diffusion 的 decoder 来对输出图片进行优化&lt;/li>
+&lt;/ol>
+&lt;p>最后，作者通过实验验证了 NextFlow 的有效性，并且在效率上，相比于基于 MMDiT 架构的模型，NextFlow 使用了更少的算力进行推理。&lt;/p>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;h3 id="architecture">&lt;a href="#architecture" class="header-anchor">&lt;/a>Architecture
+&lt;/h3>&lt;p>NextFlow 的架构图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/nextflow-%E5%9F%BA%E4%BA%8Esingle-branch%E7%9A%84%E7%BB%9F%E4%B8%80%E7%90%86%E8%A7%A3%E4%B8%8E%E7%94%9F%E6%88%90%E5%A4%9A%E6%A8%A1%E6%80%81%E5%A4%A7%E6%A8%A1%E5%9E%8B/NextFlow-Architecture.png"
+width="1017"
+height="979"
+loading="lazy"
+alt="Architecture of NextFlow"
+class="gallery-image"
+data-flex-grow="103"
+data-flex-basis="249px"
+>&lt;/p>
+&lt;p>模型架构包括 3 个部分：&lt;/p>
+&lt;ol>
+&lt;li>tokenizer: NextFlow 的 tokenizer 基于 TokenFlow, TokenFlow 通过使用两个 codebook 来分别提取对应的语义特征和图片特征进而提高 tokenizer 的表达能力&lt;/li>
+&lt;li>transformer: NextFlow 使用了 &lt;a class="link" href="https://maosong.website/p/notes-on-qwen2.5-vl/" target="_blank" rel="noopener"
+>Qwen2.5-VL&lt;/a> 7B 模型作为 base model, 作者将其 Vision Encoder 替换为了 TokenFlow tokenizer 用于提取视觉特征&lt;/li>
+&lt;li>optinal diffusion decoder: 用于进一步优化图片的细节。作者使用 TokenFLow tokenizer 的 token 表示，外接了一个 diffusion model 来优化最终的输出。&lt;/li>
+&lt;/ol>
+&lt;p>在数据格式上，作者使用了 &lt;code>&amp;lt;boi&amp;gt;&lt;/code>, &lt;code>&amp;lt;eoi&amp;gt;&lt;/code> 来标记图片 token, 然后每个图片通过 TokenFLow 表示为不同 scale 的 token, 如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/nextflow-%E5%9F%BA%E4%BA%8Esingle-branch%E7%9A%84%E7%BB%9F%E4%B8%80%E7%90%86%E8%A7%A3%E4%B8%8E%E7%94%9F%E6%88%90%E5%A4%9A%E6%A8%A1%E6%80%81%E5%A4%A7%E6%A8%A1%E5%9E%8B/NextFlow-data-fotmat.png"
+width="1394"
+height="185"
+loading="lazy"
+alt="data format of NextFlow"
+class="gallery-image"
+data-flex-grow="753"
+data-flex-basis="1808px"
+>&lt;/p>
+&lt;p>在位置编码上，作者采用了 Multi-Scale 3D RoPE 策略，第 $t$ 个 token 如果是文本 token, 则表示为 $(t,t,t)$, 如果是图片 token, 则表示为如下形式&lt;/p>
+$$
+(p_x, p_y, p_s) = \left(\frac{C}{\sqrt{HW}}(i+0.5),\frac{C}{\sqrt{HW}}(j+0.5),s\right)
+$$&lt;p>这里 $H, W, C, s$ 分别是 grid 对应的 size, constant range factor 以及 scale. 为了保持数据的一致性，作者还对所有的空间位置进行了归一化，避免在 SFT 时进行外推。&lt;/p>
+&lt;p>与 VAR 一致，作者使用了 scale length positional embedding, 即在 scale 层面使用了 Transformer 提出的 Sinusoidal encoding, 作者认为通过显示编码 scale 可以提高模型对于图片精度的认知能力。&lt;/p>
+&lt;p>在训练上，作者提出了两个优化策略。&lt;/p>
+&lt;p>首先，作者发现，不同 scale 的 token 数量不一致，small scale 对应的 token 数量较少，随着生成 token 数增加，由于 attention 存在局部依赖性（见 &lt;a class="link" href="https://maosong.website/p/notes-on-nsa/" target="_blank" rel="noopener"
+>NSA&lt;/a>）模型对于早期 token 关注度较低，为了解决这个问题，作者的做法就是使用 scale-dependent weight, 不同 scale 对应 token 的损失函数权重为&lt;/p>
+$$
+k_s =\frac{1}{(h_s\times w_s)^\alpha}
+$$&lt;p>这里 $\alpha$ 是超参数，通过这种方式，作者保证了模型对于不同 scale token 能够一视同仁。&lt;/p>
+&lt;p>接下来，就是训练与推理的不一致性，训练时，模型的上下文是无损的，但是在推理时，由于模型需要基于自己的输出来预测下一个 token, 因此很容易出现误差累积。为了解决这个问题，作者的做法是使用 [[infinity]] 提出的 self-correction 机制，具体做法就是，在 encode 当前 token 时，随机加入一些噪声，制造出有损的上下文然后让模型预测下一个 token, 也就是提高模型对于误差的稳健性。但是，使用这种策略并没有带来理想中的提升，作者分析原因发现是 VAR 的 feature 与输入 feature 存在较大的不一致性，作者的解决方法就是直接使用 residual feature. 通过这种方式模型的能力有了极大的提升&lt;/p>
+&lt;h3 id="ablation-study">&lt;a href="#ablation-study" class="header-anchor">&lt;/a>Ablation Study
+&lt;/h3>&lt;p>作者在本节探讨了架构设计上的一些细节。&lt;/p>
+&lt;p>首先，作者探究了 tokenizer 的训练，原始 TokenFLow tokenizer 使用了衣蛾预训练的 semantic encoder 以及一个从零开始训练的 pixel encoder, 作者发现这种不一致性会损害模型的表现。为了解决这个问题，作者分别从零开始训练 semantic encoder 和 pixel encoder, 确保两者都在一个水平上，然后再进行 TokenFlow 的训练，通过这种多阶段训练方式，我们可以有效提高训练效率以及模型的表现。训练时，作者还随机丢弃了 $50\%$ 的 VAR scale 来提高模型的稳健性。作者进一步对比了 TokenFlow 这种 dual-codebook 和 single-codebook 之间的表现，如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/nextflow-%E5%9F%BA%E4%BA%8Esingle-branch%E7%9A%84%E7%BB%9F%E4%B8%80%E7%90%86%E8%A7%A3%E4%B8%8E%E7%94%9F%E6%88%90%E5%A4%9A%E6%A8%A1%E6%80%81%E5%A4%A7%E6%A8%A1%E5%9E%8B/NextFlow-tokenizer-design.png"
+width="1383"
+height="382"
+loading="lazy"
+alt="Tokenizer comparison"
+class="gallery-image"
+data-flex-grow="362"
+data-flex-basis="868px"
+>&lt;/p>
+&lt;p>结果显示，尽管 single-codebook 的重建效果更好，但是在下游任务上其表现不如 TokenFlow.&lt;/p>
+&lt;p>接下来，作者探讨了 output head, 也就是我们应该分别针对不同的模态设计不同的 output head 还是使用统一的 output head, 作者对比了两种架构，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/nextflow-%E5%9F%BA%E4%BA%8Esingle-branch%E7%9A%84%E7%BB%9F%E4%B8%80%E7%90%86%E8%A7%A3%E4%B8%8E%E7%94%9F%E6%88%90%E5%A4%9A%E6%A8%A1%E6%80%81%E5%A4%A7%E6%A8%A1%E5%9E%8B/NextFlow-ablation-output-head.png"
+width="1381"
+height="410"
+loading="lazy"
+alt="Ablation study on output head design"
+class="gallery-image"
+data-flex-grow="336"
+data-flex-basis="808px"
+>&lt;/p>
+&lt;p>实验结果显示，single head 的效果更好。因此作者使用了 single head 设计&lt;/p>
+&lt;h3 id="training">&lt;a href="#training" class="header-anchor">&lt;/a>Training
+&lt;/h3>&lt;p>训练流程图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/nextflow-%E5%9F%BA%E4%BA%8Esingle-branch%E7%9A%84%E7%BB%9F%E4%B8%80%E7%90%86%E8%A7%A3%E4%B8%8E%E7%94%9F%E6%88%90%E5%A4%9A%E6%A8%A1%E6%80%81%E5%A4%A7%E6%A8%A1%E5%9E%8B/NextFlow-training-pipeline.png"
+width="1385"
+height="600"
+loading="lazy"
+alt="Training Pipeline of NextFlow"
+class="gallery-image"
+data-flex-grow="230"
+data-flex-basis="554px"
+>&lt;/p>
+&lt;p>在 alignment 时，作者使用 TokenFlow tokenizer 替换 Qwen2.5-VL 7B 的 ViT, 作者同时训练 connector (MLP) 和 output head, 冻结其他参数，这个阶段使用了 &lt;strong>10M&lt;/strong> image-text pairs.&lt;/p>
+&lt;p>pre-training 时，作者采用了三阶段训练策略，图片数据的精度分别为 256, 512, 1024. 共使用了 6T token.&lt;/p>
+&lt;ul>
+&lt;li>256-level: 2B 文生图样本，纯文本数据，以及 147M 图文交错数据&lt;/li>
+&lt;li>512-level: 提高模型的细节生成能力，使用了 scale-dependent weight 策略&lt;/li>
+&lt;li>1024-level: 使用了 40M 高质量样本&lt;/li>
+&lt;/ul>
+&lt;p>continue pre-training 和 SFT 阶段，作者分别使用了美学相关的数据和对话数据来提高模型图片生成的质量和指令跟随能力。&lt;/p>
+&lt;p>RL 阶段，由于早期的 token 对最终图片生成更加重要，作者使用了一个 prefix-tuning 策略，也就是我们只计算 image token sequence 中前 $m$ 个 scale 对应的 token, 通过这种方式我们提高训练速度以及保证模型生成的质量。训练目标函数如下所示&lt;/p>
+$$
+L_{GRPO}(\theta) = \mathbb{E}_{\mathbf{c} \sim \mathcal{C},\{\mathbf{s}_t^i\}_{i=1}^G \sim \pi_\theta} \frac{1}{G} \sum_{t=1}^m k_t \min\left( \frac{p_\theta(\mathbf{s}_{t+1}^i|\mathbf{s}_t^i,\mathbf{c})}{p_{\theta_{old}}(\mathbf{s}_{t+1}^i|\mathbf{s}_t^i,\mathbf{c})} A_i, \, \text{clip}\left( \frac{p_\theta(\mathbf{s}_{t+1}^i|\mathbf{s}_t^i,\mathbf{c})}{p_{\theta_{old}}(\mathbf{s}_{t+1}^i|\mathbf{s}_t^i,\mathbf{c})}, \, 1-\epsilon, \, 1+\epsilon \right) A_i \right) - \beta D_{KL}(\pi_\theta, \pi_{ref})
+$$&lt;p>最终，training recipe 如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/nextflow-%E5%9F%BA%E4%BA%8Esingle-branch%E7%9A%84%E7%BB%9F%E4%B8%80%E7%90%86%E8%A7%A3%E4%B8%8E%E7%94%9F%E6%88%90%E5%A4%9A%E6%A8%A1%E6%80%81%E5%A4%A7%E6%A8%A1%E5%9E%8B/NextFlow-training-recipe.png"
+width="1390"
+height="331"
+loading="lazy"
+alt="Training Recipe of NextFlow"
+class="gallery-image"
+data-flex-grow="419"
+data-flex-basis="1007px"
+>&lt;/p>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>我们主要关注 NextFlow 和 Qwen-Image, Seedream 3.0 的表现对比情况，结果如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Benchmark&lt;/th>
+&lt;th>NextFlow&lt;/th>
+&lt;th>NextFlow-RL&lt;/th>
+&lt;th>Qwen-Image&lt;/th>
+&lt;th>Seedream 3.0&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>DPG&lt;/td>
+&lt;td>86.00&lt;/td>
+&lt;td>&lt;strong>88.32&lt;/strong>&lt;/td>
+&lt;td>88.32&lt;/td>
+&lt;td>88.27&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GenEval&lt;/td>
+&lt;td>0.83&lt;/td>
+&lt;td>0.84&lt;/td>
+&lt;td>&lt;strong>0.87&lt;/strong>&lt;/td>
+&lt;td>0.84&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>WISE&lt;/td>
+&lt;td>0.59&lt;/td>
+&lt;td>&lt;strong>0.62&lt;/strong>&lt;/td>
+&lt;td>0.62&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>PRISM-Bench&lt;/td>
+&lt;td>74.7&lt;/td>
+&lt;td>78.8&lt;/td>
+&lt;td>&lt;strong>79.9&lt;/strong>&lt;/td>
+&lt;td>79.6&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>ImgEdit&lt;/td>
+&lt;td>4.44&lt;/td>
+&lt;td>4.49&lt;/td>
+&lt;td>4.27&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者在本文中提出了 NextFlow, 一个基于自回归的统一理解与生成模型，NextFlow 使用了 TokenFlow 解决了单一 tokenizer 不能同时提取语义信息和像素信息的缺点，使用了 VAR 解决了自回归图片生成范式效率低的问题。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2601.02204" target="_blank" rel="noopener"
+>NextFlow: Unified Sequential Modeling Activates Multimodal Understanding and Generation&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on Seed1.6</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-seed1.6/</link><pubDate>Fri, 18 Jul 2025 14:59:35 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-seed1.6/</guid><description>&lt;p>Seed 在 2025 年 6 月 25 号发布了 Seed 1.6，支持 adaptive deep thinking, multimodal understanding, GUI-based interaction, and deep reasoning with a 256K context window&lt;/p>
+&lt;p>Seed 1.6 基于 Seed 1.5 开发，是一个 MoE 模型, 总参数为 230B, 激活参数为 23B.&lt;/p>
+&lt;h2 id="pre-training">&lt;a href="#pre-training" class="header-anchor">&lt;/a>Pre-training
+&lt;/h2>&lt;p>pre-training 分为 3 个 stage:&lt;/p>
+&lt;ol>
+&lt;li>Text-only pre-training: 使用 web pages, books, papers, code 以及其他数据来进行训练，作者使用了 rule-based 以及 model-based 策略来提高数据的质量。&lt;/li>
+&lt;li>Multimodal mixed continue training: 提高学科，代码以及 reasoning 相关的数据，来进一步提高知识密度以及 reasoning 的复杂度。同时，加入高质量的视觉数据。&lt;/li>
+&lt;li>Long-context continual training: 将模型的上下文长度从 32K 扩展到 256K&lt;/li>
+&lt;/ol>
+&lt;p>Seed 1.6 Base 的表现&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Seed1.6 Base&lt;/th>
+&lt;th>LLaMA-4 -Maverick Base&lt;/th>
+&lt;th>DeepSeek-V3Base&lt;/th>
+&lt;th>Qwen3-235B-A22B Base&lt;/th>
+&lt;th>Seed1.5 Base&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>MMLU&lt;/td>
+&lt;td>&lt;strong>88.83&lt;/strong>&lt;/td>
+&lt;td>85.16&lt;/td>
+&lt;td>87.19&lt;/td>
+&lt;td>87.81&lt;/td>
+&lt;td>88.35&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MMLU-Pro&lt;/td>
+&lt;td>&lt;strong>69.98&lt;/strong>&lt;/td>
+&lt;td>63.91&lt;/td>
+&lt;td>59.84&lt;/td>
+&lt;td>68.18&lt;/td>
+&lt;td>66.47&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>SuperGPQA&lt;/td>
+&lt;td>&lt;strong>45.08&lt;/strong>&lt;/td>
+&lt;td>40.85&lt;/td>
+&lt;td>41.53&lt;/td>
+&lt;td>44.06&lt;/td>
+&lt;td>36.81&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>BBH&lt;/td>
+&lt;td>&lt;strong>92.08&lt;/strong>&lt;/td>
+&lt;td>83.62&lt;/td>
+&lt;td>86.22&lt;/td>
+&lt;td>88.87&lt;/td>
+&lt;td>88.36&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GPQA-Diamond&lt;/td>
+&lt;td>43.43&lt;/td>
+&lt;td>43.94&lt;/td>
+&lt;td>41.92&lt;/td>
+&lt;td>&lt;strong>47.47&lt;/strong>&lt;/td>
+&lt;td>45.25&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GSM8k&lt;/td>
+&lt;td>93.10&lt;/td>
+&lt;td>87.72&lt;/td>
+&lt;td>87.57&lt;/td>
+&lt;td>&lt;strong>94.39&lt;/strong>&lt;/td>
+&lt;td>89.99&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MATH&lt;/td>
+&lt;td>&lt;strong>72.86&lt;/strong>&lt;/td>
+&lt;td>63.32&lt;/td>
+&lt;td>62.62&lt;/td>
+&lt;td>71.84&lt;/td>
+&lt;td>66.18&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MBPP&lt;/td>
+&lt;td>&lt;strong>83.60&lt;/strong>&lt;/td>
+&lt;td>75.40&lt;/td>
+&lt;td>74.20&lt;/td>
+&lt;td>81.40&lt;/td>
+&lt;td>81.40&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="post-training">&lt;a href="#post-training" class="header-anchor">&lt;/a>Post-training
+&lt;/h2>&lt;p>作者在 post-training 构建了两个变体：&lt;/p>
+&lt;ol>
+&lt;li>Seed1.6-Thinking: 先进的多模态 reasoning 能力&lt;/li>
+&lt;li>Seed1.5(Adaptive CoT): 使用 AdaCoT 来压缩 CoT 的长度，提高效率&lt;/li>
+&lt;/ol>
+&lt;h3 id="seed16-thinking">&lt;a href="#seed16-thinking" class="header-anchor">&lt;/a>Seed1.6-Thinking
+&lt;/h3>&lt;p>Seed1.6-Thinking 与 Seed-Thinking-v1.5 的训练方式差不多，作者使用了 multi-stage [[rejection fine-tuning]] (RFT) 和 RL 来提高模型的表现。在每一轮中，先进行 RL 的训练，然后进行 RFT 的训练。相比于 Seed-Thinking-v1.5, Seed1.6-Thinking 使用了更多的算力和更高质量的数据，包括数学问题，代码，谜题以及 non-reasoning 数据。&lt;/p>
+&lt;p>表现如下：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-seed1.6/Seed1_6_thinking_LLM_performance.png"
+width="5436"
+height="2498"
+loading="lazy"
+alt="Seed1.6-Thinking performance (LLM)"
+class="gallery-image"
+data-flex-grow="217"
+data-flex-basis="522px"
+>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-seed1.6/Seed1_6_thinking_VLM_performance.png"
+width="5255"
+height="2514"
+loading="lazy"
+alt="Seed1.6-Thinking performance (VLM)"
+class="gallery-image"
+data-flex-grow="209"
+data-flex-basis="501px"
+>&lt;/p>
+&lt;p>为了进一步提高模型的表现，作者在推理时使用了 parallel decoding, 来让模型在回答之前使用更多的 token, 作者发现 parallel decoding 可以显著提高模型在困难任务上的表现。&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-seed1.6/Seed1_6_thinking_parallel_decoding_performance.png"
+width="4468"
+height="1468"
+loading="lazy"
+alt="Performance of Seed1.6 Thinking parallel decoding"
+class="gallery-image"
+data-flex-grow="304"
+data-flex-basis="730px"
+>&lt;/p>
+&lt;h3 id="seed15adaptive-cot">&lt;a href="#seed15adaptive-cot" class="header-anchor">&lt;/a>Seed1.5(Adaptive CoT)
+&lt;/h3>&lt;p>reasoning model 的问题是会出现 overthinking,导致输出的过程中花费很多不必要的 token.&lt;/p>
+&lt;p>为了解决这个问题，Seed1.6 提出了 AdaCoT, 来训练得到三个模型：FullCoT, NoCoT 和 AdaCoT&lt;/p>
+&lt;p>通过 AdaCoT, 我们可以显著降低 CoT 的长度。为了完成这个目标，作者在 RL 训练阶段构建了一个 reward, 来惩罚模型的 overthinking. 用户可以基于 prompt 来选择不同的模型：&lt;/p>
+&lt;ul>
+&lt;li>FullCoT: 对每个 prompt，都进行 reasoning, 模型表现与 Seed1.6-Thinking 差不多，但是 CoT length 更小&lt;/li>
+&lt;li>NoCoT: 直接回答，不进行 reasoning&lt;/li>
+&lt;li>AdaCoT: 由模型自主决定是否需要进行 reasoning, 模型是 FullCoT 和 NoCoT 的一个 fusion 版本&lt;/li>
+&lt;/ul>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-seed1.6/Seed1_6_AdaCoT_performance.png"
+width="6798"
+height="3416"
+loading="lazy"
+alt="Seed1.6-AdaCoT performance"
+class="gallery-image"
+data-flex-grow="199"
+data-flex-basis="477px"
+>&lt;/p>
+&lt;p>结果发现，对于不同难度的任务，AdaCoT 的出发概率是不同的，说明模型会基于任务难度调整思考方式。&lt;/p>
+&lt;p>作者还评测了以下模型在高考中的表现，结果如下图：&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-seed1.6/Seed1_6_gaokao_performance.png"
+width="5195"
+height="4645"
+loading="lazy"
+alt="Seed1.6 performance on gaokao"
+class="gallery-image"
+data-flex-grow="111"
+data-flex-basis="268px"
+>&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>作者提出了 Seed1.6 系列多模态大模型，模型在多个 benchmark 上表现优异。作者还提出了 AdaCoT, 让模型基于问题难度动态选择 CoT length&lt;/p>
+&lt;p>作者认为下一步工作是：&lt;/p>
+&lt;ol>
+&lt;li>构建更加高效的架构，来进一步提高 reasoning 的有效性&lt;/li>
+&lt;li>扩展模型的多模态能力&lt;/li>
+&lt;li>提升模型的 agent 能力，特鄙视 end-to-end task execution&lt;/li>
+&lt;/ol>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://seed.bytedance.com/en/blog/introduction-to-techniques-used-in-seed1-6" target="_blank" rel="noopener"
+>blog&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Notes on Seed1.5-VL</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-seed1.5-vl/</link><pubDate>Wed, 14 May 2025 09:28:07 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-seed1.5-vl/</guid><description>&lt;p>字节Seed在5月11号发布了Seed1.5-VL技术报告。技术报告详细介绍了Seed1.5-VL的架构，训练和评估细节&lt;/p>
+&lt;h1 id="简介">&lt;a href="#%e7%ae%80%e4%bb%8b" class="header-anchor">&lt;/a>简介
+&lt;/h1>&lt;p>Seed1.5-VL是多模态大模型，它是一个标准的 Vision Encoder - MLP - LLM 的架构，Vision Encoder是自研的Seed-ViT，参数量为532M，大语言模型的激活参数为20B（虽然论文未提及总参数量，但是从seed-Thinking v1.5来看，总参数量应该是200B）。Seed1.5-VL强调了agent能力，比如GUI control和gameplay。&lt;/p>
+&lt;h1 id="介绍">&lt;a href="#%e4%bb%8b%e7%bb%8d" class="header-anchor">&lt;/a>介绍
+&lt;/h1>&lt;p>现有的LVLM还不能与人类的通用能力相比，特别是在3D空间理解，物体技术，交互游戏等方面。并且，LVLM训练预料的多样性也不如LLM。最后，多模态数据的异质性也对模型的训练和推理提出了挑战。&lt;/p>
+&lt;p>基于这些问题，作者提出了Seed1.5-VL，一个视觉多模态大模型。通过构建高质量的训练数据，作者大幅度提高了模型的表现。作者还进一步探究了模型的scaling law以及pre-training和post training算法的设计。为了提高训练和推理效率，作者在infra上也进行了改进&lt;/p>
+&lt;h1 id="架构">&lt;a href="#%e6%9e%b6%e6%9e%84" class="header-anchor">&lt;/a>架构
+&lt;/h1>&lt;p>Seed1.5-VL的架构如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-seed1.5-vl/architecture.png"
+width="1387"
+height="1062"
+loading="lazy"
+alt="Architecture of See1.5-VL"
+class="gallery-image"
+data-flex-grow="130"
+data-flex-basis="313px"
+>&lt;/p>
+&lt;p>Seed1.5-VL的架构包含三个部分：&lt;/p>
+&lt;ol>
+&lt;li>Vision Encoder: vision encoder是seed自研的Seed-ViT，拥有532M参数&lt;/li>
+&lt;li>Adapter：一个两层的MLP&lt;/li>
+&lt;li>LLM：Seed1.5-LLM，一个MoE架构的LLM&lt;/li>
+&lt;/ol>
+&lt;p>Seed1.5-VL支持文本，图片和视频输入，输入为文本。其可以进行理解和推理(reasoning)。&lt;/p>
+&lt;h2 id="seed-vit">&lt;a href="#seed-vit" class="header-anchor">&lt;/a>Seed-ViT
+&lt;/h2>&lt;p>Seed-ViT主要是在两个方面进行了改进：&lt;/p>
+&lt;ol>
+&lt;li>在pre-training阶段使用了视频数据，来提高模型的时空间感知能力&lt;/li>
+&lt;li>使用了2D-RoPE来处理动态分辨率的图片&lt;/li>
+&lt;/ol>
+&lt;p>Seed-ViT的超参数如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Patch size&lt;/th>
+&lt;th>Pos Embedding&lt;/th>
+&lt;th>Head dim&lt;/th>
+&lt;th>#heads&lt;/th>
+&lt;th>Embedding dim&lt;/th>
+&lt;th>MLP ratio&lt;/th>
+&lt;th>#layers&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>14&lt;/td>
+&lt;td>2D RoPE&lt;/td>
+&lt;td>64&lt;/td>
+&lt;td>20&lt;/td>
+&lt;td>1280&lt;/td>
+&lt;td>4.0&lt;/td>
+&lt;td>27&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>对于输入的图片，Seed-ViT首先将图片resize到28*28的倍数，接下来图片会被分割为14*14的patch. 与NaViT一样，Seed-ViT也是用了token-packing的操作，来将多个图片packing到一个sequence里进行训练。最后，对于Seed-ViT输出的图片特征，作者还是用了 $2\times 2$的 average pooling来降低token个数。&lt;/p>
+&lt;p>Seed-ViT的预训练包括三个阶段，其设置和超参数如下表所示：&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Categories&lt;/th>
+&lt;th>Unlabeled Image&lt;/th>
+&lt;th>Image-text pairs&lt;/th>
+&lt;th>Video-audio-text tuples&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Training samples&lt;/td>
+&lt;td>2.2B&lt;/td>
+&lt;td>4.8B&lt;/td>
+&lt;td>65M&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Token percentages&lt;/td>
+&lt;td>4.0%&lt;/td>
+&lt;td>91.2%&lt;/td>
+&lt;td>4.8%&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Batch sizes&lt;/td>
+&lt;td>55,296&lt;/td>
+&lt;td>32,768&lt;/td>
+&lt;td>1,024&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LR warm up steps&lt;/td>
+&lt;td>1,692&lt;/td>
+&lt;td>2,000&lt;/td>
+&lt;td>12,800&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Maximum LR&lt;/td>
+&lt;td>$7.06\times 10^{-3}$&lt;/td>
+&lt;td>$1.0\times 10^{-4}$&lt;/td>
+&lt;td>$5.0\times 10^{-5}$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Minimum LR&lt;/td>
+&lt;td>$1.05\times 10^{-5}$&lt;/td>
+&lt;td>$1.2\times 10^{-6}$&lt;/td>
+&lt;td>$2.02\times 10^{-7}$&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>在预训练时，作者考虑了三点：&lt;/p>
+&lt;ol>
+&lt;li>训练效率：尽可能提高模型的训练效率&lt;/li>
+&lt;li>原生图片精度输入处理：让模型可以尽早处理不同分辨率图片输入&lt;/li>
+&lt;li>数据利用率：可以使用不同类型的数据&lt;/li>
+&lt;/ol>
+&lt;p>基于这三点考虑，Seed-ViT的训练包括三个阶段：&lt;/p>
+&lt;ol>
+&lt;li>Masked Image modeling with 2D RoPE：这一阶段的目的是提高模型对与几何和结构的感知能力。作者使用 &lt;code>EVA02-CLIP-E&lt;/code>作为教师模型，然后随机将75%的patches进行mask，最后让Seed-ViT输出的特征尽可能匹配教师模型输出的特征。这里的损失函数是cosine similarity. 作者发现，scale up MIM之后，VLM在OCR和文档理解任务上的表现得到了大幅度的提升。&lt;/li>
+&lt;li>Native Resolution Contrastive Learning：这一阶段和CLIP,SigLIP的训练差不多，text encoder与&lt;code>EVA02-CLIP-E&lt;/code>相同。损失函数为SigLIP loss和SuperClass loss&lt;/li>
+&lt;li>Omni-modal pret-raining：这一阶段使用了MiCo框架，来将video frames, audio, visual captions以及audio captions进行对齐，text encoder编码caption，ViT编码其他部分。通过这一阶段的训练，模型可以学习omni-model representations,并且还可以提高模型的图片和视频理解人物上的表现。&lt;/li>
+&lt;/ol>
+&lt;h2 id="视频编码">&lt;a href="#%e8%a7%86%e9%a2%91%e7%bc%96%e7%a0%81" class="header-anchor">&lt;/a>视频编码
+&lt;/h2>&lt;p>对于视频输入，Seed1.5-VL采用了 &lt;strong>Dynamic Frame-Resolution Sampling&lt;/strong>技巧，核心思想在于根据budget和处理的任务来动态调整采样率(frame)和每一帧的图片精度(resolution)。&lt;/p>
+&lt;p>具体来讲，在时序上，默认的FPS为1，如果要处理有关时序信息任务的话，FPS调整为2，如果要处理motion tracking等任务的话，FPS提高到5.为了进一步提高模型的时间感知能力，Seed 1.5-VL加入了timestamp tokens (e.g., &lt;code>[1.5 second]&lt;/code>)。&lt;/p>
+&lt;p>在空间上，每个frame的可选精度为 $\{640, 512, 384, 256, 160, 128\}$，选择的精度根据我们的budget进行决定。如果说我们使用最低配置还是不能处理视频输入的话，我们就会先进行均匀采样，然后再进行处理，这样可以让模型处理所有的视频信息。&lt;/p>
+&lt;h1 id="pre-training">&lt;a href="#pre-training" class="header-anchor">&lt;/a>Pre-training
+&lt;/h1>&lt;p>pre-training阶段一共包括了3T token. 作者详细介绍了每一个类别。这里我们就简单总结一下。数据一共包括以下7个类别&lt;/p>
+&lt;ol>
+&lt;li>Generic Image-text pairs &amp;amp; knowledge data. 这部分数据主要是图文交错以及image text-pairs数据。作者介绍了一下针对长尾数据（稀有物种识别）的数据构建方式&lt;/li>
+&lt;li>OCR. 这部分数据有1B左右的sample，包括documents, scene texts, tables, charts以及flowcharts等。其中，作者通过SynthDog和Latex合成了200M左右的文本密集图片。作者还对合成的数据进行了增广;Chart数据包括公开数据集和合成的数据集，最终一共有100M的样本; Table数据集也是通过提取得到的，一共包含50M左右的图片。作者还基于OCR结果构建了VQA数据集，来提高模型理解图片文字的能力&lt;/li>
+&lt;li>Visual Grounding &amp;amp; Counting: 提高模型识别和定位物体的能力。数据格式包括bounding box和center points. 其中bounding box主要是公开数据集；作者还是用Grounding DINO来标记了一部分数据，最后一共收集了200M的样本; point数据主要是PixMo, 作者还使用了Molmo以及CountGD标注了一部分数据，最后一共包括170M的指令以及110B的token; Counting数据从bounding box 和point数据集中筛选得到，包括了8M的样本和13B的token。最后在训练时，与InternVL一样，坐标会被normalize到 &lt;code>[1,1000]&lt;/code>&lt;/li>
+&lt;li>3D spatial understanding. 主要包括相对深度，绝对深度和3D Grounding数据；对于相对深度，作者使用DepthAnything V2来标注，得到了3.2B的token; 对于绝对深度，作者使用了公开数据集，最终包含18M的指令以及28B的token;对于3D Grounding，作者使用了公开数据集，最终包含770的指令以及1.3B的token&lt;/li>
+&lt;li>Video. 主要包含general video understanding数据, video temporal grounding and moment retrieval以及video streaming data.&lt;/li>
+&lt;li>STEM. 主要包含image comprehension data和problem-solving data. 前者包括收集的3.2M教育相关的数据，以及10M结构化表格，4.5M化学结构表达式，1.5M坐标系数据。后者包括100M K12的习题&lt;/li>
+&lt;li>GUI. 作者使用UI-TARS来合成数据。数据主要包括perception, grounding 以及 reasoning&lt;/li>
+&lt;/ol>
+&lt;p>预训练包括三个stage，其实验设置如下表所示：&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Stages&lt;/th>
+&lt;th>Stage 0&lt;/th>
+&lt;th>Stage 1&lt;/th>
+&lt;th>Stage 2&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Training budget (tokens)&lt;/td>
+&lt;td>16B&lt;/td>
+&lt;td>3T&lt;/td>
+&lt;td>240B&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Sequence length&lt;/td>
+&lt;td>32,768&lt;/td>
+&lt;td>32,768&lt;/td>
+&lt;td>131,072&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Trainable components&lt;/td>
+&lt;td>MLP adaptor&lt;/td>
+&lt;td>all&lt;/td>
+&lt;td>all&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Batch sizes (tokens)&lt;/td>
+&lt;td>8.4M&lt;/td>
+&lt;td>71M&lt;/td>
+&lt;td>71M&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LR warmup steps&lt;/td>
+&lt;td>100&lt;/td>
+&lt;td>500&lt;/td>
+&lt;td>0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Maximum LR&lt;/td>
+&lt;td>$2.52 \times 10^{-4}$&lt;/td>
+&lt;td>$5.22 \times 10^{-5}$&lt;/td>
+&lt;td>$5.22 \times 10^{-6}$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Minimum LR&lt;/td>
+&lt;td>$4.50 \times 10^{-5}$&lt;/td>
+&lt;td>$5.22 \times 10^{-6}$&lt;/td>
+&lt;td>$5.22 \times 10^{-6}$&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;ul>
+&lt;li>Stage 0: 仅训练MLP，用于对齐vision encoder和LLM,使用了16B token&lt;/li>
+&lt;li>Stage 1：训练全部参数，用于获取知识以及掌握grounding和OCR能力，使用了3T token&lt;/li>
+&lt;li>Stage 2：训练全部参数，提升模型的长上下文能力以及对下游任务的适应性，包括视频理解，coding和3D空间理解，上下文长度从32,768提升到131,072&lt;/li>
+&lt;/ul>
+&lt;p>作者还进行了消融实验，采取了和Qwen2-VL一样的训练方式，结果发现，本文的训练方式效果更好。作者认为，解冻vision encoder，可能让vision encoder弥补LLM的不足，进而损害其自身的感知能力。&lt;/p>
+&lt;p>作者还探究了模型的scaling law，使用的建模函数为：&lt;/p>
+$$
+\log(\hat{L}) \sim \log(B) - \beta \log(D) = -a \log(D) + b
+$$&lt;p>
+这里 $L$ 是NLL loss, D是训练的token数，$a$和$b$是待拟合的参数。实验结果如下图所示。
+&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-seed1.5-vl/scaling_law.png"
+width="1392"
+height="1065"
+loading="lazy"
+alt="scaling law"
+class="gallery-image"
+data-flex-grow="130"
+data-flex-basis="313px"
+>&lt;/p>
+&lt;p>结论是在特定领域数据训练的loss可以作为模型在下游任务上表现的一个估计&lt;/p>
+&lt;h1 id="post-training">&lt;a href="#post-training" class="header-anchor">&lt;/a>Post-training
+&lt;/h1>&lt;p>post-training分为两个阶段：SFT和RL，其中RL包括RLHF, RLVR. 总流程如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-seed1.5-vl/post_training.png"
+width="1367"
+height="598"
+loading="lazy"
+alt="post training"
+class="gallery-image"
+data-flex-grow="228"
+data-flex-basis="548px"
+>&lt;/p>
+&lt;h2 id="sft">&lt;a href="#sft" class="header-anchor">&lt;/a>SFT
+&lt;/h2>&lt;p>SFT数据主要包括General Instruction data以及Long Chain-of-Thought (LongCoT) data，劝着途胜模拟徐保国的指令跟随能力，后者提升模型的reasoning能力。&lt;/p>
+&lt;p>通用指令微调数据包括13,000条收集的数据和40,0000高质量的公开数据集。&lt;/p>
+&lt;h2 id="rlhf">&lt;a href="#rlhf" class="header-anchor">&lt;/a>RLHF
+&lt;/h2>&lt;p>RLHF的数据包括人类标注数据和合成数据。对于reward model，作者使用了LVLM作为reward model，来给不同的response进行打分。最后，使用变体的PPO算法进行训练。&lt;/p>
+&lt;h2 id="rlvr">&lt;a href="#rlvr" class="header-anchor">&lt;/a>RLVR
+&lt;/h2>&lt;p>RLVR的训练数据主要包含Visual STEM和Visual Perception and Reasoning. 前者包含1M左右的问题，主要是STEM和K12的相关问题。后者包括grounding, visual instruction following以及visual puzzles &amp;amp; games等&lt;/p>
+&lt;h2 id="hybrid-rl">&lt;a href="#hybrid-rl" class="header-anchor">&lt;/a>Hybrid RL
+&lt;/h2>&lt;p>RL的训练过程包含了RLHF和RLVR两个RL算法。作者介绍了以下细节：&lt;/p>
+&lt;ol>
+&lt;li>format reward. 要求模型输出格式为 &lt;code>&amp;lt;think&amp;gt;{thought}&amp;lt;/think&amp;gt;{solution}&lt;/code>&lt;/li>
+&lt;li>hybrid reward. reward包括RM和verifier两部分&lt;/li>
+&lt;li>Shared critic. 使用一个critic model来估计value function&lt;/li>
+&lt;li>KL coefficients. 对于RLHF和RLVE，使用不同的KL divergence稀疏&lt;/li>
+&lt;/ol>
+&lt;h2 id="iterative-update-by-rejection-sampling-fine-tuning">&lt;a href="#iterative-update-by-rejection-sampling-fine-tuning" class="header-anchor">&lt;/a>Iterative Update by Rejection Sampling Fine-tuning
+&lt;/h2>&lt;p>在训练的过程中，作者使用了一个迭代训练策略。一个开始模型在低质量的Long-CoT数据上进行SFT，在RL过后，作者会重新评估问题的难度，然后过程掉一部分数据，再进行SFT，这样反复进行迭代训练以提高模型的表现。&lt;/p>
+&lt;blockquote>
+&lt;p>Infra部分好像都是一些细节，这里就跳过了。&lt;/p>
+&lt;/blockquote>
+&lt;h1 id="evaluation">&lt;a href="#evaluation" class="header-anchor">&lt;/a>Evaluation
+&lt;/h1>&lt;p>作者评估了&lt;/p>
+&lt;ol>
+&lt;li>Seed-ViT的表现&lt;/li>
+&lt;li>Seed1.5-VL的通用视觉理解和推理能力&lt;/li>
+&lt;li>Seed1.5-VL的视频相关能力&lt;/li>
+&lt;li>Seed1.5-VL的agent能力&lt;/li>
+&lt;li>Seed1.5-VL在内部benchmark上的表现&lt;/li>
+&lt;/ol>
+&lt;p>由于Seed1.5-VL是一个API模型，并且其内部benchmark不公开，因此Seed-ViT以及其在内部benchmark上的表现我们就不列出来了。我们主要看一下其和领先多模态大模型的对比&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-seed1.5-vl/vision_benchmarks.png"
+width="1240"
+height="1184"
+loading="lazy"
+alt="vision benchmarks, 论文表6"
+class="gallery-image"
+data-flex-grow="104"
+data-flex-basis="251px"
+>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-seed1.5-vl/video_benchmarks.png"
+width="1254"
+height="1025"
+loading="lazy"
+alt="Video benchmarks, 论文表7"
+class="gallery-image"
+data-flex-grow="122"
+data-flex-basis="293px"
+>&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-seed1.5-vl/gui_benchmarks.png"
+width="1190"
+height="393"
+loading="lazy"
+alt="GUI benchmarks"
+class="gallery-image"
+data-flex-grow="302"
+data-flex-basis="726px"
+>&lt;/p>
+&lt;h1 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h1>&lt;p>在本文中，作者介绍了Seed1.5-VL，一个领先的多模态大模型，可以处理图片和视频输入。作者介绍了Seed-ViT以及Seed1.5-VL的数据，训练和评估。&lt;/p>
+&lt;p>作者还分析了以下Seed1.5-VL的不足以及未来的改进方向&lt;/p>
+&lt;ol>
+&lt;li>Seed1.5-VL在复杂视觉感知任务中，其计数能力会下降。&lt;/li>
+&lt;li>Seed1.5-VL的高阶推理能力还尚有不足，作者拿Klotski举了一个例子&lt;/li>
+&lt;li>Seed1.5-VL的3D spatial reasoning能力不足&lt;/li>
+&lt;li>Seed1.5-VL的temporal reasoning能力不足&lt;/li>
+&lt;li>Seed1.5-VL与其他模型一样，存在幻觉问题&lt;/li>
+&lt;/ol>
+&lt;p>未来，有以下值得探索的方向：&lt;/p>
+&lt;ol>
+&lt;li>涌现现象(emergent abilities)&lt;/li>
+&lt;li>scaling law，进一步探索模型参数量，算力以及数据对模型表现的影响&lt;/li>
+&lt;li>提高模型的3D spatial reasoning能力，降低模型的幻觉，提高模型分组合搜索能力&lt;/li>
+&lt;/ol>
+&lt;h1 id="参考文献">&lt;a href="#%e5%8f%82%e8%80%83%e6%96%87%e7%8c%ae" class="header-anchor">&lt;/a>参考文献
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="http://arxiv.org/abs/2505.07062" target="_blank" rel="noopener"
+>arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

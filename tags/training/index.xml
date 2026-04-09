@@ -1,0 +1,599 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Training on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/training/</link><description>Recent content in Training on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/training/index.xml" rel="self" type="application/rss+xml"/><item><title>LLM Memory Computation</title><link>https://github.com/jiangyigithub/ai.github.io/p/llm-memory-computation/</link><pubDate>Sat, 17 Jan 2026 10:04:32 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/llm-memory-computation/</guid><description>&lt;h2 id="motivation">&lt;a href="#motivation" class="header-anchor">&lt;/a>Motivation
+&lt;/h2>&lt;p>我们从一个简单的问题开始&lt;/p>
+&lt;blockquote>
+&lt;p>假如我有一张 80GB 的显卡，我想训练/推理一个 4B 的模型，我应该设置多大的 batch size 和 sequence length?&lt;/p>
+&lt;/blockquote>
+&lt;p>在这个 tutorial 中，我们将基于这个问题来进行思考和分析。我们将考虑更一般的问题形式：&lt;/p>
+&lt;p>&lt;strong>Motivation:&lt;/strong> 在训练和推理时 LLM 所需要的内存是多少？如何进行优化内存占用？&lt;/p>
+&lt;p>为了回答以上问题，我们先介绍训练/推理阶段的内存计算，再针对可优化部分进行分析并介绍相应优化算法。&lt;/p>
+&lt;h2 id="background">&lt;a href="#background" class="header-anchor">&lt;/a>Background
+&lt;/h2>&lt;h3 id="transformer-architecture">&lt;a href="#transformer-architecture" class="header-anchor">&lt;/a>Transformer Architecture
+&lt;/h3>&lt;p>以 Qwen3 为例，现代 LLM 的架构包含多层 Transformer Block，其中具体的模块不同的模型可能有改动。下图是对应的模型架构&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/slides/LM_architecture.png"
+loading="lazy"
+alt="Architecture of Qwen3"
+>&lt;/p>
+&lt;h3 id="notation">&lt;a href="#notation" class="header-anchor">&lt;/a>Notation
+&lt;/h3>&lt;p>与参数量、FLOPs 计算所用记号一致；参数量 \(P\) 的推导见 &lt;a class="link" href="https://maosong.website/p/llm-parameter-computation/" target="_blank" rel="noopener"
+>LLM parameter analysis&lt;/a>。&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th style="text-align: center">变量&lt;/th>
+&lt;th style="text-align: left">含义&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td style="text-align: center">\(P\)&lt;/td>
+&lt;td style="text-align: left">number of parameters&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: center">\(L\)&lt;/td>
+&lt;td style="text-align: left">layers&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: center">\(V\)&lt;/td>
+&lt;td style="text-align: left">vocabulary size&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: center">\(d\)&lt;/td>
+&lt;td style="text-align: left">hidden size&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: center">\(d_{\text{ff}}\)&lt;/td>
+&lt;td style="text-align: left">FFN hidden size&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: center">\(s\)&lt;/td>
+&lt;td style="text-align: left">sequence length&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: center">\(b\)&lt;/td>
+&lt;td style="text-align: left">batch size&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: center">\(h\)&lt;/td>
+&lt;td style="text-align: left">number of attention heads&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: center">\(d_h\)&lt;/td>
+&lt;td style="text-align: left">attention head dimension&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="assumptions">&lt;a href="#assumptions" class="header-anchor">&lt;/a>Assumptions
+&lt;/h3>&lt;ol>
+&lt;li>若无特别说明，使用 &lt;strong>BF16/FP16&lt;/strong>，每个参数 &lt;strong>2&lt;/strong> byte。&lt;/li>
+&lt;li>不使用 dropout（与现代大模型设定一致）。&lt;/li>
+&lt;li>Attention 基于原始 multi-head attention.&lt;/li>
+&lt;li>FFN 基于 SwiGLU.&lt;/li>
+&lt;/ol>
+&lt;h2 id="training-memory-analysis">&lt;a href="#training-memory-analysis" class="header-anchor">&lt;/a>Training Memory Analysis
+&lt;/h2>&lt;h3 id="training-memory-components">&lt;a href="#training-memory-components" class="header-anchor">&lt;/a>Training Memory Components
+&lt;/h3>&lt;p>训练部分的内存占用由四部分组成：&lt;/p>
+$$ \text{training\_memory} = \text{weight} + \text{activation} + \text{optimizer} + \text{gradient} $$&lt;ul>
+&lt;li>&lt;strong>Weights&lt;/strong>: \(\boxed{2P}\)&lt;/li>
+&lt;li>&lt;strong>Gradients&lt;/strong>（与权重同精度）: \(\boxed{2P}\)&lt;/li>
+&lt;/ul>
+&lt;h3 id="optimizer-states">&lt;a href="#optimizer-states" class="header-anchor">&lt;/a>Optimizer States
+&lt;/h3>&lt;p>&lt;strong>AdamW&lt;/strong> 优化器需要维护两个动量状态：&lt;/p>
+&lt;ul>
+&lt;li>一阶动量 \(m_t\)：\(2P\)&lt;/li>
+&lt;li>二阶动量 \(v_t\)：\(2P\)&lt;/li>
+&lt;li>合计：\(2 \times 2P = \boxed{4P}\)&lt;/li>
+&lt;/ul>
+&lt;p>AdamW &lt;a class="link" href="#references" >[2]&lt;/a> 的更新规则如下：&lt;/p>
+$$
+\begin{aligned}
+m_t &amp;\leftarrow \beta_1 \cdot m_{t-1} + (1 - \beta_1) \cdot g_t \\
+v_t &amp;\leftarrow \beta_2 \cdot v_{t-1} + (1 - \beta_2) \cdot g_t^2 \\
+\hat{m}_t &amp;\leftarrow \frac{m_t}{1 - \beta_1^t}, \quad \hat{v}_t \leftarrow \frac{v_t}{1 - \beta_2^t} \\
+\theta_t &amp;\leftarrow \theta_{t-1} - \alpha \left( \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon} + \lambda \theta_{t-1} \right)
+\end{aligned}
+$$&lt;h3 id="activation">&lt;a href="#activation" class="header-anchor">&lt;/a>Activation
+&lt;/h3>&lt;p>激活值是前向传播过程中计算得到的中间结果，用于在反向传播时计算梯度。&lt;/p>
+&lt;p>我们仅针对 linear layer 进行推导：&lt;/p>
+$$
+\begin{aligned}
+\text{forward:} \quad &amp; \mathbf{z}_\ell = W_\ell \mathbf{a}_{\ell-1} + b_\ell, \quad \mathbf{a}_\ell = \phi(\mathbf{z}_\ell) \\
+\text{backward:} \quad &amp; \frac{\partial \mathcal{L}}{\partial W_\ell} = \frac{\partial \mathcal{L}}{\partial \mathbf{z}_\ell} \cdot \frac{\partial \mathbf{z}_\ell}{\partial W_\ell} = \frac{\partial \mathcal{L}}{\partial \mathbf{z}_\ell} \cdot \boxed{\mathbf{a}_{\ell-1}}
+\end{aligned}
+$$&lt;p>可以看到，计算第 \(\ell\) 层关于 \(W_\ell\) 的梯度时需要其输入 \(\mathbf{a}_{\ell-1}\)，因此训练时需保存每个模块对应的输入，也就是激活值 (activation)。&lt;/p>
+&lt;h4 id="activation--attention">&lt;a href="#activation--attention" class="header-anchor">&lt;/a>Activation — Attention
+&lt;/h4>&lt;p>按计算图（无优化）可得需保存的激活：&lt;/p>
+&lt;ul>
+&lt;li>Q/K/V 投影：共享输入 → \(2bsd\)&lt;/li>
+&lt;li>\(Q^\top K\)：Q, K 均需保存 → \(2 \times 2bsd = 4bsd\)&lt;/li>
+&lt;li>softmax 输入：\(2bhs^2\)&lt;/li>
+&lt;li>weighted sum 输入：\(2bhs^2 + 2bsd\)&lt;/li>
+&lt;li>output projection 输入：\(2bsd\)&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Attention 合计：&lt;/strong> \(\boxed{10bsd + 4bhs^2}\)&lt;/p>
+&lt;h4 id="activation--ffn--layernorm">&lt;a href="#activation--ffn--layernorm" class="header-anchor">&lt;/a>Activation — FFN &amp;amp; LayerNorm
+&lt;/h4>&lt;p>&lt;strong>FFN&lt;/strong>（SwiGLU，assume \(d_{\text{ff}} = 4d\)）：&lt;/p>
+&lt;ul>
+&lt;li>第一层输入：\(2bsd\)&lt;/li>
+&lt;li>SwiGLU 输入：\(2 \times d_{\text{ff}} \times d = 8bsd\)&lt;/li>
+&lt;li>第二层输入：\(2 \times d_{\text{ff}} \times d = 8bsd\)&lt;/li>
+&lt;li>合计：\(\boxed{18bsd}\)&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>LayerNorm&lt;/strong>：保存输入 → \(\boxed{2bsd}\)&lt;/p>
+&lt;h4 id="activation--output">&lt;a href="#activation--output" class="header-anchor">&lt;/a>Activation — Output
+&lt;/h4>&lt;p>&lt;strong>Output&lt;/strong> 包含以下组成部分：&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>FinalNorm&lt;/strong> 输入：\(2bsd\)&lt;/li>
+&lt;li>&lt;strong>lm_head&lt;/strong> 输入：\(2bsd\)&lt;/li>
+&lt;li>&lt;strong>Loss&lt;/strong> 输入：\(2bsV\)&lt;/li>
+&lt;/ul>
+&lt;p>合计：\(\boxed{4bsd + 2bsV}\)&lt;/p>
+&lt;h4 id="activation--total">&lt;a href="#activation--total" class="header-anchor">&lt;/a>Activation — Total
+&lt;/h4>&lt;p>将上面的结果汇总在一起，得到：&lt;/p>
+$$
+\begin{aligned}
+\text{activation} &amp;= L \cdot \text{transformer\_block} + \text{output} \\
+&amp;= L \cdot (\text{Pre\_Norm} + \textcolor{red}{\text{Attention}} + \text{Post\_Norm} + \text{FFN}) + \text{output} \\
+&amp;= \boxed{bs(32dL + \textcolor{red}{4hsL} + 4d + 2V)} \\
+&amp;\approx bsL(32d + \textcolor{red}{4hs}) \\
+&amp;\approx \textcolor{red}{4bs^2hL}
+\end{aligned}
+$$&lt;blockquote>
+&lt;p>注：在 Qwen3 中，\(2V / 32dL \approx 6\%\)，\(32dL / 4hsL \approx 2.5\%\)。&lt;/p>
+&lt;/blockquote>
+&lt;p>可以看到，未优化的情况下，\(\text{activation} \propto bs^2\)。这里 \(s^2\) 主要由 attention 部分产生，后续 Flash Attention 就针对这一点进行了优化。&lt;/p>
+&lt;h3 id="total-training-memory">&lt;a href="#total-training-memory" class="header-anchor">&lt;/a>Total Training Memory
+&lt;/h3>&lt;p>将上面的结果进行汇总：&lt;/p>
+$$
+\begin{aligned}
+\text{training\_memory} &amp;= \text{weight} + \text{activation} + \text{optimizer} + \text{gradient} \\
+&amp;= 2P + bs(32dL + 4hsL + 4d + 2V) + 4P + 2P \\
+&amp;= 8P + bs(32dL + 4hsL + 4d + 2V) \quad \text{(exact)} \\
+&amp;\approx 8P + 4bs^2hL
+\end{aligned}
+$$&lt;p>可以看到，训练阶段的内存占用分为&lt;strong>固定部分&lt;/strong> (\(8P\)) 和&lt;strong>动态部分&lt;/strong> (\(4bs^2hL\))，动态部分主要是 attention 的缓存。&lt;/p>
+&lt;h3 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h3>&lt;p>我们分别针对 80GB 的显卡计算 Qwen3 系列模型的最高配置：&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th style="text-align: center">Model&lt;/th>
+&lt;th style="text-align: center">\(P\)&lt;/th>
+&lt;th style="text-align: center">\(L\)&lt;/th>
+&lt;th style="text-align: center">\(h\)&lt;/th>
+&lt;th style="text-align: center">\(s\)&lt;/th>
+&lt;th style="text-align: center">predicted \(b\)&lt;/th>
+&lt;th style="text-align: center">actual \(b\)&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td style="text-align: center">Qwen3-0.6B&lt;/td>
+&lt;td style="text-align: center">0.6&lt;/td>
+&lt;td style="text-align: center">28&lt;/td>
+&lt;td style="text-align: center">16&lt;/td>
+&lt;td style="text-align: center">512&lt;/td>
+&lt;td style="text-align: center">68&lt;/td>
+&lt;td style="text-align: center">34&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: center">Qwen3-1.7B&lt;/td>
+&lt;td style="text-align: center">1.7&lt;/td>
+&lt;td style="text-align: center">28&lt;/td>
+&lt;td style="text-align: center">16&lt;/td>
+&lt;td style="text-align: center">512&lt;/td>
+&lt;td style="text-align: center">42&lt;/td>
+&lt;td style="text-align: center">28&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: center">Qwen3-4B&lt;/td>
+&lt;td style="text-align: center">4&lt;/td>
+&lt;td style="text-align: center">36&lt;/td>
+&lt;td style="text-align: center">32&lt;/td>
+&lt;td style="text-align: center">512&lt;/td>
+&lt;td style="text-align: center">16&lt;/td>
+&lt;td style="text-align: center">12&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: center">Qwen3-8B&lt;/td>
+&lt;td style="text-align: center">8.1&lt;/td>
+&lt;td style="text-align: center">36&lt;/td>
+&lt;td style="text-align: center">32&lt;/td>
+&lt;td style="text-align: center">512&lt;/td>
+&lt;td style="text-align: center">4&lt;/td>
+&lt;td style="text-align: center">2&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>其中 predicted \(b\) 基于前面的准确公式计算得到；actual \(b\) 通过实验验证得到。注意我们这里的 prediction 没有考虑任何优化手段与其他内存开销，因此与实际值有出入。&lt;/p>
+&lt;h3 id="case-study">&lt;a href="#case-study" class="header-anchor">&lt;/a>Case Study
+&lt;/h3>&lt;p>我们分别使用 Qwen3-4B 和 Qwen3-8B 来进行实验（\(b=1\), \(s=512\)）。参考 &lt;a class="link" href="https://zhuanlan.zhihu.com/p/677203832" target="_blank" rel="noopener"
+>PyTorch 显存可视化与 Snapshot 数据分析&lt;/a>。&lt;/p>
+&lt;h2 id="inference-memory-analysis">&lt;a href="#inference-memory-analysis" class="header-anchor">&lt;/a>Inference Memory Analysis
+&lt;/h2>&lt;h3 id="inference-components">&lt;a href="#inference-components" class="header-anchor">&lt;/a>Inference Components
+&lt;/h3>&lt;p>Inference 阶段内存占用主要与模型参数、KV cache 两部分相关：&lt;/p>
+$$
+\text{Inference\_Memory} = \text{weight} + \text{activation} + \text{KV cache}
+$$&lt;ul>
+&lt;li>&lt;strong>Weights&lt;/strong>: \(\boxed{2P}\)&lt;/li>
+&lt;li>&lt;strong>Activations&lt;/strong>（经验值，batch size=1）: \(\approx 0.4P\)（参见 &lt;a class="link" href="https://blog.eleuther.ai/transformer-math/" target="_blank" rel="noopener"
+>transformer-math&lt;/a>）&lt;/li>
+&lt;li>&lt;strong>KV cache&lt;/strong>：与序列长度相关，见后续分析。&lt;/li>
+&lt;/ul>
+&lt;h3 id="kv-cache-mechanism">&lt;a href="#kv-cache-mechanism" class="header-anchor">&lt;/a>KV Cache Mechanism
+&lt;/h3>&lt;p>LLM 推理中为避免重复计算历史 token 的 key/value 而使用的&lt;strong>空间换时间&lt;/strong>的缓存机制。&lt;/p>
+&lt;p>自回归时逐 token 生成，每步 attention 形式为（\(\mathbf{q}_t\) 当前 query，\(\mathbf{k}_{:,t}\) / \(\mathbf{v}_{:,t}\) 历史 K/V）：&lt;/p>
+$$
+\mathbf{q}_t = W_Q \mathbf{x}_t, \quad \mathbf{k}_{:,t} = W_K[\mathbf{x}_1, \ldots, \mathbf{x}_t], \quad \mathbf{v}_{:,t} = W_V[\mathbf{x}_1, \ldots, \mathbf{x}_t]
+$$&lt;p>处理下一 token \(\mathbf{x}_{t+1}\) 时只需在已有结果后追加当前步：&lt;/p>
+$$
+\mathbf{k}_{:,t+1} = [\mathbf{k}_{:,t},\, W_K \mathbf{x}_{t+1}], \quad \mathbf{v}_{:,t+1} = [\mathbf{v}_{:,t},\, W_V \mathbf{x}_{t+1}]
+$$&lt;ul>
+&lt;li>&lt;strong>缓存前&lt;/strong>：每生成一个 token 都重新计算 → 总计算量 \(\sum_{t=1}^{s} \mathcal{O}(t) = \mathcal{O}(s^2)\)&lt;/li>
+&lt;li>&lt;strong>缓存后&lt;/strong>：每步只算当前 token \(W_K \mathbf{x}_{t+1}\)、\(W_V \mathbf{x}_{t+1}\) → 计算量 \(\mathcal{O}(s)\)、空间占用 \(\mathcal{O}(s)\) —— &lt;strong>以空间换时间&lt;/strong>&lt;/li>
+&lt;/ul>
+&lt;h3 id="kv-cache-memory">&lt;a href="#kv-cache-memory" class="header-anchor">&lt;/a>KV Cache Memory
+&lt;/h3>&lt;p>对于 multi-head attention，KV cache 的显存占用为：&lt;/p>
+$$
+\text{Memory}(\text{KV cache}) = s \times 2 \times 2 \times L \times h \times d_h = \boxed{4sLhd_h}
+$$&lt;p>&lt;strong>因子含义：&lt;/strong> \(s\) 序列长，第一个 \(2\) 为 K+V，第二个 \(2\) 为 BF16 的 2 bytes，\(L\) 层、\(h\) 头、\(d_h\) 头维度。&lt;/p>
+&lt;p>&lt;strong>Remark:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>KV 占用与&lt;strong>模型配置&lt;/strong>（\(L, h, d_h\)）和&lt;strong>序列长度&lt;/strong> \(s\) 都有关，token 越多占用越高。&lt;/li>
+&lt;li>实际中因 &lt;em>page granularity&lt;/em>、&lt;em>padding&lt;/em>、&lt;em>fragmentation&lt;/em> 往往略高于理论值。&lt;/li>
+&lt;li>长输出时 KV 占比会超过权重，成为推理瓶颈 → 见后续「KV Cache 优化」。&lt;/li>
+&lt;/ul>
+&lt;h3 id="total-inference-memory">&lt;a href="#total-inference-memory" class="header-anchor">&lt;/a>Total Inference Memory
+&lt;/h3>&lt;p>综合前面分析，推理阶段的总内存为：&lt;/p>
+$$
+\boxed{\text{Inference\_Memory} \approx 2.4P + 4sLhd_h}
+$$&lt;p>可以看到，推理阶段也由固定部分（参数量，activation）以及动态部分（KV cache）组成。&lt;/p>
+&lt;h3 id="dynamic-vs-static">&lt;a href="#dynamic-vs-static" class="header-anchor">&lt;/a>Dynamic vs. Static
+&lt;/h3>&lt;p>由于 Qwen3 的 KV cache 计算为 \(4sLh_{kv}d_h\)，而不同模型只有 \(L\) 不一样，因此对于更大的模型，KV cache 显存占用超过模型权重的上下文长度更高。&lt;/p>
+&lt;h2 id="optimization">&lt;a href="#optimization" class="header-anchor">&lt;/a>Optimization
+&lt;/h2>&lt;h3 id="overview">&lt;a href="#overview" class="header-anchor">&lt;/a>Overview
+&lt;/h3>&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th style="text-align: left">阶段&lt;/th>
+&lt;th style="text-align: left">核心方法&lt;/th>
+&lt;th style="text-align: left">典型技术&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td style="text-align: left">Training&lt;/td>
+&lt;td style="text-align: left">显存与效率提升&lt;/td>
+&lt;td style="text-align: left">Activation Checkpointing, Mixed Precision Training, Flash Attention, ZeRO, Pipeline/Model/Data Parallelism&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">Inference&lt;/td>
+&lt;td style="text-align: left">长序列与速度优化&lt;/td>
+&lt;td style="text-align: left">KV Cache Optimization, Paged/Radix Attention, Faster Attention, Quantization&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="mixed-precision-training">&lt;a href="#mixed-precision-training" class="header-anchor">&lt;/a>Mixed Precision Training
+&lt;/h3>&lt;p>计算量大的部分用低精度，计算量小的部分用高精度。低精度参与运算，高精度避免 Overflow/Underflow。&lt;/p>
+&lt;p>下表是 DeepSeek-V3 &lt;a class="link" href="#references" >[3]&lt;/a> 使用的混合精度训练框架的显存分析：&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th style="text-align: left">Precision&lt;/th>
+&lt;th style="text-align: center">BF16&lt;/th>
+&lt;th style="text-align: center">FP32&lt;/th>
+&lt;th style="text-align: center">BF16&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td style="text-align: left">&lt;strong>AMP&lt;/strong>&lt;/td>
+&lt;td style="text-align: center">No&lt;/td>
+&lt;td style="text-align: center">Yes&lt;/td>
+&lt;td style="text-align: center">Yes&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">Weights&lt;/td>
+&lt;td style="text-align: center">BF16 (2)&lt;/td>
+&lt;td style="text-align: center">FP32 (4)&lt;/td>
+&lt;td style="text-align: center">BF16 (2)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">Master weights&lt;/td>
+&lt;td style="text-align: center">-&lt;/td>
+&lt;td style="text-align: center">-&lt;/td>
+&lt;td style="text-align: center">FP32 (4)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">Gradients&lt;/td>
+&lt;td style="text-align: center">BF16 (2)&lt;/td>
+&lt;td style="text-align: center">FP32 (4)&lt;/td>
+&lt;td style="text-align: center">BF16 (2)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">Adam m&lt;/td>
+&lt;td style="text-align: center">BF16 (2)&lt;/td>
+&lt;td style="text-align: center">FP32 (4)&lt;/td>
+&lt;td style="text-align: center">FP32 (4)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">Adam v&lt;/td>
+&lt;td style="text-align: center">BF16 (2)&lt;/td>
+&lt;td style="text-align: center">FP32 (4)&lt;/td>
+&lt;td style="text-align: center">FP32 (4)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">&lt;strong>Static total (bytes/param)&lt;/strong>&lt;/td>
+&lt;td style="text-align: center">&lt;strong>8&lt;/strong>&lt;/td>
+&lt;td style="text-align: center">&lt;strong>16&lt;/strong>&lt;/td>
+&lt;td style="text-align: center">&lt;strong>16&lt;/strong>&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>&lt;strong>Remark:&lt;/strong>&lt;/p>
+&lt;ol>
+&lt;li>BF16 (w/ AMP) 与 FP32 (w/ AMP) 的静态显存占用相同，但 BF16 (w/ AMP) 的动态显存占用更低。&lt;/li>
+&lt;li>主流框架基本都使用了 BF16/FP8 (w/ AMP) 的训练方式。&lt;/li>
+&lt;/ol>
+&lt;h3 id="zero">&lt;a href="#zero" class="header-anchor">&lt;/a>ZeRO
+&lt;/h3>&lt;p>将 optimizer states / gradients / weights 按不同 GPU 切片存储，需要参与计算时再 all-gather 整合成完整参数。这样每张卡只需维护自己负责的一部分，大幅降低单卡显存需求 &lt;a class="link" href="#references" >[4]&lt;/a>。&lt;/p>
+&lt;p>&lt;strong>ZeRO Stages:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>ZeRO-1&lt;/strong>：shard optimizer states&lt;/li>
+&lt;/ul>
+$$
+\text{Training\_Memory} = \text{weight} + \text{activation} + \frac{\text{optimizer}}{\#\text{GPUs}} + \text{gradient}
+$$&lt;ul>
+&lt;li>&lt;strong>ZeRO-2&lt;/strong>：shard optimizer states + gradients&lt;/li>
+&lt;/ul>
+$$
+\text{Training\_Memory} = \text{weight} + \text{activation} + \frac{\text{optimizer} + \text{gradient}}{\#\text{GPUs}}
+$$&lt;ul>
+&lt;li>&lt;strong>ZeRO-3&lt;/strong>：shard all&lt;/li>
+&lt;/ul>
+$$
+\text{Training\_Memory} = \text{activation} + \frac{\text{weight} + \text{optimizer} + \text{gradient}}{\#\text{GPUs}}
+$$&lt;blockquote>
+&lt;p>ZeRO-3 可极大降低单卡显存上限，但通信量也会提高。&lt;/p>
+&lt;/blockquote>
+&lt;h3 id="model-parallelism">&lt;a href="#model-parallelism" class="header-anchor">&lt;/a>Model Parallelism
+&lt;/h3>&lt;p>将模型切分到不同的 GPU 上，计算时，先 dispatch，再执行计算，最后通过 all-gather 等操作得到最终结果 &lt;a class="link" href="#references" >[5]&lt;/a>。切分方式包括 PP (Pipeline Parallelism)、TP (Tensor Parallelism)、EP (Expert Parallelism) 等。&lt;/p>
+$$
+\text{Training\_Memory} = \frac{\text{Memory}(\text{weight})}{\text{PP degree} \times \text{TP degree}}
+$$&lt;p>结合 ZeRO-1 与 Model Parallelism 时（activation 中与 TP 相关的部分按 TP degree 缩减）：&lt;/p>
+$$
+\text{Memory}_{\text{train}} \approx \frac{\text{weight}}{\text{PP} \times \text{TP}} + \frac{\text{activation}}{\text{TP}} + \frac{\text{optimizer}}{\#\text{GPUs}} + \frac{\text{gradient}}{\text{PP}}
+$$&lt;h3 id="activation-checkpointing">&lt;a href="#activation-checkpointing" class="header-anchor">&lt;/a>Activation Checkpointing
+&lt;/h3>&lt;p>在反向传播时，重新计算所需的输入，来达到以时间换空间的目的 &lt;a class="link" href="#references" >[6]&lt;/a>。&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th style="text-align: left">&lt;/th>
+&lt;th style="text-align: center">No ckpt&lt;/th>
+&lt;th style="text-align: center">Selective ckpt&lt;/th>
+&lt;th style="text-align: center">Full ckpt&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td style="text-align: left">memory&lt;/td>
+&lt;td style="text-align: center">很高&lt;/td>
+&lt;td style="text-align: center">中等&lt;/td>
+&lt;td style="text-align: center">很低 \(\sim 2bsd\)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">extra compute&lt;/td>
+&lt;td style="text-align: center">无&lt;/td>
+&lt;td style="text-align: center">中等&lt;/td>
+&lt;td style="text-align: center">很高 \(\sim 2Pbs\)&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;blockquote>
+&lt;p>实践中常结合 model parallelism 与 selective checkpointing 来实现 trade-off。&lt;/p>
+&lt;/blockquote>
+&lt;h3 id="flash-attention">&lt;a href="#flash-attention" class="header-anchor">&lt;/a>Flash Attention
+&lt;/h3>&lt;p>通过将 Attention 的计算进行分块，来提高内存访问效率以及降低反向传播时所需要的 activation 大小 &lt;a class="link" href="#references" >[7]&lt;/a>。&lt;/p>
+&lt;p>&lt;strong>Flash Attention&lt;/strong> 通过 tiling 与 online-softmax 降低该部分显存并提升效率（详见 &lt;a class="link" href="https://maosong.website/p/notes-on-flashattention/" target="_blank" rel="noopener"
+>notes on Flash Attention&lt;/a>）。这样 attention 部分的显存就由 \(\text{activation} \propto bs^2\) 降低到了 \(\text{activation} \propto bs\)。&lt;/p>
+&lt;p>&lt;strong>Theorem:&lt;/strong> Flash Attention 输出 \(O = \text{softmax}(QK^T)V\)（correctness）。其时间复杂度为 \(\mathcal{O}(s^2 d)\)，空间复杂度为 \(\mathcal{O}(s)\)（memory savings）。&lt;/p>
+&lt;h3 id="kv-cache-optimization">&lt;a href="#kv-cache-optimization" class="header-anchor">&lt;/a>KV Cache Optimization
+&lt;/h3>$$
+\text{Memory}(\text{KV cache}) = s \times 2 \times 2 \times L \times h \times d_h
+$$&lt;p>针对公式中各因子的优化方向 &lt;a class="link" href="#references" >[8]&lt;/a>：&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>\(s\)&lt;/strong>: KV cache compression, eviction, selection&lt;/li>
+&lt;li>&lt;strong>\(2\) (bytes)&lt;/strong>: KV cache quantization&lt;/li>
+&lt;li>&lt;strong>\(2\) (K+V)&lt;/strong>: key-value sharing, MLA &lt;a class="link" href="#references" >[9]&lt;/a>&lt;/li>
+&lt;li>&lt;strong>\(h \times d_h\)&lt;/strong>: MQA &lt;a class="link" href="#references" >[10]&lt;/a>, GQA &lt;a class="link" href="#references" >[11]&lt;/a>, MLA&lt;/li>
+&lt;/ol>
+&lt;h3 id="weight-quantization">&lt;a href="#weight-quantization" class="header-anchor">&lt;/a>Weight Quantization
+&lt;/h3>&lt;p>使用低精度来表示高精度数值的方法，来减少内存占用/提高计算效率。&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th style="text-align: left">量化时机&lt;/th>
+&lt;th style="text-align: left">代表性工作&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td style="text-align: left">训练后量化 (PTQ)&lt;/td>
+&lt;td style="text-align: left">GPTQ &lt;a class="link" href="#references" >[12]&lt;/a>, AWQ &lt;a class="link" href="#references" >[13]&lt;/a>, SmoothQuant &lt;a class="link" href="#references" >[14]&lt;/a>, GGUF &lt;a class="link" href="#references" >[15]&lt;/a>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">量化感知训练 (QAT)&lt;/td>
+&lt;td style="text-align: left">LLM-QAT &lt;a class="link" href="#references" >[16]&lt;/a>, PEQA &lt;a class="link" href="#references" >[17]&lt;/a>&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="activation-offloading">&lt;a href="#activation-offloading" class="header-anchor">&lt;/a>Activation Offloading
+&lt;/h3>&lt;p>将一部分参数/优化器状态/激活值等存储到 CPU 上，需要的时候再加载到 GPU 上。&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th style="text-align: left">Offloading 场景&lt;/th>
+&lt;th style="text-align: left">代表性工作&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td style="text-align: left">训练阶段 Offloading&lt;/td>
+&lt;td style="text-align: left">ZeRO-Offload &lt;a class="link" href="#references" >[18]&lt;/a> / ZeRO-Infinity, FSDP &lt;a class="link" href="#references" >[19]&lt;/a> CPU Offload&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">推理阶段 Offloading&lt;/td>
+&lt;td style="text-align: left">FlexGen &lt;a class="link" href="#references" >[20]&lt;/a>, vLLM &lt;a class="link" href="#references" >[21]&lt;/a> KV Cache Offload&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">MoE Offloading&lt;/td>
+&lt;td style="text-align: left">KTransformers &lt;a class="link" href="#references" >[22]&lt;/a>, DeepSpeed-MoE &lt;a class="link" href="#references" >[23]&lt;/a>&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="real-systems">&lt;a href="#real-systems" class="header-anchor">&lt;/a>Real Systems
+&lt;/h2>&lt;h3 id="training-frameworks">&lt;a href="#training-frameworks" class="header-anchor">&lt;/a>Training Frameworks
+&lt;/h3>&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th style="text-align: left">Framework&lt;/th>
+&lt;th style="text-align: left">Memory Optimizations&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td style="text-align: left">Megatron-LM &lt;a class="link" href="#references" >[5]&lt;/a>&lt;/td>
+&lt;td style="text-align: left">TP, SP, Activation Checkpointing&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">DeepSpeed &lt;a class="link" href="#references" >[24]&lt;/a>&lt;/td>
+&lt;td style="text-align: left">ZeRO-1/2/3, CPU/NVMe Offload, Activation Checkpointing&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">FSDP &lt;a class="link" href="#references" >[19]&lt;/a>&lt;/td>
+&lt;td style="text-align: left">Full parameter sharding, Gradient sharding, CPU Offload&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">Colossal-AI &lt;a class="link" href="#references" >[25]&lt;/a>&lt;/td>
+&lt;td style="text-align: left">ZeRO, TP, PP, Activation Checkpointing&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="inference-frameworks">&lt;a href="#inference-frameworks" class="header-anchor">&lt;/a>Inference Frameworks
+&lt;/h3>&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th style="text-align: left">Framework&lt;/th>
+&lt;th style="text-align: left">Key Techniques&lt;/th>
+&lt;th style="text-align: left">Memory Optimizations&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td style="text-align: left">vLLM &lt;a class="link" href="#references" >[21]&lt;/a>&lt;/td>
+&lt;td style="text-align: left">Paged Attention&lt;/td>
+&lt;td style="text-align: left">KV cache paging, Continuous batching&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">SGLang &lt;a class="link" href="#references" >[26]&lt;/a>&lt;/td>
+&lt;td style="text-align: left">Radix Attention&lt;/td>
+&lt;td style="text-align: left">KV cache reuse, Efficient scheduling&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">TensorRT-LLM &lt;a class="link" href="#references" >[27]&lt;/a>&lt;/td>
+&lt;td style="text-align: left">Kernel fusion&lt;/td>
+&lt;td style="text-align: left">Weight quantization, KV cache optimization&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;h3 id="takeaway">&lt;a href="#takeaway" class="header-anchor">&lt;/a>Takeaway
+&lt;/h3>&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th style="text-align: left">Components&lt;/th>
+&lt;th style="text-align: center">Training&lt;/th>
+&lt;th style="text-align: center">Inference&lt;/th>
+&lt;th style="text-align: left">Optimization&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td style="text-align: left">weights&lt;/td>
+&lt;td style="text-align: center">\(2P\)&lt;/td>
+&lt;td style="text-align: center">\(2P\)&lt;/td>
+&lt;td style="text-align: left">quantization&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">optimizer states&lt;/td>
+&lt;td style="text-align: center">\(4P\)&lt;/td>
+&lt;td style="text-align: center">0&lt;/td>
+&lt;td style="text-align: left">ZeRO, offloading&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">gradients&lt;/td>
+&lt;td style="text-align: center">\(2P\)&lt;/td>
+&lt;td style="text-align: center">0&lt;/td>
+&lt;td style="text-align: left">ZeRO&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">activations&lt;/td>
+&lt;td style="text-align: center">\(\sim 4Lhs^2b\)&lt;/td>
+&lt;td style="text-align: center">\(\sim 0.4P\)&lt;/td>
+&lt;td style="text-align: left">ckpt, offloading, flash attention&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">KV cache&lt;/td>
+&lt;td style="text-align: center">0&lt;/td>
+&lt;td style="text-align: center">\(4sLhd_h\)&lt;/td>
+&lt;td style="text-align: left">KV optimization, attention&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td style="text-align: left">&lt;strong>TOTAL&lt;/strong>&lt;/td>
+&lt;td style="text-align: center">\(8P + 4Lhs^2b\)&lt;/td>
+&lt;td style="text-align: center">\(2.4P + 4sLhd_h\)&lt;/td>
+&lt;td style="text-align: left">&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;ul>
+&lt;li>&lt;strong>训练&lt;/strong>：瓶颈主要在激活值（随 batch size / 序列长度线性增长）。&lt;/li>
+&lt;li>&lt;strong>推理&lt;/strong>：瓶颈主要在 KV Cache（随序列长度增长）。&lt;/li>
+&lt;/ul>
+&lt;h3 id="future-directions">&lt;a href="#future-directions" class="header-anchor">&lt;/a>Future Directions
+&lt;/h3>&lt;ol>
+&lt;li>More efficient architecture (attention, MoE).&lt;/li>
+&lt;li>Scalable training/inference framework.&lt;/li>
+&lt;li>Software-hardware co-design algorithms.&lt;/li>
+&lt;/ol>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ol>
+&lt;li>An Yang et al., &amp;ldquo;Qwen3 Technical Report,&amp;rdquo; arXiv:2505.09388, 2025.&lt;/li>
+&lt;li>Ilya Loshchilov and Frank Hutter, &amp;ldquo;Decoupled Weight Decay Regularization,&amp;rdquo; arXiv:1711.05101, 2019.&lt;/li>
+&lt;li>DeepSeek-AI, &amp;ldquo;DeepSeek-V3 Technical Report,&amp;rdquo; arXiv:2412.19437, 2025.&lt;/li>
+&lt;li>Samyam Rajbhandari et al., &amp;ldquo;ZeRO: Memory Optimizations Toward Training Trillion Parameter Models,&amp;rdquo; arXiv:1910.02054, 2020.&lt;/li>
+&lt;li>Mohammad Shoeybi et al., &amp;ldquo;Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism,&amp;rdquo; arXiv:1909.08053, 2020.&lt;/li>
+&lt;li>Vijay Korthikanti et al., &amp;ldquo;Reducing Activation Recomputation in Large Transformer Models,&amp;rdquo; arXiv:2205.05198, 2022.&lt;/li>
+&lt;li>Tri Dao et al., &amp;ldquo;FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness,&amp;rdquo; arXiv:2205.14135, 2022.&lt;/li>
+&lt;li>Haoyang Li et al., &amp;ldquo;A Survey on Large Language Model Acceleration based on KV Cache Management,&amp;rdquo; arXiv:2412.19442, 2025.&lt;/li>
+&lt;li>DeepSeek-AI, &amp;ldquo;DeepSeek-V2: A Strong, Economical, and Efficient Mixture-of-Experts Language Model,&amp;rdquo; arXiv:2405.04434, 2024.&lt;/li>
+&lt;li>Noam Shazeer, &amp;ldquo;Fast Transformer Decoding: One Write-Head is All You Need,&amp;rdquo; arXiv:1911.02150, 2019.&lt;/li>
+&lt;li>Joshua Ainslie et al., &amp;ldquo;GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints,&amp;rdquo; arXiv:2305.13245, 2023.&lt;/li>
+&lt;li>Elias Frantar et al., &amp;ldquo;GPTQ: Accurate Post-Training Quantization for Generative Pre-trained Transformers,&amp;rdquo; arXiv:2210.17323, 2023.&lt;/li>
+&lt;li>Ji Lin et al., &amp;ldquo;AWQ: Activation-aware Weight Quantization for LLM Compression and Acceleration,&amp;rdquo; arXiv:2306.00978, 2024.&lt;/li>
+&lt;li>Guangxuan Xiao et al., &amp;ldquo;SmoothQuant: Accurate and Efficient Post-Training Quantization for Large Language Models,&amp;rdquo; arXiv:2211.10438, 2024.&lt;/li>
+&lt;li>Georgi Gerganov, &amp;ldquo;ggml: Tensor library for machine learning,&amp;rdquo; &lt;a class="link" href="https://github.com/ggerganov/ggml" target="_blank" rel="noopener"
+>GitHub&lt;/a>, 2023.&lt;/li>
+&lt;li>Zechun Liu et al., &amp;ldquo;LLM-QAT: Data-Free Quantization Aware Training for Large Language Models,&amp;rdquo; arXiv:2305.17888, 2023.&lt;/li>
+&lt;li>Jeonghoon Kim et al., &amp;ldquo;Memory-Efficient Fine-Tuning of Compressed Large Language Models via sub-4-bit Integer Quantization,&amp;rdquo; arXiv:2305.14152, 2023.&lt;/li>
+&lt;li>Jie Ren et al., &amp;ldquo;ZeRO-Offload: Democratizing Billion-Scale Model Training,&amp;rdquo; arXiv:2101.06840, 2021.&lt;/li>
+&lt;li>Yanli Zhao et al., &amp;ldquo;PyTorch FSDP: Experiences on Scaling Fully Sharded Data Parallel,&amp;rdquo; arXiv:2304.11277, 2023.&lt;/li>
+&lt;li>Ying Sheng et al., &amp;ldquo;FlexGen: High-Throughput Generative Inference of Large Language Models with a Single GPU,&amp;rdquo; arXiv:2303.06865, 2023.&lt;/li>
+&lt;li>Woosuk Kwon et al., &amp;ldquo;Efficient Memory Management for Large Language Model Serving with PagedAttention,&amp;rdquo; SOSP, 2023.&lt;/li>
+&lt;li>Hongtao Chen et al., &amp;ldquo;KTransformers: Unleashing the Full Potential of CPU/GPU Hybrid Inference for MoE Models,&amp;rdquo; SOSP, 2025.&lt;/li>
+&lt;li>Samyam Rajbhandari et al., &amp;ldquo;DeepSpeed-MoE: Advancing Mixture-of-Experts Inference and Training to Power Next-Generation AI Scale,&amp;rdquo; arXiv:2201.05596, 2022.&lt;/li>
+&lt;li>Jeff Rasley et al., &amp;ldquo;DeepSpeed: System Optimizations Enable Training Deep Learning Models with Over 100 Billion Parameters,&amp;rdquo; KDD, 2020.&lt;/li>
+&lt;li>Shenggui Li et al., &amp;ldquo;Colossal-AI: A Unified Deep Learning System For Large-Scale Parallel Training,&amp;rdquo; ICPP, 2023.&lt;/li>
+&lt;li>Lianmin Zheng et al., &amp;ldquo;SGLang: Efficient Execution of Structured Language Model Programs,&amp;rdquo; NeurIPS, 2024.&lt;/li>
+&lt;li>NVIDIA Corporation, &amp;ldquo;TensorRT-LLM: A TensorRT Toolset for Optimizing LLM Inference,&amp;rdquo; &lt;a class="link" href="https://github.com/NVIDIA/TensorRT-LLM" target="_blank" rel="noopener"
+>GitHub&lt;/a>, 2023.&lt;/li>
+&lt;/ol></description></item></channel></rss>

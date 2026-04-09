@@ -1,0 +1,796 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Agent on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/categories/agent/</link><description>Recent content in Agent on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/categories/agent/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on Kimi-k2.5</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-kimi-k2.5/</link><pubDate>Thu, 12 Feb 2026 11:13:13 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-kimi-k2.5/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>Kimi-K2.5 的核心有亮点：&lt;/p>
+&lt;ol>
+&lt;li>native multi-modal: 通过在预训练，SFT, RL 阶段使用多模态数据来提高模型的多模态能力&lt;/li>
+&lt;li>agent: 通过并行 multi-agent 的方式来提高模型解决复杂问题的效率和能力&lt;/li>
+&lt;/ol>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;h3 id="architecture">&lt;a href="#architecture" class="header-anchor">&lt;/a>Architecture
+&lt;/h3>&lt;p>Kimi K2.5 是一个标准的 ViT-MLP-LLM 架构，其中&lt;/p>
+&lt;ol>
+&lt;li>ViT, 基于 &lt;a class="link" href="Kimi-VL.md" >Kimi-VL&lt;/a> 提出的 MoonViT, 并进行了改进, 参数量为 400M&lt;/li>
+&lt;li>MLP, 基于 patch merger,&lt;/li>
+&lt;li>LLM, 基于 &lt;a class="link" href="https://maosong.website/p/notes-on-kimi-k2/" target="_blank" rel="noopener"
+>Kimi-k2&lt;/a>, 参数量为 1.02T-A32B&lt;/li>
+&lt;/ol>
+&lt;p>&lt;strong>ViT&lt;/strong>
+作者使用了 &lt;a class="link" href="Kimi-VL.md" >Kimi-VL&lt;/a> 提出的 MoonViT, MoonViT 基于 &lt;a class="link" href="SigLIP.md" >SigLIP&lt;/a> 提出的 SigLIP-SO-400M 开发得到，MoonViT 使用了 &lt;a class="link" href="NaViT.md" >NaViT&lt;/a> 来避免切分图片和使用不同精度图片进行训练。&lt;/p>
+&lt;p>在 MoonViT 的基础上，Kimi-K2.5 还进一步提出了 MoonViT-3D, 将 &lt;a class="link" href="NaViT.md" >NaViT&lt;/a> 的思想扩展到了 3D 用于提高模型的视频理解能力，具体做法为将连续 4 帧的视频展开为 1D sequence, 这样在图像上的注意力机制就可以无缝衔接到视频上了。并且，通过这种方式，我们可以让模型关注跨帧的信息（注意力在 4 帧的 token 之间进行），简化代码如下所示&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># config.json temporal_merge_kernel_size&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># kimi_k25_vision_processing.py split_video_chunks&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">video_chunk&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">frames&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="mi">4&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">patches&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">for&lt;/span> &lt;span class="n">frame&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="n">video_chunk&lt;/span>&lt;span class="p">:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">patches&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">extend&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">split_into_patches&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">frame&lt;/span>&lt;span class="p">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">tokens&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">patches&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># modeling_kimi_k25.py Learnable2DInterpPosEmbDivided_fixed&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">positions&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">spatial_embedding&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">temporal_embedding&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># modeling_kimi_k25.py MoonViT3dEncoder&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="n">output&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">transformer&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">tokens&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">positions&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>最后，在进入 MLP 之前，作者还对每个 temporal chunk 内的特征进行 pooling 操作，将时序长度压缩到了原来的 1/4, 进而提高模型可处理的视频长度。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt"> 1
+&lt;/span>&lt;span class="lnt"> 2
+&lt;/span>&lt;span class="lnt"> 3
+&lt;/span>&lt;span class="lnt"> 4
+&lt;/span>&lt;span class="lnt"> 5
+&lt;/span>&lt;span class="lnt"> 6
+&lt;/span>&lt;span class="lnt"> 7
+&lt;/span>&lt;span class="lnt"> 8
+&lt;/span>&lt;span class="lnt"> 9
+&lt;/span>&lt;span class="lnt">10
+&lt;/span>&lt;span class="lnt">11
+&lt;/span>&lt;span class="lnt">12
+&lt;/span>&lt;span class="lnt">13
+&lt;/span>&lt;span class="lnt">14
+&lt;/span>&lt;span class="lnt">15
+&lt;/span>&lt;span class="lnt">16
+&lt;/span>&lt;span class="lnt">17
+&lt;/span>&lt;span class="lnt">18
+&lt;/span>&lt;span class="lnt">19
+&lt;/span>&lt;span class="lnt">20
+&lt;/span>&lt;span class="lnt">21
+&lt;/span>&lt;span class="lnt">22
+&lt;/span>&lt;span class="lnt">23
+&lt;/span>&lt;span class="lnt">24
+&lt;/span>&lt;span class="lnt">25
+&lt;/span>&lt;span class="lnt">26
+&lt;/span>&lt;span class="lnt">27
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-python" data-lang="python">&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># modeling_kimi_k25.py tpool_patch_merger&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="k">def&lt;/span> &lt;span class="nf">tpool_patch_merger&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">x&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">grid_thws&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">merge_kernel_size&lt;/span>&lt;span class="p">:&lt;/span> &lt;span class="nb">tuple&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="nb">int&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="nb">int&lt;/span>&lt;span class="p">]&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">(&lt;/span>&lt;span class="mi">2&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">),&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="p">)&lt;/span> &lt;span class="o">-&amp;gt;&lt;/span> &lt;span class="nb">list&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">torch&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">Tensor&lt;/span>&lt;span class="p">]:&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">d_model&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">size&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">outputs&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="p">[]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">pre_sum&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="mi">0&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">for&lt;/span> &lt;span class="n">t&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">h&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">w&lt;/span> &lt;span class="ow">in&lt;/span> &lt;span class="n">grid_thws&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">tolist&lt;/span>&lt;span class="p">():&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># Get the current sequence&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">seq&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">x&lt;/span>&lt;span class="p">[&lt;/span>&lt;span class="n">pre_sum&lt;/span>&lt;span class="p">:&lt;/span>&lt;span class="n">pre_sum&lt;/span> &lt;span class="o">+&lt;/span> &lt;span class="n">t&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">h&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">w&lt;/span>&lt;span class="p">]&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="c1"># Reshape along self.merge_kernel_size and concat to the last dimension&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">kernel_height&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">kernel_width&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">merge_kernel_size&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">new_height&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">new_width&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">h&lt;/span> &lt;span class="o">//&lt;/span> &lt;span class="n">kernel_height&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">w&lt;/span> &lt;span class="o">//&lt;/span> &lt;span class="n">kernel_width&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">reshaped_seq&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">seq&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">view&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">t&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">new_height&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">kernel_height&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">new_width&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">kernel_width&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="n">d_model&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">reshaped_seq&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">reshaped_seq&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">permute&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">1&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="mi">3&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">2&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">4&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="mi">5&lt;/span>&lt;span class="p">)&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">contiguous&lt;/span>&lt;span class="p">()&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">mean&lt;/span>&lt;span class="p">(&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">dim&lt;/span>&lt;span class="o">=&lt;/span>&lt;span class="mi">0&lt;/span>&lt;span class="p">)&lt;/span> &lt;span class="c1"># temporal pooling&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">padded_seq&lt;/span> &lt;span class="o">=&lt;/span> &lt;span class="n">reshaped_seq&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">view&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">new_height&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">new_width&lt;/span>&lt;span class="p">,&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">kernel_height&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">kernel_width&lt;/span>&lt;span class="p">,&lt;/span> &lt;span class="o">-&lt;/span>&lt;span class="mi">1&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">outputs&lt;/span>&lt;span class="o">.&lt;/span>&lt;span class="n">append&lt;/span>&lt;span class="p">(&lt;/span>&lt;span class="n">padded_seq&lt;/span>&lt;span class="p">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="n">pre_sum&lt;/span> &lt;span class="o">+=&lt;/span> &lt;span class="n">t&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">h&lt;/span> &lt;span class="o">*&lt;/span> &lt;span class="n">w&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl"> &lt;span class="k">return&lt;/span> &lt;span class="n">outputs&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>&lt;strong>MLP&lt;/strong>
+MLP 使用了 PatchMerger, 用于减少视觉 token 个数，这个方案在之前的 Qwen-VL 系列里已经得到了应用。&lt;/p>
+&lt;p>&lt;strong>LLM&lt;/strong>
+LLM 基于 &lt;a class="link" href="https://maosong.website/p/notes-on-kimi-k2/" target="_blank" rel="noopener"
+>Kimi-k2&lt;/a> 的 MoE 模型，总参数为 1T, 激活参数为 32B&lt;/p>
+&lt;h3 id="data">&lt;a href="#data" class="header-anchor">&lt;/a>Data
+&lt;/h3>&lt;h3 id="pre-training">&lt;a href="#pre-training" class="header-anchor">&lt;/a>Pre-training
+&lt;/h3>&lt;p>预训练阶段一共使用了 15T token, 分为了三个阶段：&lt;/p>
+&lt;ol>
+&lt;li>ViT-training: 单独训练 ViT, 实际用了 image caption, grounding, ocr, video 等数据进行训练，训练方式采用了类似 InternVL 的方式，即通过 cross entropy loss 来与一个清凉话的 LLM 进行对齐，这个阶段训练使用了 1T token, 然后作者使用了一个非常短的 stage 来更新 MLP 用于对齐 ViT 和 Kimi-K2&lt;/li>
+&lt;li>Joint pre-training: 训练所有参数，长下文长度为 4K, 使用了 15T token. 这里主要强调了提升代码数据的比例&lt;/li>
+&lt;li>Long context mid-training: 使用 &lt;a class="link" href="https://maosong.website/p/notes-on-yarn/" target="_blank" rel="noopener"
+>YARN&lt;/a> 来提高模型的上下文长度&lt;/li>
+&lt;/ol>
+&lt;p>最终预训练阶段 recipe 如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2.5/Kimi-k2.5-pre-training.png"
+width="1430"
+height="415"
+loading="lazy"
+alt="Pre-training recipe of Kimi-K2.5"
+class="gallery-image"
+data-flex-grow="344"
+data-flex-basis="826px"
+>&lt;/p>
+&lt;p>&lt;strong>Native Multimodal pre-training&lt;/strong>
+在 Joint pre-training stage, Kimi-K2.5 还采用了一个与 &lt;a class="link" href="InternVL3.md" >InternVL3&lt;/a> 类似的策略，即在预训练一开始直接使用多模态数据进行预训练。&lt;/p>
+&lt;p>传统的多模态大模型往往基于一个比较成熟的 LLM backbone 来完成多模态大模型的训练，但是其问题在于成熟的 LLM 其表示空间会收敛到语言模态上，多模态信息的迁移能力比较差。&lt;a class="link" href="InternVL3.md" >InternVL3&lt;/a> 虽然也是 native multimodal pre-training, 但是其仍然依赖于成熟的 LLM. Kimi K2.5 则是使用预训练阶段的 Kimi K2 作为 backbone 来避免表示空间的塌缩，在训练一开始即直接加入少量多模态数据来保持模型的多模态能力。&lt;/p>
+&lt;p>作者探究了预训练阶段不同的数据对比，试验结果如下图所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>&lt;/th>
+&lt;th>Vision Injection Timing&lt;/th>
+&lt;th>Vision-Text Ratio&lt;/th>
+&lt;th>Vision Knowledge&lt;/th>
+&lt;th>Vision Reasoning&lt;/th>
+&lt;th>OCR&lt;/th>
+&lt;th>Text Knowledge&lt;/th>
+&lt;th>Text Reasoning&lt;/th>
+&lt;th>Code&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Early&lt;/td>
+&lt;td>0%&lt;/td>
+&lt;td>10%:90%&lt;/td>
+&lt;td>25.8&lt;/td>
+&lt;td>43.8&lt;/td>
+&lt;td>65.7&lt;/td>
+&lt;td>45.5&lt;/td>
+&lt;td>58.5&lt;/td>
+&lt;td>24.8&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Mid&lt;/td>
+&lt;td>50%&lt;/td>
+&lt;td>20%:80%&lt;/td>
+&lt;td>25.0&lt;/td>
+&lt;td>40.7&lt;/td>
+&lt;td>64.1&lt;/td>
+&lt;td>43.9&lt;/td>
+&lt;td>58.6&lt;/td>
+&lt;td>24.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Late&lt;/td>
+&lt;td>80%&lt;/td>
+&lt;td>50%:50%&lt;/td>
+&lt;td>24.2&lt;/td>
+&lt;td>39.0&lt;/td>
+&lt;td>61.5&lt;/td>
+&lt;td>43.1&lt;/td>
+&lt;td>57.8&lt;/td>
+&lt;td>24.0&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>结果显示，在训练早期加入少部分的多模态数据可以有效提高模型的表现。&lt;/p>
+&lt;h3 id="post-training">&lt;a href="#post-training" class="header-anchor">&lt;/a>Post-training
+&lt;/h3>&lt;p>Post-training 分为了 SFT 和 RL, SFT 阶段作者使用了合成的高质量数据，主要提升模型的交互式推理能力以及工具调用能力。为了解决传统 VLM 工具调用能力比较差且扩展性差的问题，Kimi-k2.5 提出了 Zero-Vision SFT, 其核心思想模型在预训练阶段已经完成了多模态对齐，因此我们可以仅使用纯文本 SFT 数据来激活 VLM 的视觉 agent 能力，具体做法就是将所有图像操作通过 IPython 的代码进行代理操作，这样视觉工具的调用就编程了程序化的图像处理指令。&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2.5/Kimi-k2.5-zero-vision-sft.png"
+width="1340"
+height="796"
+loading="lazy"
+alt="Performance of Vision RL on zero-vision SFT"
+class="gallery-image"
+data-flex-grow="168"
+data-flex-basis="404px"
+>&lt;/p>
+&lt;p>在 RL 阶段，作者基于 &lt;a class="link" href="https://maosong.website/p/notes-on-kimi-k1.5/" target="_blank" rel="noopener"
+>Kimi-k1.5&lt;/a> 提出的策略优化算法加入了一个 token-level clipping 机制来减少 off-policy divergence, 目标函数如下所示&lt;/p>
+$$
+\mathcal{L}(\theta)=\mathbb{E}_{x\sim\mathcal{D}}\left[\frac{1}{N}\sum_{j=1}^k\sum_{i=1}^{|y_i|}\mathrm{clip}\left(\log\frac{\pi_{\theta}(y_j^i\mid x, y_{j}^{0:i})}{\pi_{\mathrm{old}}(y_j^i\mid x, y_{j}^{0:i})},\alpha,\beta\right)(r(x, y_j) - \bar{r}(x)) - \tau\left(\log\frac{\pi_{\theta}(y_j^i\mid x, y_{j}^{0:i})}{\pi_{\mathrm{old}}(y_j^i\mid x, y_{j}^{0:i})}\right)^2\right]
+$$&lt;p>其中 $k$ 是针对每个回答 $x$ 的采样次数，$N=\sum_{j=1}^k|y_j|$ 是一个 batch 里总的 token 个数， $\alpha,\beta,\tau$ 为超参数，$\bar{r}(x)$ 是对 normalization 的估计，这里采用了 Kimi-K1.5 的 mean reward, 即 $\bar{r}(x)=1/k\sum_{j=1}^Kr(x,y_j)$. 这里的 clipping 机制与 PPO 不同的地方在于针对 log-ratio 进行 clipping, 而不依赖于 advantage 的计算。最终训练时使用了 &lt;a class="link" href="https://maosong.website/p/notes-on-moonlight/" target="_blank" rel="noopener"
+>Moonlight&lt;/a> 的 MuonClip 算法&lt;/p>
+&lt;p>对于 reward 的设计，Kimi-k2.5 也使用了基于规则和基于 reward model 的方式，前者针对答案可验证的任务，后者针对开放式的任务。&lt;/p>
+&lt;p>作者还构建了 length penalty 来提高模型的推理效率，作者发现 &lt;a class="link" href="https://maosong.website/p/notes-on-kimi-k1.5/" target="_blank" rel="noopener"
+>Kimi-k1.5&lt;/a> 和 &lt;a class="link" href="https://maosong.website/p/notes-on-kimi-k2/" target="_blank" rel="noopener"
+>Kimi-k2&lt;/a> 中的 length penalty 虽然可以生成更准确的 reasoning chain, 但是其很难泛化到更高的算力. 为了解决这个问题，作者提出了 &lt;strong>Toggle&lt;/strong> 策略，即在 inference-time scaling 和 budget-constrained optimization 两种模式之间进行切换优化，对应的 reward 定义为&lt;/p>
+$$
+\tilde{r}(x,y) = \begin{cases}
+r(x,y)*\mathbb{I}\{1/k\sum_{j=1}^kr(x,y_i&lt;\lambda \text{ or }|y_j|\leq \text{budget}(x)\},&amp;\text{if }\lfloor t/m\rfloor\mod 2 == 0\ (\text{Phase }0)\\
+r(x,y),&amp;\text{otherwise } (\text{Phase }1)
+\end{cases}
+$$&lt;p>其中 $\lambda, m$ 都是超参数。budget 基于正确回答的长度的 p 分位得到：&lt;/p>
+$$
+\text{budget}(x) = \text{Percentile}(\{|y_j| \mid r(x,y_j)=1, j\in[k]\},\rho)
+$$&lt;p>两种模式每隔 $m$ 个 iteration 切换一次：&lt;/p>
+&lt;ul>
+&lt;li>phase 0: budget limited phase, 训练模型在给定 token budget 下解决问题，减少 reasoning chain 长度&lt;/li>
+&lt;li>phase 1: scaling phase, 训练模型使用更多的算力来解决更复杂的问题，提高模型的智能程度&lt;/li>
+&lt;/ul>
+&lt;p>作者评估 Toogle 策略得到的结果如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2.5/Kimi-k2.5-toggle.png"
+width="1200"
+height="689"
+loading="lazy"
+alt="Performance of toggle strategy"
+class="gallery-image"
+data-flex-grow="174"
+data-flex-basis="417px"
+>&lt;/p>
+&lt;p>结果现实，使用 toggle 策略之后，模型的输出长度减少了 30% 左右，且模型的表现并没有明显下降。作者还发现，一些重复的 pattern 也随之降低，且 toggle 策略的泛化程度更高。&lt;/p>
+&lt;p>在 Zero-Vision SFT 的基础上，Kimi-k2.5 使用了 Joint multimodal RL 训练策略。现有的多模态 RL 存在的问题为：模型很容易忽略视觉输入而过度依赖于纯文本进行推理。为了解决这个问题，作者构建了需要视觉理解才能得到答案的任务来提高模型对于视觉信息的利用程度，这些任务覆盖三个 domain:&lt;/p>
+&lt;ol>
+&lt;li>visual grounding and counting: 定位和计数&lt;/li>
+&lt;li>chart and document understanding: 图表文档理解&lt;/li>
+&lt;li>vision-critical STEM problems: 需要图片来完成求解的数学物理问题&lt;/li>
+&lt;/ol>
+&lt;p>作者在 visual RL 之后评估了模型的表现，发现模型在 MMLU-Pro, GPQA-Diamond 等任务上的表现都有了提升，作者认为 visual RL 可以在不损害模型纯文本能力的情况下提高模型跨模态的泛化性&lt;/p>
+&lt;h3 id="agent-swarm">&lt;a href="#agent-swarm" class="header-anchor">&lt;/a>Agent Swarm
+&lt;/h3>&lt;p>Kimi-k2.5 的另一个重大改进为使用并行机制来提高模型的 agent 能力。传统的 agent 往往序列执行 reasoning, tool-use, 这限制了模型处理复杂任务的能力，Kimi-k2.5 通过 Agent Swarm 和 Parallel Agent Reinforcement Learning (PARL) 来解决这个问题，其核心思想就是并行，框架图如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2.5/Kimi-k2.5-agent-swarm.png"
+width="1354"
+height="729"
+loading="lazy"
+alt="Framework of Agent Swarm"
+class="gallery-image"
+data-flex-grow="185"
+data-flex-basis="445px"
+>&lt;/p>
+&lt;p>agent swarm 架构包含了一个 orchestrator 和若干个 subagent, 为了解决 agent swarm 的 reward 比较难以设置的问题，PARL 构建了三个不同 level 的 reward&lt;/p>
+$$
+r_{PARL}(x,y) = \lambda_1 r_{parallel} + \lambda_2r_{finish} + \lambda_3r_{perf}(x,y)
+$$&lt;p>其中 $r_{perf}$ 评估了 solution $y$ 的质量， $r_{parallel}$ 则是避免并行模式崩塌，从 multi-agent 崩塌为 single agent, $r_{finish}$ 则是评估模型的完成性。超参数 $\lambda_1,\lambda_2$ 随训练逐渐降为 0 来提高模型整体的表现。&lt;/p>
+&lt;p>作者还提出了使用 critical steps 来评估 parallel agent 的计算时间消耗，其计算公式如下&lt;/p>
+$$
+CriticalSteps = \sum_{i=1}^T\left(S_{main}^{(t)}+\max_iS_{sub,i}^{(t)}\right)
+$$&lt;p>其中 $T$ 为一个 episode 的时间，$S_{main}^{(t)}$ 为 orchestrator 在第 $t$ 步的运行时间， $S_{sub,i}^{(t)}$ 为第 i 个 subagent 的运行时间。&lt;/p>
+&lt;p>为了提高模型的并行能力，作者构建了一批广度优先搜索和深度优先搜索的数据，通过这些数据的构建，我们可以提高 orchestrator 的并行调用能力。&lt;/p>
+&lt;p>最终，PARL 的表现如下所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2.5/Kimi-k2.5-PARL.png"
+width="1501"
+height="441"
+loading="lazy"
+alt="Performance of PARL"
+class="gallery-image"
+data-flex-grow="340"
+data-flex-basis="816px"
+>&lt;/p>
+&lt;h3 id="infra">&lt;a href="#infra" class="header-anchor">&lt;/a>Infra
+&lt;/h3>&lt;p>Kimi-k2.5 的 infra 基于 &lt;a class="link" href="https://maosong.website/p/notes-on-kimi-k2/" target="_blank" rel="noopener"
+>Kimi-k2&lt;/a>, 作者主要强调了 decouple encoder process (DEP) 这一改进。之前的工作将 vision encoder 和 text embedding 都做为 PP 的第一个 stage, 但是由于 vision encoder 对不同输入的处理时间不同，这个 stage 的算历和内存分配随输入变化比较大。为了解决这个问题，作者提出了 DEP, 包含三个 stage 来提高训练效率:&lt;/p>
+&lt;ol>
+&lt;li>balanced vision forward: 由于 vision encoder 比较小 (400M), 因此作者将 vision encoder 复制到所有 GPU 上，然后根据负载来将 visual data 分配到不同的 GPU 上进行处理，这个阶段不保存中间激活值，处理完毕之后所有的结果作为 PP Stage0 的输入&lt;/li>
+&lt;li>backbone training: 正常进行训练，与 LLM 的训练优化一致&lt;/li>
+&lt;li>vision recomputation &amp;amp; backward: 这个阶段，我们重新计算 vision encoder 的 forward pass, 然后再对 vision encoder 进行反向传播&lt;/li>
+&lt;/ol>
+&lt;p>通过 DEP, Kimi-k2.5 的训练效率达到了 Kimi-k2 的 90%.&lt;/p>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;p>首先是 Kimi-k2.5 在 general &amp;amp; reasoning 类任务上的表现，可以看到，Kimi-k2.5 超过了 DeeoSeek-V3.2 的表现，&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Benchmark&lt;/th>
+&lt;th>Kimi K2.5&lt;/th>
+&lt;th>Claude Opus 4.5&lt;/th>
+&lt;th>GPT-5.2 (xhigh)&lt;/th>
+&lt;th>Gemini 3 Pro&lt;/th>
+&lt;th>DeepSeek-V3.2&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>HLE-Full&lt;/td>
+&lt;td>30.1&lt;/td>
+&lt;td>30.8&lt;/td>
+&lt;td>34.5&lt;/td>
+&lt;td>37.5&lt;/td>
+&lt;td>25.1†&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>HLE-Full w/ tools&lt;/td>
+&lt;td>50.2&lt;/td>
+&lt;td>43.2&lt;/td>
+&lt;td>45.5&lt;/td>
+&lt;td>45.8&lt;/td>
+&lt;td>40.8†&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>AIME 2025&lt;/td>
+&lt;td>96.1&lt;/td>
+&lt;td>92.8&lt;/td>
+&lt;td>100&lt;/td>
+&lt;td>95.0&lt;/td>
+&lt;td>93.1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>HMMT 2025 (Feb)&lt;/td>
+&lt;td>95.4&lt;/td>
+&lt;td>92.9*&lt;/td>
+&lt;td>99.4&lt;/td>
+&lt;td>97.3*&lt;/td>
+&lt;td>92.5&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>IMO-AnswerBench&lt;/td>
+&lt;td>81.8&lt;/td>
+&lt;td>78.5*&lt;/td>
+&lt;td>86.3&lt;/td>
+&lt;td>83.1*&lt;/td>
+&lt;td>78.3&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GPQA-Diamond&lt;/td>
+&lt;td>87.6&lt;/td>
+&lt;td>87.0&lt;/td>
+&lt;td>92.4&lt;/td>
+&lt;td>91.9&lt;/td>
+&lt;td>82.4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MMLU-Pro&lt;/td>
+&lt;td>87.1&lt;/td>
+&lt;td>89.3*&lt;/td>
+&lt;td>86.7*&lt;/td>
+&lt;td>90.1&lt;/td>
+&lt;td>85.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>SimpleQA Verified&lt;/td>
+&lt;td>36.9&lt;/td>
+&lt;td>44.1&lt;/td>
+&lt;td>38.9&lt;/td>
+&lt;td>72.1&lt;/td>
+&lt;td>27.5&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>AdvancedIF&lt;/td>
+&lt;td>75.6&lt;/td>
+&lt;td>63.1&lt;/td>
+&lt;td>81.1&lt;/td>
+&lt;td>74.7&lt;/td>
+&lt;td>58.8&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LongBench v2&lt;/td>
+&lt;td>61.0&lt;/td>
+&lt;td>64.4*&lt;/td>
+&lt;td>54.5*&lt;/td>
+&lt;td>68.2*&lt;/td>
+&lt;td>59.8*&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>接下来是模型在 coding 任务上的表现&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Benchmark&lt;/th>
+&lt;th>Kimi K2.5&lt;/th>
+&lt;th>Claude Opus 4.5&lt;/th>
+&lt;th>GPT-5.2 (xhigh)&lt;/th>
+&lt;th>Gemini 3 Pro&lt;/th>
+&lt;th>DeepSeek-V3.2&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>SWE-Bench Verified&lt;/td>
+&lt;td>76.8&lt;/td>
+&lt;td>80.9&lt;/td>
+&lt;td>80.0&lt;/td>
+&lt;td>76.2&lt;/td>
+&lt;td>73.1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>SWE-Bench Pro (public)&lt;/td>
+&lt;td>50.7&lt;/td>
+&lt;td>55.4*&lt;/td>
+&lt;td>55.6&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>SWE-Bench Multilingual&lt;/td>
+&lt;td>73.0&lt;/td>
+&lt;td>77.5&lt;/td>
+&lt;td>72.0&lt;/td>
+&lt;td>65.0&lt;/td>
+&lt;td>70.2&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Terminal Bench 2.0&lt;/td>
+&lt;td>50.8&lt;/td>
+&lt;td>59.3&lt;/td>
+&lt;td>54.0&lt;/td>
+&lt;td>54.2&lt;/td>
+&lt;td>46.4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>PaperBench (CodeDev)&lt;/td>
+&lt;td>63.5&lt;/td>
+&lt;td>72.9*&lt;/td>
+&lt;td>63.7*&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>47.1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>CyberGym&lt;/td>
+&lt;td>41.3&lt;/td>
+&lt;td>50.6&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>39.9*&lt;/td>
+&lt;td>17.3*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>SciCode&lt;/td>
+&lt;td>48.7&lt;/td>
+&lt;td>49.5&lt;/td>
+&lt;td>52.1&lt;/td>
+&lt;td>56.1&lt;/td>
+&lt;td>38.9&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>OIBench (cpp)&lt;/td>
+&lt;td>57.4&lt;/td>
+&lt;td>54.6*&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>68.5*&lt;/td>
+&lt;td>54.7*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LiveCodeBench (v6)&lt;/td>
+&lt;td>85.0&lt;/td>
+&lt;td>82.2*&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>87.4*&lt;/td>
+&lt;td>83.3&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>在 agent 任务上的表现&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Benchmark&lt;/th>
+&lt;th>Kimi K2.5&lt;/th>
+&lt;th>Claude Opus 4.5&lt;/th>
+&lt;th>GPT-5.2 (xhigh)&lt;/th>
+&lt;th>Gemini 3 Pro&lt;/th>
+&lt;th>DeepSeek-V3.2&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>BrowseComp&lt;/td>
+&lt;td>60.6&lt;/td>
+&lt;td>37.0&lt;/td>
+&lt;td>65.8&lt;/td>
+&lt;td>37.8&lt;/td>
+&lt;td>51.4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>BrowseComp (w/ ctx manage)&lt;/td>
+&lt;td>74.9&lt;/td>
+&lt;td>57.8&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>59.2&lt;/td>
+&lt;td>67.6&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>BrowseComp (Agent Swarm)&lt;/td>
+&lt;td>78.4&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>WideSearch&lt;/td>
+&lt;td>72.7&lt;/td>
+&lt;td>76.2*&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>57.0&lt;/td>
+&lt;td>32.5*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>WideSearch (Agent Swarm)&lt;/td>
+&lt;td>79.0&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>DeepSearchQA&lt;/td>
+&lt;td>77.1&lt;/td>
+&lt;td>76.1*&lt;/td>
+&lt;td>71.3*&lt;/td>
+&lt;td>63.2*&lt;/td>
+&lt;td>60.9*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>FinSearchCompT2&amp;amp;T3&lt;/td>
+&lt;td>67.8&lt;/td>
+&lt;td>66.2*&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>49.9&lt;/td>
+&lt;td>59.1*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Seal-0&lt;/td>
+&lt;td>57.4&lt;/td>
+&lt;td>47.7*&lt;/td>
+&lt;td>45.0&lt;/td>
+&lt;td>45.5*&lt;/td>
+&lt;td>49.5*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>GDPVal-AA&lt;/td>
+&lt;td>41.0&lt;/td>
+&lt;td>45.0&lt;/td>
+&lt;td>48.0&lt;/td>
+&lt;td>35.0&lt;/td>
+&lt;td>34.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>OSWorld-Verified&lt;/td>
+&lt;td>63.3&lt;/td>
+&lt;td>66.3&lt;/td>
+&lt;td>8.6&lt;/td>
+&lt;td>20.7&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>WebArena&lt;/td>
+&lt;td>58.9&lt;/td>
+&lt;td>63.4&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>多模态表现&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Benchmark&lt;/th>
+&lt;th>Kimi K2.5&lt;/th>
+&lt;th>Claude Opus 4.5&lt;/th>
+&lt;th>GPT-5.2 (xhigh)&lt;/th>
+&lt;th>Gemini 3 Pro&lt;/th>
+&lt;th>Qwen3-VL-235B-A22B&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;strong>Image&lt;/strong>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MMMU-Pro&lt;/td>
+&lt;td>78.5&lt;/td>
+&lt;td>74.0&lt;/td>
+&lt;td>79.5*&lt;/td>
+&lt;td>81.0&lt;/td>
+&lt;td>69.3&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MMMU (val)&lt;/td>
+&lt;td>84.3&lt;/td>
+&lt;td>80.7&lt;/td>
+&lt;td>86.7*&lt;/td>
+&lt;td>87.5*&lt;/td>
+&lt;td>80.6&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>CharXiv (RQ)&lt;/td>
+&lt;td>77.5&lt;/td>
+&lt;td>67.2*&lt;/td>
+&lt;td>82.1&lt;/td>
+&lt;td>81.4&lt;/td>
+&lt;td>66.1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MathVision&lt;/td>
+&lt;td>84.2&lt;/td>
+&lt;td>77.1*&lt;/td>
+&lt;td>83.0&lt;/td>
+&lt;td>86.1*&lt;/td>
+&lt;td>74.6&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MathVista (mini)&lt;/td>
+&lt;td>90.1&lt;/td>
+&lt;td>80.2*&lt;/td>
+&lt;td>82.8*&lt;/td>
+&lt;td>89.8*&lt;/td>
+&lt;td>85.8&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>SimpleVQA&lt;/td>
+&lt;td>71.2&lt;/td>
+&lt;td>69.7*&lt;/td>
+&lt;td>55.8*&lt;/td>
+&lt;td>69.7*&lt;/td>
+&lt;td>56.8*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>WorldVQA&lt;/td>
+&lt;td>46.3&lt;/td>
+&lt;td>36.8&lt;/td>
+&lt;td>28.0&lt;/td>
+&lt;td>47.4&lt;/td>
+&lt;td>23.5&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>ZeroBench&lt;/td>
+&lt;td>9&lt;/td>
+&lt;td>3*&lt;/td>
+&lt;td>9*&lt;/td>
+&lt;td>8*&lt;/td>
+&lt;td>4*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>ZeroBench w/ tools&lt;/td>
+&lt;td>11&lt;/td>
+&lt;td>9*&lt;/td>
+&lt;td>7*&lt;/td>
+&lt;td>12*&lt;/td>
+&lt;td>3*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>BabyVision&lt;/td>
+&lt;td>36.5&lt;/td>
+&lt;td>14.2&lt;/td>
+&lt;td>34.4&lt;/td>
+&lt;td>49.7&lt;/td>
+&lt;td>22.2&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>BLINK&lt;/td>
+&lt;td>78.9&lt;/td>
+&lt;td>68.8*&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>78.7*&lt;/td>
+&lt;td>68.9&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MMVP&lt;/td>
+&lt;td>87.0&lt;/td>
+&lt;td>80.0*&lt;/td>
+&lt;td>83.0*&lt;/td>
+&lt;td>90.0*&lt;/td>
+&lt;td>84.3&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>OmniDocBench 1.5&lt;/td>
+&lt;td>88.8&lt;/td>
+&lt;td>87.7*&lt;/td>
+&lt;td>85.7&lt;/td>
+&lt;td>88.5&lt;/td>
+&lt;td>82.0*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>OCRBench&lt;/td>
+&lt;td>92.3&lt;/td>
+&lt;td>86.5*&lt;/td>
+&lt;td>80.7*&lt;/td>
+&lt;td>90.3*&lt;/td>
+&lt;td>87.5&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>InfoVQA (test)&lt;/td>
+&lt;td>92.6&lt;/td>
+&lt;td>76.9*&lt;/td>
+&lt;td>84*&lt;/td>
+&lt;td>57.2*&lt;/td>
+&lt;td>89.5&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;strong>Video&lt;/strong>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;td>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>VideoMMMU&lt;/td>
+&lt;td>86.6&lt;/td>
+&lt;td>84.4*&lt;/td>
+&lt;td>85.9&lt;/td>
+&lt;td>87.6&lt;/td>
+&lt;td>80.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MMVU&lt;/td>
+&lt;td>80.4&lt;/td>
+&lt;td>77.3*&lt;/td>
+&lt;td>80.8*&lt;/td>
+&lt;td>77.5*&lt;/td>
+&lt;td>71.1&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>MotionBench&lt;/td>
+&lt;td>70.4&lt;/td>
+&lt;td>60.3&lt;/td>
+&lt;td>64.8&lt;/td>
+&lt;td>70.3&lt;/td>
+&lt;td>-&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Video-MME&lt;/td>
+&lt;td>87.4&lt;/td>
+&lt;td>66.0*&lt;/td>
+&lt;td>86.0*&lt;/td>
+&lt;td>88.4*&lt;/td>
+&lt;td>79.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LongVideoBench&lt;/td>
+&lt;td>79.8&lt;/td>
+&lt;td>67.2*&lt;/td>
+&lt;td>76.5*&lt;/td>
+&lt;td>77.7*&lt;/td>
+&lt;td>65.6*&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LVBench&lt;/td>
+&lt;td>75.9&lt;/td>
+&lt;td>57.3&lt;/td>
+&lt;td>-&lt;/td>
+&lt;td>73.5*&lt;/td>
+&lt;td>63.6&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>我们这里基于模型在不同类别任务上的排名来进行可视化，结果如下&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2.5/Kimi-k2.5-rank-frequency.png"
+width="1590"
+height="790"
+loading="lazy"
+alt="Rank performance of difference models"
+class="gallery-image"
+data-flex-grow="201"
+data-flex-basis="483px"
+>&lt;/p>
+&lt;p>从结果可以看出，Kimi-K2.5 的 agent 能力达到了 SOTA 级别，其多模态能力也比较强。&lt;/p>
+&lt;p>与 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v3.2/" target="_blank" rel="noopener"
+>DeepSeek-V3.2&lt;/a> 一样，作者也对比了不同模型的推理效率，结果如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-kimi-k2.5/Kimi-k2.5-reasoning-efficiency.png"
+width="783"
+height="262"
+loading="lazy"
+alt="Reasoning efficiency of Kimi K2.5"
+class="gallery-image"
+data-flex-grow="298"
+data-flex-basis="717px"
+>&lt;/p>
+&lt;p>可以看到，相比与 Kimi-K2, Kimi-K2.5 通过在 RL 层面进行优化，降低了输出长度，但是相比与 DeepSeel-V3.2 和 Gemini3.0 Pro 之间还存在一定差距。&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>在本文中，作者提出了 Kimi-k2.5， 一个多模态的 agent model, Kimi-k2.5 集成了 Kimi-k2 和 Kimi-VL 的能力，扩展了模型的 agent 能力。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://huggingface.co/moonshotai/Kimi-K2.5" target="_blank" rel="noopener"
+>huggingface&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://arxiv.org/abs/2602.02276" target="_blank" rel="noopener"
+>arxiv&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

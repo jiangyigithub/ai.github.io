@@ -1,0 +1,310 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Linear Attention on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/linear-attention/</link><description>Recent content in Linear Attention on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/linear-attention/index.xml" rel="self" type="application/rss+xml"/><item><title>Notes on Qwen3-Next</title><link>https://github.com/jiangyigithub/ai.github.io/p/notes-on-qwen3-next/</link><pubDate>Fri, 23 Jan 2026 10:29:56 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/notes-on-qwen3-next/</guid><description>&lt;h2 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h2>&lt;p>当前大语言模型在性能与效率上面临双重挑战：纯 Softmax 注意力计算成本高，而纯线性注意力则性能不足。Qwen3-Next 尝试通过&lt;strong>混合注意力机制&lt;/strong>解决这一矛盾，同时结合 MoE 架构与多项训练优化策略，实现在保持高性能的同时大幅提升训练与推理效率。&lt;/p>
+&lt;p>Qwen3-Next 包含三个模型：&lt;/p>
+&lt;ol>
+&lt;li>Qwen3-Next-80B-A3B-Base&lt;/li>
+&lt;li>Qwen3-Next-80B-A3B-Instruct&lt;/li>
+&lt;li>Qwen3-Next-80B-A3B-Thinking&lt;/li>
+&lt;/ol>
+&lt;h2 id="method">&lt;a href="#method" class="header-anchor">&lt;/a>Method
+&lt;/h2>&lt;h3 id="architecture">&lt;a href="#architecture" class="header-anchor">&lt;/a>Architecture
+&lt;/h3>&lt;p>模型架构如下图所示&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-qwen3-next/Qwen3-Next-architecture.png"
+width="2204"
+height="2348"
+loading="lazy"
+alt="architecture of Qwen3-Next"
+class="gallery-image"
+data-flex-grow="93"
+data-flex-basis="225px"
+>&lt;/p>
+&lt;h3 id="hybrid-attention">&lt;a href="#hybrid-attention" class="header-anchor">&lt;/a>Hybrid Attention
+&lt;/h3>&lt;p>作者首先总结了 linear attention 和 softmax attention 各自的优缺点。&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>&lt;/th>
+&lt;th>pros&lt;/th>
+&lt;th>cons&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>linear attention&lt;/td>
+&lt;td>fast&lt;/td>
+&lt;td>low performance&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>softmax attention&lt;/td>
+&lt;td>slow&lt;/td>
+&lt;td>high performance&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>因此，作者的动机就是是结合 linear attention 与 softmax attention, 在局部利用 linear attention 的高效性来提高训练和推理效率，在关键部分使用 softmax attention 来提高模型的能力。 这种混合注意力机制之前也有很多模型采用，比如 &lt;a class="link" href="https://maosong.website/p/notes-on-minimax-01/" target="_blank" rel="noopener"
+>MiniMax-01&lt;/a> 等。最终 Qwen3-Next 使用了 Gated DeltaNet+Gated Attention 的混合注意力机制，模型的 transformer layers 按照 4 个为一组，前三层使用 Gated DeltaNet, 第四层使用 Gated Attention.&lt;/p>
+&lt;p>下面是一些细节：&lt;/p>
+&lt;ol>
+&lt;li>Gated DeltaNet 相比于 &lt;a class="link" href="https://maosong.website/p/notes-on-rnope-swa/" target="_blank" rel="noopener"
+>SWA&lt;/a> 和 Mamba2, 其 in-context learning 能力更强&lt;/li>
+&lt;li>对于 softmax attention:
+&lt;ol>
+&lt;li>使用了 &lt;a class="link" href="https://maosong.website/p/notes-on-gated-attention/" target="_blank" rel="noopener"
+>Gated Attention&lt;/a> 提出的 gating 机制来解决 massive activation 和 attention sink 问题&lt;/li>
+&lt;li>将 attention head 的 dimension 从 128 提高到 256&lt;/li>
+&lt;li>使用了和 &lt;a class="link" href="https://maosong.website/p/notes-on-deepseek-v3/" target="_blank" rel="noopener"
+>DeepSeek-V3&lt;/a> 类似的 partial RoPE 机制，仅对前 $25\%$ 的元素进行旋转&lt;/li>
+&lt;/ol>
+&lt;/li>
+&lt;/ol>
+&lt;h3 id="moe">&lt;a href="#moe" class="header-anchor">&lt;/a>MoE
+&lt;/h3>&lt;ul>
+&lt;li>1 个共享专家，512 个路由专家，其中激活专家个数为 10 个。&lt;/li>
+&lt;li>对于 MoE router 的参数，作者还进行了 normalization 来保证每个专家被选择的概率相同。&lt;/li>
+&lt;li>与 &lt;a class="link" href="https://maosong.website/p/notes-on-qwen3/" target="_blank" rel="noopener"
+>Qwen3&lt;/a> 一致，Qwen3-Next 也是用了 &lt;a class="link" href="https://maosong.website/p/notes-on-global-batch-load-balancing/" target="_blank" rel="noopener"
+>Global-batch load balancing&lt;/a> 策略，在保持激活专家数不变的情况下，通过提高总专家个数来降低训练损失。&lt;/li>
+&lt;/ul>
+&lt;h3 id="normalization-and-training">&lt;a href="#normalization-and-training" class="header-anchor">&lt;/a>Normalization and Training
+&lt;/h3>&lt;ul>
+&lt;li>使用 Gemma 提出的 Zero-Centered RMSNorm 以及 weight decay 来避免过大的权重出现&lt;/li>
+&lt;li>为了提高数据使用效率，作者还使用了 MTP 策略来提高训练效率，模型表现以及 Speculative decoding 的接受率。&lt;/li>
+&lt;li>预训练时，Qwen3-Next 使用了&lt;strong>15T&lt;/strong> token 进行训练，训练时间相比于 Qwen3-30B-A3B 有了大幅度的提升&lt;/li>
+&lt;/ul>
+&lt;h2 id="experiments">&lt;a href="#experiments" class="header-anchor">&lt;/a>Experiments
+&lt;/h2>&lt;h3 id="efficiency">&lt;a href="#efficiency" class="header-anchor">&lt;/a>Efficiency
+&lt;/h3>&lt;p>下图是 Qwen3-Next 与 Qwen3-32B 模型的训练效率对比&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-qwen3-next/Qwen3-Next-pre-training-efficiency.png"
+width="2860"
+height="1114"
+loading="lazy"
+alt="Pre-training efficiency of Qwen3-Next"
+class="gallery-image"
+data-flex-grow="256"
+data-flex-basis="616px"
+>&lt;/p>
+&lt;p>从结果可以看出，相比于 Qwen3-32B, Qwen3-Next 只用了 $9.3\%$ 的算力就达到了更强的表现。&lt;/p>
+&lt;p>并且，在 inference 阶段，由于使用了 linear attention, Qwen3-Next 的效率也更高，下面是 Qwen3-Next 相比于 Qwen3-32B 的效率提升&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>&lt;/th>
+&lt;th>4K&lt;/th>
+&lt;th>32K&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Prefilling&lt;/td>
+&lt;td>$7\times$&lt;/td>
+&lt;td>$10\times$&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Decoding&lt;/td>
+&lt;td>$4\times$&lt;/td>
+&lt;td>$10\times$&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="performance">&lt;a href="#performance" class="header-anchor">&lt;/a>Performance
+&lt;/h3>&lt;p>下面是 Qwen3-Next-Base 的表现&lt;/p>
+&lt;p>&lt;img src="https://github.com/jiangyigithub/ai.github.io/jiangyigithub/ai.github.io/p/notes-on-qwen3-next/Qwen3-Next-base-performance.png"
+width="1288"
+height="844"
+loading="lazy"
+alt="Performance of Qwen3-Next-Base"
+class="gallery-image"
+data-flex-grow="152"
+data-flex-basis="366px"
+>&lt;/p>
+&lt;p>可以看到，Qwen3-Next-Base 在多个 Benchmark 上的表现仅次于 Qwen3-235B-A22B&lt;/p>
+&lt;p>Qwen3-Next-Instruct 的表现如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Benchmark&lt;/th>
+&lt;th>Qwen3-Next-80B-A3B-Instruct&lt;/th>
+&lt;th>Qwen3-235B-A22B-Instruct-2507&lt;/th>
+&lt;th>Qwen3-32B Non-thinking&lt;/th>
+&lt;th>Qwen3-30B-A3B-Instruct-2507&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>SuperGPQA&lt;/td>
+&lt;td>58.8&lt;/td>
+&lt;td>&lt;strong>62.6&lt;/strong>&lt;/td>
+&lt;td>43.2&lt;/td>
+&lt;td>53.4&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>AIME25&lt;/td>
+&lt;td>69.5&lt;/td>
+&lt;td>&lt;strong>70.3&lt;/strong>&lt;/td>
+&lt;td>20.2&lt;/td>
+&lt;td>61.3&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LiveCodeBench v6&lt;/td>
+&lt;td>&lt;strong>56.6&lt;/strong>&lt;/td>
+&lt;td>51.8&lt;/td>
+&lt;td>29.1&lt;/td>
+&lt;td>43.2&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Arena-Hard v2&lt;/td>
+&lt;td>&lt;strong>82.7&lt;/strong>&lt;/td>
+&lt;td>79.2&lt;/td>
+&lt;td>34.1&lt;/td>
+&lt;td>69.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LiveBench&lt;/td>
+&lt;td>&lt;strong>75.8&lt;/strong>&lt;/td>
+&lt;td>75.4&lt;/td>
+&lt;td>59.8&lt;/td>
+&lt;td>69.0&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>Qwen3-Next-Instruct 的长文本表现（RULER Benchmark）如下&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Model&lt;/th>
+&lt;th>Avg.&lt;/th>
+&lt;th>4K&lt;/th>
+&lt;th>8K&lt;/th>
+&lt;th>16K&lt;/th>
+&lt;th>32K&lt;/th>
+&lt;th>64K&lt;/th>
+&lt;th>96k&lt;/th>
+&lt;th>128K&lt;/th>
+&lt;th>192k&lt;/th>
+&lt;th>256k&lt;/th>
+&lt;th>384k&lt;/th>
+&lt;th>512k&lt;/th>
+&lt;th>640k&lt;/th>
+&lt;th>768k&lt;/th>
+&lt;th>896k&lt;/th>
+&lt;th>1M&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Qwen3-30B-A3B-Instruct-2507&lt;/td>
+&lt;td>86.8&lt;/td>
+&lt;td>98.0&lt;/td>
+&lt;td>96.7&lt;/td>
+&lt;td>96.9&lt;/td>
+&lt;td>97.2&lt;/td>
+&lt;td>93.4&lt;/td>
+&lt;td>91.0&lt;/td>
+&lt;td>89.1&lt;/td>
+&lt;td>89.8&lt;/td>
+&lt;td>82.5&lt;/td>
+&lt;td>83.6&lt;/td>
+&lt;td>78.4&lt;/td>
+&lt;td>79.7&lt;/td>
+&lt;td>77.6&lt;/td>
+&lt;td>75.7&lt;/td>
+&lt;td>72.8&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Qwen3-235B-A22B-Instruct-2507&lt;/td>
+&lt;td>92.5&lt;/td>
+&lt;td>98.5&lt;/td>
+&lt;td>97.6&lt;/td>
+&lt;td>96.9&lt;/td>
+&lt;td>97.3&lt;/td>
+&lt;td>95.8&lt;/td>
+&lt;td>94.9&lt;/td>
+&lt;td>93.9&lt;/td>
+&lt;td>94.5&lt;/td>
+&lt;td>91.0&lt;/td>
+&lt;td>92.2&lt;/td>
+&lt;td>90.9&lt;/td>
+&lt;td>87.8&lt;/td>
+&lt;td>84.8&lt;/td>
+&lt;td>86.5&lt;/td>
+&lt;td>84.5&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Qwen3-Next-80B-A3B-Instruct&lt;/td>
+&lt;td>91.8&lt;/td>
+&lt;td>98.5&lt;/td>
+&lt;td>99.0&lt;/td>
+&lt;td>98.0&lt;/td>
+&lt;td>98.7&lt;/td>
+&lt;td>97.6&lt;/td>
+&lt;td>95.0&lt;/td>
+&lt;td>96.0&lt;/td>
+&lt;td>94.0&lt;/td>
+&lt;td>93.5&lt;/td>
+&lt;td>91.7&lt;/td>
+&lt;td>86.9&lt;/td>
+&lt;td>85.5&lt;/td>
+&lt;td>81.7&lt;/td>
+&lt;td>80.3&lt;/td>
+&lt;td>80.3&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>可以看到， Qwen3-Next-Instruct 在 1M 长度范围内保持稳定性能，整体平均得分 91.8，接近 Qwen3-235B（92.5）。&lt;/p>
+&lt;p>Qwen3-Next-Thinking 的表现如下表所示&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>&lt;strong>Benchmark&lt;/strong>&lt;/th>
+&lt;th>&lt;strong>Qwen3-Next-80B-A3B-Thinking&lt;/strong>&lt;/th>
+&lt;th>&lt;strong>Gemini-2.5-Flash Thinking&lt;/strong>&lt;/th>
+&lt;th>&lt;strong>Qwen3-32B Thinking&lt;/strong>&lt;/th>
+&lt;th>&lt;strong>Qwen3-30B-A3B-Thinking2507&lt;/strong>&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>SuperGPQA&lt;/td>
+&lt;td>60.8&lt;/td>
+&lt;td>57.8&lt;/td>
+&lt;td>54.1&lt;/td>
+&lt;td>56.8&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>AIME25&lt;/td>
+&lt;td>87.8&lt;/td>
+&lt;td>72.0&lt;/td>
+&lt;td>72.9&lt;/td>
+&lt;td>85.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LiveCodeBench v6&lt;/td>
+&lt;td>68.7&lt;/td>
+&lt;td>61.2&lt;/td>
+&lt;td>60.6&lt;/td>
+&lt;td>66.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Arena-Hard v2&lt;/td>
+&lt;td>62.3&lt;/td>
+&lt;td>56.7&lt;/td>
+&lt;td>48.4&lt;/td>
+&lt;td>56.0&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>LiveBench&lt;/td>
+&lt;td>76.6&lt;/td>
+&lt;td>74.3&lt;/td>
+&lt;td>74.9&lt;/td>
+&lt;td>76.8&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>可以看到，Qwen3-Next-Thinking 的表现在除了 Livebench 之外的三个 Benchmark 均达到了 SOTA&lt;/p>
+&lt;h2 id="conclusion">&lt;a href="#conclusion" class="header-anchor">&lt;/a>Conclusion
+&lt;/h2>&lt;p>Qwen3-Next 通过&lt;strong>混合注意力架构&lt;/strong>与&lt;strong>精细化 MoE 设计&lt;/strong>，在训练与推理效率上实现突破性提升。其仅以较小计算代价达到接近超大模型性能的表现，为下一代高效大语言模型的设计提供了重要参考。&lt;/p>
+&lt;h2 id="references">&lt;a href="#references" class="header-anchor">&lt;/a>References
+&lt;/h2>&lt;ul>
+&lt;li>&lt;a class="link" href="https://qwen.ai/blog?id=4074cca80393150c248e508aa62983f9cb7d27cd&amp;amp;from=research.latest-advancements-list" target="_blank" rel="noopener"
+>Qwen3-Next: Towards Ultimate Training &amp;amp; Inference Efficiency&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

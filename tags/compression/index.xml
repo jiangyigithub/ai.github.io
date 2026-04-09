@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Compression on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/compression/</link><description>Recent content in Compression on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/compression/index.xml" rel="self" type="application/rss+xml"/><item><title>compression is intelligence</title><link>https://github.com/jiangyigithub/ai.github.io/p/compression-is-intelligence/</link><pubDate>Thu, 06 Mar 2025 17:57:51 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/compression-is-intelligence/</guid><description>&lt;p>我们知道，基于decoder-only transformer的LLM的训练目标是最小化next-token-prediction loss，即给定sequence $x=(x_1,\dots, x_n)\in D$，我们的目标为求解以下优化问题&lt;/p>
+$$
+\min_{\theta} -\sum_{x\in D}\log P_{\theta}(x_i|x_1,\dots,x_{i-1})
+$$&lt;p>这里 $\theta$ 就是我们的模型参数，$D$ 是我们的训练数据集。&lt;/p>
+&lt;p>无数模型通过实际效果告诉我们，这个优化目标可以很好地训练出具有良好泛化能力的大语言模型。但是，我们的问题是，为什么这个优化目标可以训练出智能的模型？ 本文将从压缩即智能的角度来理解这个问题。&lt;/p>
+&lt;h1 id="压缩即智能">&lt;a href="#%e5%8e%8b%e7%bc%a9%e5%8d%b3%e6%99%ba%e8%83%bd" class="header-anchor">&lt;/a>压缩即智能
+&lt;/h1>&lt;h2 id="一个例子">&lt;a href="#%e4%b8%80%e4%b8%aa%e4%be%8b%e5%ad%90" class="header-anchor">&lt;/a>一个例子
+&lt;/h2>&lt;p>我们首先来看一个简单的例子。给定如下三个0-1字符串：&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-fallback" data-lang="fallback">&lt;span class="line">&lt;span class="cl">01010101010101010101
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">01001000100001000001
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">01101000101010100101
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>我们该如何描述这三个字符串的规律？显然，第一个字符串最简单，它是&lt;code>01&lt;/code>字符串重复得到的结果；第二个字符串稍微复杂一些，它在每个&lt;code>1&lt;/code>之前插入重复次数的&lt;code>0&lt;/code>；第三个字符串则最复杂，它是我随手写的一个字符串，基本没有任何规律，因此，我们只能直接存储这个字符串。&lt;/p>
+&lt;p>这个例子告诉我们，一个字符串的规律越简单，我们越容易描述它，因此，我们越容易压缩它。实际上，大语言模型做的也是类似的事情。它们的核心思想是，压缩即智能。&lt;/p>
+&lt;h2 id="heading">&lt;a href="#heading" class="header-anchor">&lt;/a>
+&lt;/h2>&lt;h1 id="结论">&lt;a href="#%e7%bb%93%e8%ae%ba" class="header-anchor">&lt;/a>结论
+&lt;/h1>&lt;p>本文中，我们从压缩即智能的角度来理解大语言模型的原理。我们发现，大语言模型的next-token-prediction其实就是压缩。我们通过压缩让大语言模型学习到了语言中的规律，从而让模型具有了智能。&lt;/p>
+&lt;h1 id="参考文献">&lt;a href="#%e5%8f%82%e8%80%83%e6%96%87%e7%8c%ae" class="header-anchor">&lt;/a>参考文献
+&lt;/h1></description></item></channel></rss>

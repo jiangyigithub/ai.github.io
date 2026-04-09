@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Linux on Jiang Yi(姜祎)'s Homepage</title><link>https://github.com/jiangyigithub/ai.github.io/tags/linux/</link><description>Recent content in Linux on Jiang Yi(姜祎)'s Homepage</description><generator>Hugo -- gohugo.io</generator><language>en</language><lastBuildDate>Wed, 08 Apr 2026 21:44:44 +0800</lastBuildDate><atom:link href="https://github.com/jiangyigithub/ai.github.io/tags/linux/index.xml" rel="self" type="application/rss+xml"/><item><title>Git authentication error</title><link>https://github.com/jiangyigithub/ai.github.io/p/git-authentication-error/</link><pubDate>Sat, 22 Feb 2025 10:51:27 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/git-authentication-error/</guid><description>&lt;h1 id="问题描述">&lt;a href="#%e9%97%ae%e9%a2%98%e6%8f%8f%e8%bf%b0" class="header-anchor">&lt;/a>问题描述
+&lt;/h1>&lt;p>在使用 &lt;code>git clone&lt;/code> 命令时，可能会遇到认证错误。&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">&lt;span class="line">&lt;span class="cl">&amp;gt; git clone https://github.com/user-name/some-repository.git
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">正克隆到 &lt;span class="s1">&amp;#39;some-repository&amp;#39;&lt;/span>...
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">remote: Invalid username or password.
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">fatal: &lt;span class="s1">&amp;#39;https://github.com/user-name/some-repository.git/&amp;#39;&lt;/span> 鉴权失败
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h1 id="问题原因解决方案">&lt;a href="#%e9%97%ae%e9%a2%98%e5%8e%9f%e5%9b%a0%e8%a7%a3%e5%86%b3%e6%96%b9%e6%a1%88" class="header-anchor">&lt;/a>问题原因&amp;amp;解决方案
+&lt;/h1>&lt;p>本地git配置问题，需要重新认证本地和GitHub的连接。一般是因为本地Git无法和Github的SSH服务器连接。&lt;/p>
+&lt;h2 id="方案1ssh">&lt;a href="#%e6%96%b9%e6%a1%881ssh" class="header-anchor">&lt;/a>方案1：SSH
+&lt;/h2>&lt;p>本方法将Github视为一个SSH服务器，本机通过SSH连接到Github。该方法主要需要在本地生成SSH密钥，并将其添加到Github的SSH密钥列表中。最后通过SSH的方式进行Git操作&lt;/p>
+&lt;ol>
+&lt;li>本地生成SSH秘钥&lt;/li>
+&lt;/ol>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">&lt;span class="line">&lt;span class="cl">ssh-keygen
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>默认的秘钥地址是&lt;code>~/.ssh/id_rsa&lt;/code>，对应的公钥就是&lt;code>~/.ssh/id_rsa.pub&lt;/code>。如果需要指定秘钥地址，可以使用&lt;code>-f&lt;/code>选项，对于指定的秘钥地址，需要通过以下命令将秘钥地址加入到搜索列表中.&lt;/p>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;span class="lnt">5
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># 1. Start the SSH agent&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&amp;gt; &lt;span class="nb">eval&lt;/span> &lt;span class="s2">&amp;#34;&lt;/span>&lt;span class="k">$(&lt;/span>ssh-agent -s&lt;span class="k">)&lt;/span>&lt;span class="s2">&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># 2. Add your custom key file&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&amp;gt; ssh-add path/to/id_rsa
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;ol start="2">
+&lt;li>
+&lt;p>将公钥添加到Github的SSH密钥列表中。使用 &lt;code>cat ~/.ssh/id_rsa.pub&lt;/code> 复制公钥，然后打开&lt;code>Github-&amp;gt;设置-&amp;gt;SSH and GPG keys-&amp;gt;New SSH key&lt;/code>，将公钥粘贴到&lt;code>Key&lt;/code>中，然后点击&lt;code>Add SSH key&lt;/code>。将公钥&lt;code>Key&lt;/code>中并保存。&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>本机通过SSH连接到Github，可以通过以下方式验证&lt;/p>
+&lt;/li>
+&lt;/ol>
+&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;span class="lnt">2
+&lt;/span>&lt;span class="lnt">3
+&lt;/span>&lt;span class="lnt">4
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">&lt;span class="line">&lt;span class="cl">&amp;gt; ssh -T git@github.com
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># ssh -vT git@github.com # 查看ssh连接的秘钥文件搜索列表&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">&lt;span class="c1"># ssh -i ~/.ssh/id_rsa git@github.com # 自定义密钥的地址，如果使用默认的密钥地址，则不需要指定密钥地址，如果之前已经加入到搜索列表中，则也不需要指定密钥地址&lt;/span>
+&lt;/span>&lt;/span>&lt;span class="line">&lt;span class="cl">Hi user-name! You&lt;span class="err">&amp;#39;&lt;/span>ve successfully authenticated, but GitHub does not provide shell access.
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;ol start="4">
+&lt;li>克隆仓库：在clone的时候选择&lt;code>SSH&lt;/code>的方式（不是&lt;code>HTTPS&lt;/code>的方式），即repo的地址为&lt;code>git@github.com:user-name/some-repository.git&lt;/code>&lt;/li>
+&lt;li>设置remote repo：&lt;code>git remote set-url origin git@github.com:user-name/some-repository.git&lt;/code>&lt;/li>
+&lt;/ol>
+&lt;p>通过以上步骤，即可正常使用Git进行操作。&lt;/p>
+&lt;h2 id="方案2personal-access-token">&lt;a href="#%e6%96%b9%e6%a1%882personal-access-token" class="header-anchor">&lt;/a>方案2：Personal Access Token
+&lt;/h2>&lt;p>该方法通过生成一个Personal Access Token来认证本地和GitHub的连接。该方法需要在Github的设置中生成一个Personal Access Token，然后通过该Token来连接remote repo&lt;/p>
+&lt;ol>
+&lt;li>生成Personal Access Token. 打开&lt;code>Github-&amp;gt;设置-&amp;gt;Developer settings-&amp;gt;Personal access tokens-&amp;gt;Token(classic)-&amp;gt;Generate new token&lt;/code>，在&lt;code>Note&lt;/code>中输入本机相关信息，在&lt;code>Expiration&lt;/code>中选择token失效日期，在&lt;code>Permissions&lt;/code>中选择&lt;code>repo&lt;/code>（必选，其他可选），然后点击&lt;code>Generate token&lt;/code>。将生成的&lt;code>&amp;lt;token&amp;gt;&lt;/code>复制到本地。&lt;/li>
+&lt;li>克隆仓库：&lt;code>git clone https://user-name:&amp;lt;token&amp;gt;@github.com/user-name/some-repository.git&lt;/code>&lt;/li>
+&lt;li>设置remote repo：&lt;code>git remote set-url origin https://user-name:&amp;lt;token&amp;gt;@github.com/user-name/some-repository.git&lt;/code>&lt;/li>
+&lt;/ol>
+&lt;p>通过以上步骤，即可正常使用Git进行操作。&lt;/p>
+&lt;h1 id="参考资料">&lt;a href="#%e5%8f%82%e8%80%83%e8%b5%84%e6%96%99" class="header-anchor">&lt;/a>参考资料
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="https://docs.github.com/en/authentication/troubleshooting-ssh/error-permission-denied-publickey" target="_blank" rel="noopener"
+>Error: Permission denied (publickey)
+&lt;/a>&lt;/li>
+&lt;li>&lt;a class="link" href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens" target="_blank" rel="noopener"
+>Managing your personal access tokens
+&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Screen usage</title><link>https://github.com/jiangyigithub/ai.github.io/p/screen-usage/</link><pubDate>Wed, 05 Feb 2025 15:14:43 +0800</pubDate><guid>https://github.com/jiangyigithub/ai.github.io/p/screen-usage/</guid><description>&lt;h1 id="introduction">&lt;a href="#introduction" class="header-anchor">&lt;/a>Introduction
+&lt;/h1>&lt;p>Screen is a terminal multiplexer, which allows you to create multiple sessions in a single terminal window.&lt;/p>
+&lt;h1 id="installation">&lt;a href="#installation" class="header-anchor">&lt;/a>Installation
+&lt;/h1>&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">&lt;span class="line">&lt;span class="cl">sudo apt-get install screen
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;h1 id="usage">&lt;a href="#usage" class="header-anchor">&lt;/a>Usage
+&lt;/h1>&lt;div class="highlight">&lt;div class="chroma">
+&lt;table class="lntable">&lt;tr>&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code>&lt;span class="lnt">1
+&lt;/span>&lt;/code>&lt;/pre>&lt;/td>
+&lt;td class="lntd">
+&lt;pre tabindex="0" class="chroma">&lt;code class="language-bash" data-lang="bash">&lt;span class="line">&lt;span class="cl">screen &lt;span class="o">[&lt;/span>-option&lt;span class="o">]&lt;/span> &lt;span class="o">[&lt;/span>command&lt;span class="o">]&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/td>&lt;/tr>&lt;/table>
+&lt;/div>
+&lt;/div>&lt;p>Options:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>-S&lt;/code>: specify the session name&lt;/li>
+&lt;li>&lt;code>-d&lt;/code>: detach from the session&lt;/li>
+&lt;li>&lt;code>-r&lt;/code>: reattach to the session&lt;/li>
+&lt;li>&lt;code>-c&lt;/code>: execute the command in the session&lt;/li>
+&lt;li>&lt;code>-L&lt;/code>: list all sessions&lt;/li>
+&lt;li>&lt;code>-wipe&lt;/code>: wipe out all sessions&lt;/li>
+&lt;li>&lt;code>-x&lt;/code>: execute the command in the session&lt;/li>
+&lt;li>&lt;code>-p&lt;/code>: specify the port number&lt;/li>
+&lt;li>&lt;code>-m&lt;/code>: specify the mode&lt;/li>
+&lt;li>&lt;code>-t&lt;/code>: specify the title&lt;/li>
+&lt;li>&lt;code>-v&lt;/code>: specify the version&lt;/li>
+&lt;li>&lt;code>-h&lt;/code>: display help information&lt;/li>
+&lt;li>&lt;code>-v&lt;/code>: display version information&lt;/li>
+&lt;li>&lt;code>-q&lt;/code>: quit the session&lt;/li>
+&lt;/ul>
+&lt;h1 id="reference">&lt;a href="#reference" class="header-anchor">&lt;/a>Reference
+&lt;/h1>&lt;ul>
+&lt;li>&lt;a class="link" href="https://www.gnu.org/software/screen/manual/screen.html" target="_blank" rel="noopener"
+>Screen usage&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>
