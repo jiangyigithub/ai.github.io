@@ -1,6 +1,6 @@
 ---
-title: MultiHeadSelfAttention
-description: 本文介绍了MultiHeadSelfAttention
+title: 利用hugo和github搭建个人网址
+description: 本文介绍了利用go，hugo，github搭建个人网址的过程
 date: 2026-04-01 17:44:26+08:00
 math: true
 tags: 
