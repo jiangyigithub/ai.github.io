@@ -92,11 +92,12 @@ Alpamayo-R1: Bridging Reasoning and Action Prediction for Generalizable Autonomo
 添加图片注释，不超过 140 字（可选）
 WOD-E2E: Waymo Open Dataset for End-to-End Driving in Challenging Long-tail Scenarios(https://arxiv.org/pdf/2510.26125)-4.4. Discussion of the Results
 
-#### 1.MLLM-based Model (VLA)的好处？->数据不易饱和
+`1.MLLM-based Model (VLA)的好处？->数据不易饱和` 
 ![q1](q1.png)
-#### 2.强化学习对E2E驾驶能力的提升？
+`2.强化学习对E2E驾驶能力的提升？` 
 ![q3](q3.png)
 
+## open discussion
 ### Q1. 智驾是否需要VLA吗 ？
 - a.智驾特殊场景和长尾场景是否需要Language，是否是帮助提升泛化性?
 - b.交互能力对于驾驶是否必须?驾驶需要需要遵循人类指令？
@@ -105,17 +106,17 @@ WOD-E2E: Waymo Open Dataset for End-to-End Driving in Challenging Long-tail Scen
 
 ### Q2. VLA vs WAM？
 
-#### VLA (Vision-Language-Action, 视觉-语言-动作模型):
+`VLA (Vision-Language-Action, 视觉-语言-动作模型)` 
 瓶颈： VLA 模型通常缺乏对物理世界的深刻理解（没有物理常识）。它只是学到了动作和图像之间的“统计映射”。
 
-#### WAM (World Action Model, 世界动作模型):
+`WAM (World Action Model, 世界动作模型)` 
 核心思想： WAM 是建立在 World Model (世界模型) 之上的动作模型。世界模型的核心能力是“预测未来”。它学习物理世界的运作规律（例如，物体掉落会向下，水杯翻了水会流出）。 当接收到指令和当前视觉时，WAM 不会直接生成动作。它首先利用其世界模型“想象”：如果我采取动作A，世界会变成什么样？采取动作B，世界又会变成什么样？通过在“想象”中模拟未来，WAM 可以选择最能达成目标的动作序列。
 WAM 的优势： 具有物理常识，具有“预测”和“规划”能力。
 
 [cosmos policy](https://arxiv.org/pdf/2601.16163)
 添加图片注释，不超过 140 字（可选）
 添加图片注释，不超过 140 字（可选）
-#### VLA 是终局吗？WAM 是终局吗？两者怎么融合？
+### Q3. VLA 是终局吗？WAM 是终局吗？两者怎么融合？
 添加图片注释，不超过 140 字（可选）
 
 ## 总结
