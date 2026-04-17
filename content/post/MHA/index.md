@@ -31,7 +31,7 @@ class MultiHeadSelfAttention(nn.Module):
         self.dropout=nn.Dropout(0.1)
 
     def forward(self,x,attn_mask=None):
-        batch_size,seq_len,self.hidden_dim = x.size()
+        batch_size,seq_len,_ = x.size()
         q=self.q_proj(x)
         k=self.k_proj(x)
         v=self.v_proj(x)
