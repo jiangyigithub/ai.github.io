@@ -9,8 +9,8 @@ icon = "brand-github"
 
 [[social]]
 identifier = "scholar"
-name = "Google Scholar"
-url = "https://scholar.google.com/citations?user=BaqGkQQAAAAJ"
+name = "zhihu"
+url = "https://www.zhihu.com/people/SuAReZENSport"
 
 [social.params]
 icon = "googlescholar"
